@@ -1,0 +1,39 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/backend-deploy.yml"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v1
+
+      - name: Build and Push Docker Image
+        # Note: In a real scenario, you'd push to a registry like Docker Hub or GitHub Packages.
+        # For simplicity here, we'll build and then SSH to the server to pull/rebuild.
+        run: |
+          echo "Building backend..."
+          cd server
+          # We use doppler run to ensure any build-time secrets are available if needed
+          DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }} doppler run -- docker build -t nest-backend .
+
+      - name: Deploy to Contabo
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          script: |
+            cd /opt/nest/server
+            git pull origin main
+            export DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }}
+            docker-compose up -d --build

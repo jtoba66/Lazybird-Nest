@@ -1,0 +1,8 @@
+# Nest Server
+
+uploads/
+*.db
+node_modules/
+dist/
+.env
+*.log
