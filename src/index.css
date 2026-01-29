@@ -142,7 +142,8 @@
     padding-top: 0.625rem;
     padding-bottom: 0.625rem;
     border-radius: 0.875rem;
-    font-size: 16px; /* prevent iOS zoom on focus */
+    font-size: 16px;
+    /* prevent iOS zoom on focus */
     min-height: 44px;
   }
 

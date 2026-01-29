@@ -233,7 +233,24 @@ router.get('/list', authenticateToken, validate(listFilesSchema), async (req: Au
             folderId = folderIdStr === 'null' ? null : parseInt(folderIdStr);
         }
 
-        let query = db.select({
+        console.log(`[DEBUG-LIST] User: ${userId}, Requesting Folder: ${folderId}`);
+
+
+        const conditions = [
+            eq(files.userId, userId),
+            isNull(files.deleted_at),
+            sql`${files.jackal_fid} != 'pending-chunks'`
+        ];
+
+        if (folderId !== undefined) {
+            if (folderId === null) {
+                conditions.push(isNull(files.folderId));
+            } else {
+                conditions.push(eq(files.folderId, folderId));
+            }
+        }
+
+        const query = db.select({
             id: files.id,
             jackal_fid: files.jackal_fid,
             merkle_hash: files.merkle_hash,
@@ -244,17 +261,7 @@ router.get('/list', authenticateToken, validate(listFilesSchema), async (req: Au
             last_accessed_at: files.last_accessed_at,
             is_chunked: files.is_chunked,
             chunk_count: files.chunk_count
-        }).from(files).where(and(
-            eq(files.userId, userId),
-            isNull(files.deleted_at),
-            sql`${files.jackal_fid} != 'pending-chunks'`
-        ));
-
-        if (folderId !== undefined) {
-            query = folderId === null
-                ? query.where(isNull(files.folderId))
-                : query.where(eq(files.folderId, folderId));
-        }
+        }).from(files).where(and(...conditions));
 
         const fileList = await query.orderBy(desc(files.created_at));
 
