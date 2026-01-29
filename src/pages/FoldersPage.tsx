@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { FolderPlus } from '@phosphor-icons/react';
 import { FileTable } from '../components/FileTable';
 import { CreateFolderModal } from '../components/CreateFolderModal';
@@ -26,8 +25,7 @@ export const FoldersPage = () => {
     const { showToast } = useToast();
     const { fileListVersion, triggerFileRefresh } = useRefresh();
     const { refreshQuota } = useStorage();
-    const { metadata, saveMetadata, isAuthenticated, masterKey } = useAuth();
-    const navigate = useNavigate();
+    const { metadata, saveMetadata, masterKey } = useAuth();
 
     // State
     const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
@@ -36,12 +34,8 @@ export const FoldersPage = () => {
     const [loading, setLoading] = useState(false);
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
 
-    // Session Recovery: Redirect to login if key is lost (e.g. reload)
-    useEffect(() => {
-        if (isAuthenticated && !masterKey) {
-            navigate('/login');
-        }
-    }, [isAuthenticated, masterKey, navigate]);
+    // Session Recovery: If key is lost, UI will show "Vault Locked" or prompt re-auth locally
+    // We remove the auto-redirect to /login because it causes logout loops during race conditions.
 
     // Initial Load & Sync
     useEffect(() => {

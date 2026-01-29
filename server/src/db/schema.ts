@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, uniqueIndex, foreignKey, decimal, uuid, customType, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, boolean, uniqueIndex, foreignKey, decimal, uuid, customType, unique, bigint } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 // Custom type for BLOBs in Postgres (bytea)
@@ -29,8 +29,8 @@ export const users = pgTable('users', {
     stripe_subscription_id: text('stripe_subscription_id'),
 
     // Storage Quota Tracking
-    storage_quota_bytes: integer('storage_quota_bytes').default(2147483648), // 2GB for free tier
-    storage_used_bytes: integer('storage_used_bytes').default(0),
+    storage_quota_bytes: bigint('storage_quota_bytes', { mode: 'number' }).default(2147483648), // 2GB for free tier
+    storage_used_bytes: bigint('storage_used_bytes', { mode: 'number' }).default(0),
 
     // Password Reset
     reset_token: text('reset_token'),
@@ -85,7 +85,7 @@ export const files = pgTable('files', {
     file_key_nonce: bytea('file_key_nonce').notNull(),
 
     // File Metadata
-    file_size: integer('file_size').notNull(),
+    file_size: bigint('file_size', { mode: 'number' }).notNull(),
 
     // Folder Structure
     folderId: integer('folder_id').references(() => folders.id, { onDelete: 'set null' }),

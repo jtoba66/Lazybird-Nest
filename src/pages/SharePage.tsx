@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../config/api';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import {
     Download,
@@ -99,7 +100,7 @@ export const SharePage = () => {
             setFilename(filenameFromUrl);
             setMimeType(mimeFromUrl);
 
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/files/share/${shareToken}`);
+            const response = await fetch(`${API_BASE_URL}/files/share/${shareToken}`);
             if (!response.ok) {
                 const data = await response.json();
                 throw new Error(data.error || 'Share link not found');
@@ -124,7 +125,7 @@ export const SharePage = () => {
                 // Fallback for non-chunked files (legacy)
                 let downloadUrl = fileInfo.is_gateway_verified
                     ? `https://gateway.lazybird.io/file/${fileInfo.merkle_hash}`
-                    : `${import.meta.env.VITE_API_URL}/files/share/raw/${shareToken}`;
+                    : `${API_BASE_URL}/files/share/raw/${shareToken}`;
 
                 const res = await fetch(downloadUrl);
                 if (!res.ok) throw new Error('Failed to download encrypted file');

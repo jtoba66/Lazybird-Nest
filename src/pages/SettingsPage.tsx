@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import API_BASE_URL from '../config/api';
 import {
     User,
     ShieldCheck,
@@ -76,7 +77,7 @@ export const SettingsPage = () => {
             for (const file of files) {
                 try {
                     // Fetch download info
-                    const keyResponse = await fetch(`${import.meta.env.VITE_API_URL}/files/download/${file.id}`, {
+                    const keyResponse = await fetch(`${API_BASE_URL}/files/download/${file.id}`, {
                         headers: { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` },
                     });
 
@@ -92,7 +93,7 @@ export const SettingsPage = () => {
                         for (const chunk of chunks) {
                             const chunkUrl = chunk.is_gateway_verified
                                 ? `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`
-                                : `${import.meta.env.VITE_API_URL}/files/chunks/raw/${chunk.id}`;
+                                : `${API_BASE_URL}/files/chunks/raw/${chunk.id}`;
                             const resp = await fetch(chunkUrl, {
                                 headers: chunk.is_gateway_verified ? {} : { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` }
                             });
@@ -104,7 +105,7 @@ export const SettingsPage = () => {
                     } else {
                         const downloadUrl = fileInfo.is_gateway_verified
                             ? `https://gateway.lazybird.io/file/${fileInfo.jackal_fid || fileInfo.merkle_hash}`
-                            : `${import.meta.env.VITE_API_URL}/files/raw/${file.id}`;
+                            : `${API_BASE_URL}/files/raw/${file.id}`;
                         const resp = await fetch(downloadUrl, {
                             headers: fileInfo.is_gateway_verified ? {} : { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` }
                         });

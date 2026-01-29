@@ -270,8 +270,8 @@ export const ResetPasswordPage = () => {
                         <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
                             <Warning size={32} weight="fill" />
                         </div>
-                        <h3 className="text-lg font-bold text-text-main mb-2">Are you absolutely sure?</h3>
-                        <p className="text-text-muted mb-6">
+                        <h3 className="text-lg font-bold text-white mb-2">Are you absolutely sure?</h3>
+                        <p className="text-slate-300 mb-6">
                             This action will <strong>permanently delete all your files</strong> and create a fresh encryption key. This cannot be undone.
                         </p>
 

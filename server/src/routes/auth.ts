@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { db } from '../db';
 import { users, userCrypto, folders, files } from '../db/schema';
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, sql } from 'drizzle-orm';
 
 import { validate } from '../middleware/validate';
 import {
@@ -256,6 +256,10 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
 
         logger.info(`[AUTH-LOGIN] ✅ Success: ${user.id}`);
 
+        // Fetch keys for response (we already checked existence in step 3)
+        // Re-using cryptoData from step 3 if available, or fetching if strictly needed
+        // Actually step 3 variable 'cryptoData' is available in this scope
+
         res.json({
             token,
             user: {
@@ -263,8 +267,15 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
                 email: user.email,
                 tier: user.subscription_tier,
                 storageUsed: user.storage_used_bytes,
-                storageQuota: user.storage_quota_bytes
-            }
+                storageQuota: user.storage_quota_bytes,
+                role: user.role
+            },
+            // Return keys so frontend can unlock vault
+            encryptedMasterKey: bufferToBase64(cryptoData.encrypted_master_key!),
+            encryptedMasterKeyNonce: bufferToBase64(cryptoData.encrypted_master_key_nonce!),
+            // Also sending metadata keys just in case, though frontend fetches them separately usually
+            encryptedMetadata: bufferToBase64(cryptoData.metadata_blob),
+            encryptedMetadataNonce: bufferToBase64(cryptoData.metadata_nonce)
         });
 
     } catch (e) {

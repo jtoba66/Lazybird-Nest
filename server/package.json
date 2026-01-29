@@ -6,7 +6,10 @@
     "scripts": {
         "start": "NODE_OPTIONS='--max-old-space-size=4096' doppler run -- ts-node --transpile-only src/server.ts",
         "dev": "TS_NODE_TRANSPILE_ONLY=true NODE_OPTIONS='--max-old-space-size=4096' doppler run -- nodemon --watch src src/server.ts",
-        "build": "tsc"
+        "build": "tsc",
+        "db:generate": "doppler run -- drizzle-kit generate",
+        "db:push": "doppler run -- drizzle-kit push",
+        "db:studio": "doppler run -- drizzle-kit studio"
     },
     "dependencies": {
         "@jackallabs/jackal.js": "^3.7.2",

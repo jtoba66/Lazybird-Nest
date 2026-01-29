@@ -1,3 +1,4 @@
+import API_BASE_URL from '../config/api';
 import { createDecryptionStream, fromBase64 } from '../crypto/v2';
 
 export interface DownloadChunk {
@@ -53,7 +54,7 @@ export class StreamingDownloader {
 
                 let chunkUrl = '';
                 if (chunk.status === 'local') {
-                    chunkUrl = `${import.meta.env.VITE_API_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                    chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
                 } else if (chunk.status === 'cloud' && chunk.jackal_merkle) {
                     chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
                 } else {

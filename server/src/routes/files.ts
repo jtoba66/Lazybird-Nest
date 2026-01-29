@@ -6,18 +6,19 @@ import path from 'path';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { injectMasterKey } from '../middleware/sessionKey';
 import { db } from '../db';
-import { users, files, fileChunks, folders } from '../db/schema';
-import { eq, and, isNull, sql, notNull, desc, asc } from 'drizzle-orm';
+import { users, files, fileChunks, folders, userCrypto } from '../db/schema';
+import { eq, and, isNull, sql, isNotNull, desc, asc } from 'drizzle-orm';
 import { getJackalHandler, uploadFileToJackal, verifyOnGateway } from '../jackal';
 import logger from '../utils/logger';
 import { uploadQueue } from '../utils/uploadQueue';
 import { withTimeout } from '../utils/promise';
 import {
-    encryptMetadataBlob,
     decryptMetadataBlob,
+    encryptMetadataBlob,
     bufferToBase64,
-    base64ToBuffer,
+    base64ToBuffer
 } from '../crypto/keyManagement';
+
 import { uploadLimiter } from '../middleware/rateLimiter';
 import { validate } from '../middleware/validate';
 import {
@@ -285,7 +286,7 @@ router.get('/trash', authenticateToken, async (req: AuthRequest, res) => {
             chunk_count: files.chunk_count
         })
             .from(files)
-            .where(and(eq(files.userId, userId), notNull(files.deleted_at)))
+            .where(and(eq(files.userId, userId), isNotNull(files.deleted_at)))
             .orderBy(desc(files.deleted_at));
 
         res.json({ files: trashFiles });
@@ -304,7 +305,7 @@ router.post('/restore/:fileId', authenticateToken, async (req: AuthRequest, res)
     const fileId = parseInt(req.params.fileId);
 
     try {
-        const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId), notNull(files.deleted_at))).limit(1);
+        const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId), isNotNull(files.deleted_at))).limit(1);
         if (!file) return res.status(404).json({ error: 'File not found in trash' });
 
         await db.update(files).set({ deleted_at: null }).where(eq(files.id, fileId));
@@ -538,7 +539,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             jackal_filename: 'pending',
             file_key_encrypted: base64ToBuffer(fileKeyEncrypted),
             file_key_nonce: base64ToBuffer(fileKeyNonce)
-        }).returning({ id: files.id });
+        }).returning({ id: files.id, share_token: files.share_token });
 
         const jackalFilename = `${userId}_${newFile.id}_${filename}`;
         await db.update(files).set({ jackal_filename: jackalFilename }).where(eq(files.id, newFile.id));

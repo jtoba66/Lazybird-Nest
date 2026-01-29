@@ -1,5 +1,6 @@
 import axios from 'axios';
 import db from '../db';
+import { sql } from 'drizzle-orm';
 import { sendEmail } from './email';
 
 import { jobCompletedEmail, jobFailedEmail } from './email-templates';
@@ -12,7 +13,7 @@ import { jobCompletedEmail, jobFailedEmail } from './email-templates';
  */
 export async function notifyUser(userId: number, job: any, status: 'COMPLETED' | 'FAILED') {
     try {
-        const user = db.prepare('SELECT email, notification_email, webhook_url, email_notifications FROM users WHERE id = ?').get(userId) as any;
+        const [user] = await db.execute(sql`SELECT email, notification_email, webhook_url, email_notifications FROM users WHERE id = ${userId}`) as any[];
         if (!user) return;
 
         const targetEmail = user.notification_email || user.email;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import API_BASE_URL from '../config/api';
 import { useToast } from '../contexts/ToastContext';
 import { CloudArrowUp, MagnifyingGlass, SortAscending } from '@phosphor-icons/react';
 import { FileGrid } from '../components/FileGrid';
@@ -70,7 +71,7 @@ export const CloudDrivePage = () => {
 
         try {
             // Step 1: Get File Key and Metadata
-            const keyResponse = await fetch(`${import.meta.env.VITE_API_URL}/files/download/${fileId}`, {
+            const keyResponse = await fetch(`${API_BASE_URL}/files/download/${fileId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('nest_token')}`,
                 },
@@ -118,7 +119,7 @@ export const CloudDrivePage = () => {
                     if (chunk.is_gateway_verified) {
                         chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
                     } else {
-                        chunkUrl = `${import.meta.env.VITE_API_URL}/files/chunks/raw/${chunk.id}`;
+                        chunkUrl = `${API_BASE_URL}/files/chunks/raw/${chunk.id}`;
                     }
 
                     const chunkResp = await fetch(chunkUrl, {
@@ -147,7 +148,7 @@ export const CloudDrivePage = () => {
                     downloadUrl = `https://gateway.lazybird.io/file/${jackal_fid || merkle_hash}`;
                     console.log('[CloudDrive] Downloading from Jackal Gateway');
                 } else {
-                    downloadUrl = `${import.meta.env.VITE_API_URL}/files/raw/${fileId}`;
+                    downloadUrl = `${API_BASE_URL}/files/raw/${fileId}`;
                     console.log('[CloudDrive] Downloading from Local Proxy');
                 }
 

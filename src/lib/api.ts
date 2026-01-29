@@ -30,6 +30,8 @@ api.interceptors.response.use(
                 // Clear stale session data
                 localStorage.removeItem('nest_token');
                 localStorage.removeItem('nest_email');
+                localStorage.removeItem('nest_role');
+                localStorage.removeItem('nest_master_key');
 
                 // Show user-friendly message
                 const message = error.response?.data?.error || 'Your session has expired. Please log in again.';

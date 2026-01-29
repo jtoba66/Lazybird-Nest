@@ -28,15 +28,15 @@ interface UploadContextType {
 
 const UploadContext = createContext<UploadContextType | null>(null);
 
-export const useUpload = () => {
+export function useUpload() {
     const context = useContext(UploadContext);
     if (!context) {
         throw new Error('useUpload must be used within UploadProvider');
     }
     return context;
-};
+}
 
-export const UploadProvider = ({ children }: { children: ReactNode }) => {
+export function UploadProvider({ children }: { children: ReactNode }) {
     const [uploads, setUploads] = useState<UploadItem[]>([]);
     const [activeUploads, setActiveUploads] = useState<number>(0);
     const { refreshQuota } = useStorage();
@@ -121,7 +121,9 @@ export const UploadProvider = ({ children }: { children: ReactNode }) => {
     // Queue Processor
     useEffect(() => {
         const processQueue = async () => {
+            if (!masterKey) return; // Wait for master key before processing queue
             if (activeUploads >= MAX_CONCURRENT_UPLOADS) return;
+
             const nextUpload = uploads.find(u => u.status === 'queued');
 
             if (nextUpload) {
@@ -133,7 +135,7 @@ export const UploadProvider = ({ children }: { children: ReactNode }) => {
             }
         };
         processQueue();
-    }, [uploads, activeUploads]);
+    }, [uploads, activeUploads, masterKey]);
 
     const performUpload = async (uploadId: string) => {
         // Guard: Check if actually queued (to avoid double processing)

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Users, HardDrives, Database, ArrowsClockwise, Trash, CloudCheck, Warning, CheckCircle, Clock, Spinner } from '@phosphor-icons/react';
 import { useToast } from '../contexts/ToastContext';
+import API_BASE_URL from '../config/api';
 
 interface SystemMetrics {
     memory: {
@@ -88,7 +89,7 @@ export default function AdminPage() {
             }
 
             const headers = { 'Authorization': `Bearer ${token}` };
-            const apiUrl = import.meta.env.VITE_API_URL;
+            const apiUrl = API_BASE_URL;
 
             const [systemRes, filesRes, usersRes, analyticsRes, failedRes, graveyardRes] = await Promise.all([
                 fetch(`${apiUrl}/admin/system`, { headers }),
@@ -99,8 +100,17 @@ export default function AdminPage() {
                 fetch(`${apiUrl}/admin/graveyard`, { headers })
             ]);
 
-            if (systemRes.status === 403 || filesRes.status === 403) {
-                setError('Access denied. Admin privileges required.');
+            const responses = [systemRes, filesRes, usersRes, analyticsRes, failedRes, graveyardRes];
+            const failedResponse = responses.find(r => !r.ok);
+
+            if (failedResponse) {
+                if (failedResponse.status === 403) {
+                    setError('Access denied. Admin privileges required.');
+                } else {
+                    const errorText = await failedResponse.text();
+                    console.error('[ADMIN] API Error:', failedResponse.status, errorText.substring(0, 100));
+                    setError(`Server error (${failedResponse.status}): ${failedResponse.statusText}`);
+                }
                 setLoading(false);
                 return;
             }

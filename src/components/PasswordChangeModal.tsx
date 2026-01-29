@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import API_BASE_URL from '../config/api';
 import { Modal } from './Modal';
 import { Check } from '@phosphor-icons/react';
 
@@ -50,7 +51,7 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
 
             // 1. Fetch current ZK params (Salt & Encrypted MK) from server
             setProgress('Fetching current security parameters...');
-            const saltRes = await fetch(`${import.meta.env.VITE_API_URL}/auth/salt`, {
+            const saltRes = await fetch(`${API_BASE_URL}/auth/salt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: userEmail })
@@ -109,7 +110,7 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
 
                 // 5. Send to Server
                 setProgress('Updating security vault...');
-                const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/change-password`, {
+                const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

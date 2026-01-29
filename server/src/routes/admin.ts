@@ -14,6 +14,109 @@ import { retryFileUpload, retryChunkUploads } from '../utils/retryHandler';
 
 const router = express.Router();
 
+router.get('/system', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const totalFiles = (await db.select({ count: count() }).from(files))[0].count;
+        const totalUsers = (await db.select({ count: count() }).from(users))[0].count;
+        const totalFolders = (await db.select({ count: count() }).from(folders))[0].count;
+        const totalStorage = (await db.select({ sum: sum(files.file_size) }).from(files))[0].sum;
+
+        res.json({
+            memory: {
+                total: os.totalmem(),
+                free: os.freemem(),
+                used: os.totalmem() - os.freemem(),
+                usedPercent: Math.round(((os.totalmem() - os.freemem()) / os.totalmem()) * 100)
+            },
+            uptime: os.uptime(),
+            load: os.loadavg(),
+            database: {
+                totalFiles: Number(totalFiles),
+                totalUsers: Number(totalUsers),
+                totalFolders: Number(totalFolders),
+                totalStorage: Number(totalStorage || 0)
+            }
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get('/analytics', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        // Mock analytics or simple stats for now
+        const totalFiles = (await db.select({ count: count() }).from(files))[0].count;
+        const totalUploaded = (await db.select({ count: count() }).from(files).where(isNotNull(files.merkle_hash)))[0].count;
+
+        res.json({
+            jackal: {
+                total: Number(totalFiles),
+                uploaded: Number(totalUploaded),
+                failed: 0, // Need a query for failed uploads
+                uploadRate: totalFiles > 0 ? Math.round((Number(totalUploaded) / Number(totalFiles)) * 100) : 0
+            },
+            recent: {
+                uploads24h: 0 // Placeholder
+            }
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get('/failed-uploads', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        // Define failed as > 3 retries or older than 1 hour pending?
+        // For now, just return files with retry_count > 0 and not verified
+        const failed = await db.select({
+            id: files.id,
+            user_email: users.email,
+            filename: files.jackal_filename,
+            file_size: files.file_size,
+            merkle_hash: files.merkle_hash,
+            created_at: files.created_at,
+            encrypted_file_path: files.encrypted_file_path,
+            retry_count: files.retry_count
+        })
+            .from(files)
+            .innerJoin(users, eq(files.userId, users.id))
+            .where(and(
+                isNull(files.deleted_at),
+                sql`${files.retry_count} > 0`,
+                eq(files.is_gateway_verified, 0)
+            ))
+            .limit(50);
+
+        res.json(failed);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get('/graveyard', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const deleted = await db.select({
+            id: files.id,
+            user_email: users.email,
+            jackal_filename: files.jackal_filename,
+            merkle_hash: files.merkle_hash,
+            file_size: files.file_size,
+            is_chunked: files.is_chunked,
+            chunk_count: files.chunk_count,
+            deleted_at: files.deleted_at
+        })
+            .from(files)
+            .innerJoin(users, eq(files.userId, users.id))
+            .where(isNotNull(files.deleted_at))
+            .orderBy(desc(files.deleted_at))
+            .limit(50);
+
+        res.json(deleted);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.get('/files', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const fileList = await db.select({

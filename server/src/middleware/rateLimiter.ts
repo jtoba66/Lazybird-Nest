@@ -17,7 +17,7 @@ export const globalLimiter = rateLimit({
 // Stricter limiter for authentication routes
 export const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // Limit each IP to 10 login/signup attempts per 15 mins
+    max: 20, // Limit each IP to 20 login/signup attempts per 15 mins
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many authentication attempts, please try again in 15 minutes.' },

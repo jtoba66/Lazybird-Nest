@@ -32,9 +32,9 @@ export const ForgotPasswordPage = () => {
                     <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/10">
                         <EnvelopeSimple size={40} weight="duotone" className="text-green-500" />
                     </div>
-                    <h2 className="text-2xl sm:text-3xl font-bold text-text-main mb-3">Check your email</h2>
-                    <p className="text-base sm:text-lg text-text-muted mb-6 sm:mb-8 leading-relaxed">
-                        We've sent simple password reset instructions to <strong className="text-text-main">{email}</strong>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3 drop-shadow-md">Check your email</h2>
+                    <p className="text-base sm:text-lg text-slate-300 mb-6 sm:mb-8 leading-relaxed">
+                        We've sent simple password reset instructions to <strong className="text-white">{email}</strong>
                     </p>
                     <Link
                         to="/login"
@@ -56,19 +56,19 @@ export const ForgotPasswordPage = () => {
 
             <div className="glass-panel p-6 sm:p-8 md:p-10 w-full max-w-md animate-scale-in">
                 <div className="mb-8">
-                    <Link to="/login" className="inline-flex items-center gap-2 text-text-muted hover:text-white transition-colors mb-6 group">
+                    <Link to="/login" className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-6 group">
                         <ArrowLeft size={16} weight="bold" className="group-hover:-translate-x-1 transition-transform" />
                         <span className="text-sm font-medium">Back to login</span>
                     </Link>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-text-main mb-3 tracking-tight">Forgot password?</h1>
-                    <p className="text-text-muted text-base sm:text-lg">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3 tracking-tight drop-shadow-md">Forgot password?</h1>
+                    <p className="text-slate-400 text-base sm:text-lg">
                         Enter your email address and we'll send you instructions to reset your password.
                     </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label htmlFor="email" className="block text-sm font-semibold text-text-main mb-2 ml-1">
+                        <label htmlFor="email" className="block text-sm font-semibold text-slate-200 mb-2 ml-1">
                             Email Address
                         </label>
                         <input

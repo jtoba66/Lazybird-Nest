@@ -138,10 +138,12 @@ export function encryptMasterKey(
     wrappingKey: Uint8Array
 ): { encrypted: Uint8Array; nonce: Uint8Array } {
     const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES) as Uint8Array;
-    const encrypted = sodium.crypto_secretbox_easy(
+    const encrypted = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
         masterKey,
-        nonce as Uint8Array,
-        wrappingKey as Uint8Array
+        null,
+        null,
+        nonce,
+        wrappingKey
     ) as Uint8Array;
     return { encrypted, nonce };
 }

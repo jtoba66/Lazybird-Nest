@@ -1,4 +1,5 @@
 import db from '../db';
+import { sql } from 'drizzle-orm';
 
 interface TimeEstimate {
     minSeconds: number;
@@ -15,26 +16,26 @@ interface TimeEstimate {
  * @param fileSizeMB - File size in megabytes
  * @returns Time estimate with range and confidence
  */
-export function getLearnedEstimate(settings: any, durationSec: number, fileSizeMB: number): TimeEstimate {
+export async function getLearnedEstimate(settings: any, durationSec: number, fileSizeMB: number): Promise<TimeEstimate> {
     // Determine if this is a cut operation
     const isCutOperation = !Array.isArray(settings) && settings.operation === 'cut';
 
     if (isCutOperation) {
-        return getCutEstimate(settings, durationSec);
+        return await getCutEstimate(settings, durationSec);
     } else {
-        return getConversionEstimate(settings, durationSec, fileSizeMB);
+        return await getConversionEstimate(settings, durationSec, fileSizeMB);
     }
 }
 
 /**
  * Get estimate for cut operations
  */
-function getCutEstimate(settings: any, _durationSec: number): TimeEstimate {
+async function getCutEstimate(settings: any, _durationSec: number): Promise<TimeEstimate> {
     const cutDuration = (settings.end || 0) - (settings.start || 0);
     const isFastMode = settings.mode === 'fast';
 
     // Query historical cut jobs
-    const historicalJobs = db.prepare(`
+    const historicalJobs = await db.execute(sql`
         SELECT actual_processing_time, settings
         FROM jobs
         WHERE status = 'COMPLETED'
@@ -42,7 +43,7 @@ function getCutEstimate(settings: any, _durationSec: number): TimeEstimate {
         AND settings LIKE '%"operation":"cut"%'
         ORDER BY completed_at DESC
         LIMIT 50
-    `).all() as any[];
+    `) as any[];
 
     // Filter by mode
     const relevantJobs = historicalJobs.filter(job => {
@@ -80,7 +81,7 @@ function getCutEstimate(settings: any, _durationSec: number): TimeEstimate {
 /**
  * Get estimate for conversion operations
  */
-function getConversionEstimate(settings: string[], durationSec: number, fileSizeMB: number): TimeEstimate {
+async function getConversionEstimate(settings: string[], durationSec: number, fileSizeMB: number): Promise<TimeEstimate> {
     // Determine highest complexity format
     const hasOriginalOr1080p = settings.includes('original') || settings.includes('1080p');
     const has720p = settings.includes('720p');
@@ -93,15 +94,15 @@ function getConversionEstimate(settings: string[], durationSec: number, fileSize
     else if (has480p) primaryFormat = '480p';
 
     // Query historical jobs with similar settings
-    const historicalJobs = db.prepare(`
+    const historicalJobs = await db.execute(sql`
         SELECT actual_processing_time, settings, file_size
         FROM jobs
         WHERE status = 'COMPLETED'
         AND actual_processing_time IS NOT NULL
-        AND settings LIKE ?
+        AND settings LIKE ${`%${primaryFormat}%`}
         ORDER BY completed_at DESC
         LIMIT 100
-    `).all(`%${primaryFormat}%`) as any[];
+    `) as any[];
 
     // Filter by similar file size (within 50% range)
     const fileSizeBytes = fileSizeMB * 1024 * 1024;

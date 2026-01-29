@@ -11,7 +11,7 @@ export const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
 
-    const { login, setMasterKey, setMetadata } = useAuth();
+    const { login, setMasterKey } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -25,8 +25,6 @@ export const LoginPage = () => {
             const {
                 deriveRootKey,
                 deriveAuthHash,
-                deriveWrappingKey,
-                decryptMasterKey,
                 fromBase64
             } = await import('../crypto/v2');
             const { authAPI } = await import('../api/auth');
@@ -44,39 +42,10 @@ export const LoginPage = () => {
             // 3. Authenticate
             setLoadingMessage('Authenticating...');
             const authHash = deriveAuthHash(rootKey);
-            const response = await login({ email, authHash });
+            const response = await login({ email, authHash, rootKey });
 
-            // 4. Decrypt Master Key
-            if (response.encryptedMasterKey && response.encryptedMasterKeyNonce) {
-                setLoadingMessage('Decrypting vault...');
-                await new Promise(r => setTimeout(r, 50));
-
-                const wrappingKey = deriveWrappingKey(rootKey);
-                const encryptedMasterKey = fromBase64(response.encryptedMasterKey);
-                const nonce = fromBase64(response.encryptedMasterKeyNonce);
-
-                const masterKey = decryptMasterKey(encryptedMasterKey, nonce, wrappingKey);
-                setMasterKey(masterKey);
-
-                // 5. Decrypt Metadata
-                if (response.encryptedMetadata && response.encryptedMetadataNonce) {
-                    setLoadingMessage('Loading vault structure...');
-                    await new Promise(r => setTimeout(r, 50));
-
-                    const { decryptMetadataBlob } = await import('../crypto/v2');
-
-                    try {
-                        const metadataEncrypted = fromBase64(response.encryptedMetadata);
-                        const metadataNonce = fromBase64(response.encryptedMetadataNonce);
-                        const metadata = decryptMetadataBlob(metadataEncrypted, metadataNonce, masterKey);
-                        setMetadata(metadata);
-                    } catch (e) {
-                        console.error('Metadata decryption failed', e);
-                        // Don't fail login, just empty metadata?
-                        // Or better to fail. But for resilience, let's log.
-                    }
-                }
-            }
+            // 4. Decrypt Master Key (Handled internally by AuthContext.login)
+            // The context will update the state and localStorage automatically.
 
             navigate('/');
 
@@ -101,20 +70,20 @@ export const LoginPage = () => {
                     <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
                         <img src="/src/assets/nest-logo.png" alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
                     </div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-text-main mb-3 tracking-tight">Welcome Back</h1>
-                    <p className="text-text-muted text-base sm:text-lg">Sign in to your Nest account</p>
+                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 tracking-tight drop-shadow-md">Welcome Back</h1>
+                    <p className="text-slate-400 text-base sm:text-lg">Sign in to your Nest account</p>
                 </div>
 
                 <div className="glass-panel p-6 sm:p-8 md:p-10">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
-                            <label className="block text-sm font-semibold text-text-main mb-2">
+                            <label className="block text-sm font-semibold text-slate-200 mb-2">
                                 Email
                             </label>
                             <div className="relative group">
                                 <EnvelopeSimple
                                     size={20}
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors"
+                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"
                                 />
                                 <input
                                     type="email"
@@ -128,13 +97,13 @@ export const LoginPage = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-semibold text-text-main mb-2">
+                            <label className="block text-sm font-semibold text-slate-200 mb-2">
                                 Password
                             </label>
                             <div className="relative group">
                                 <LockKey
                                     size={20}
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors"
+                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"
                                 />
                                 <input
                                     type={showPassword ? 'text' : 'password'}
@@ -147,13 +116,13 @@ export const LoginPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
                                 >
                                     {showPassword ? <EyeSlash size={20} /> : <Eye size={20} />}
                                 </button>
                             </div>
                             <div className="mt-3 text-right">
-                                <Link to="/forgot-password" className="text-sm text-primary hover:text-secondary font-medium transition-colors">
+                                <Link to="/forgot-password" className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors">
                                     Forgot password?
                                 </Link>
                             </div>
@@ -182,18 +151,18 @@ export const LoginPage = () => {
                     </form>
 
                     <div className="mt-6 sm:mt-8">
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-text-muted text-sm text-center">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-slate-400 text-sm text-center">
                             <span>
                                 Don't have an account?{' '}
                                 <button
                                     onClick={() => navigate('/signup')}
-                                    className="text-primary font-bold hover:text-secondary transition-colors"
+                                    className="text-white font-bold hover:text-primary transition-colors"
                                 >
                                     Sign up
                                 </button>
                             </span>
-                            <span className="text-text-muted/30 hidden sm:inline">|</span>
-                            <Link to="/terms" className="text-text-muted hover:text-primary transition-colors whitespace-nowrap">
+                            <span className="text-slate-600 hidden sm:inline">|</span>
+                            <Link to="/terms" className="text-slate-400 hover:text-white transition-colors whitespace-nowrap">
                                 Terms & Privacy Policy
                             </Link>
                         </div>

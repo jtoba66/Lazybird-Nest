@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import API_BASE_URL from '../config/api';
 import { CloudArrowUp, FolderPlus, GridFour, Info, CaretUp, Check, Copy } from '@phosphor-icons/react';
 import { useDropzone } from 'react-dropzone';
 import { useUpload } from '../contexts/UploadContext';
@@ -54,7 +55,7 @@ export const FileGrid = () => {
             // 5. Upload to backend
             console.log('[v2-upload] Uploading to backend...');
 
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/files/upload`, {
+            const response = await fetch(`${API_BASE_URL}/files/upload`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('nest_token')}`,
