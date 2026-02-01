@@ -43,16 +43,16 @@ graph TD
 
 ```mermaid
 graph TD
-    User(1. Request) --> Server[API Server]
-    Server -->|2. Fetch| Jackal[Jackal Storage]
-    Jackal -->|3. Stream| Server
-    Server -->|4. Encrypted Blob| User
+    Client[Client (Browser)] -->|1. Request File| Server[API Server]
+    Server -->|2. Fetch Blob| Jackal[Jackal Storage]
+    Jackal -->|3. Encrypted Stream| Server
+    Server -->|4. Encrypted Blob| Client
 
     subgraph "Trust Boundary (Local Device)"
-        User -->|5. Unlock| Vault[Key Vault]
+        Client -->|5. Unlock| Vault[Key Vault]
         Vault -->|6. Keys| Decrypt[AES-256-GCM]
-        User -.->|7. Decrypt| Decrypt
-        Decrypt -->|8. View| Viewer[File Viewer]
+        Client -.->|7. Decrypt| Decrypt
+        Decrypt -->|8. View| User[User]
     end
 ```
 
