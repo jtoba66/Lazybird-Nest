@@ -49,6 +49,7 @@ graph LR
     Server -->|4. Encrypted Blob| Client[Client Browser]
 
     subgraph "Trust Boundary (Local Device)"
+        direction TB
         Client -->|5. Unlock| Vault[Key Vault]
         Vault -->|6. Keys| Decrypt[AES-256-GCM]
         Client -->|7. Decrypt| Decrypt
