@@ -161,7 +161,8 @@ cd server && npm run build
 
 ---
 
-## 📄 License
+## 📄 License & Legal
 
-Nest is proprietary software. All rights reserved.
-[MIT License](LICENSE) (if open-source).
+**Copyright © 2026 LazyBird Inc. All Rights Reserved.**
+
+This software is the confidential and proprietary information of LazyBird Inc. ("Confidential Information"). You shall not disclose such Confidential Information and shall use it only in accordance with the terms of the license agreement you entered into with LazyBird Inc.
