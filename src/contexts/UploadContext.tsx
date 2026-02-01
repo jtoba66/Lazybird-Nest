@@ -13,12 +13,13 @@ export interface UploadItem {
     progress: number;
     status: 'uploading' | 'completed' | 'failed' | 'queued';
     backendFileId?: number;
+    folderId?: number; // Target folder ID
     error?: string;
 }
 
 interface UploadContextType {
     uploads: UploadItem[];
-    addUpload: (file: File) => string;
+    addUpload: (file: File, folderId?: number | null) => string;
     updateProgress: (id: string, progress: number) => void;
     completeUpload: (id: string) => void;
     failUpload: (id: string, error: string) => void;
@@ -47,7 +48,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     // Max 1 concurrent upload to protect efficient bandwidth usage
     const MAX_CONCURRENT_UPLOADS = 1;
 
-    const addUpload = (file: File): string => {
+    const addUpload = (file: File, folderId?: number | null): string => {
         const id = crypto.randomUUID();
         const uploadItem: UploadItem = {
             id,
@@ -55,6 +56,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             size: file.size,
             progress: 0,
             status: 'queued',
+            folderId: folderId ?? undefined,
         };
 
         fileRegistry.current.set(id, file);
@@ -96,10 +98,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     const removeUpload = (id: string) => {
         const upload = uploads.find(u => u.id === id);
 
-        // If it was in progress or failed but had a backend record, clean it up
+        // Fix H2: Call dedicated cancel endpoint for cleanup
         if (upload && upload.backendFileId && upload.status !== 'completed') {
             console.log(`[UPLOAD-CTX] Canceling pending backend file: ${upload.backendFileId}`);
-            filesAPI.cancelUpload(upload.backendFileId).catch((err: any) => {
+            filesAPI.cancelUpload(upload.backendFileId).then(() => {
+                console.log(`[UPLOAD-CTX] Successfully cancelled upload ${upload.backendFileId}`);
+            }).catch((err: any) => {
                 console.error(`[UPLOAD-CTX] Failed to cancel backend upload ${upload.backendFileId}:`, err);
             });
         }
@@ -162,40 +166,42 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 throw new Error('Master Key not available. Please log in again.');
             }
 
-            // 1. Get Root Folder ID first
-            const rootFolderResponse = await foldersAPI.list(null);
-            const rootFolder = rootFolderResponse.folders?.find((f: any) => f.parent_id === null);
+            // 1. Resolve Target Folder (Priority: Provided -> DB Root -> Create New Root)
+            const targetFolderIdFromUpload = uploads.find(u => u.id === uploadId)?.folderId;
             let rootFolderId: number;
 
-            if (!rootFolder?.id) {
-                console.warn('[UPLOAD] Root folder missing! Initializing self-healing root...');
-                // Generate new Root Folder Key
-                const rootFolderKey = generateFileKey(); // Use generateFileKey or generateFolderKey (they both use randombytes(32))
-                const rfEnv = encryptFolderKey(rootFolderKey, masterKey);
-
-                // Create Root on Server
-                const createRes = await foldersAPI.create(
-                    toBase64(rfEnv.encrypted),
-                    toBase64(rfEnv.nonce),
-                    '/', // pathHash for root
-                    undefined // parentId is NULL
-                );
-
-                rootFolderId = createRes.folder_id;
-                console.log('[UPLOAD] Self-healing root initialized:', rootFolderId);
-
-                // Update metadata with the new root name
-                if (metadata) {
-                    const updatedMetadata = { ...metadata };
-                    updatedMetadata.folders[rootFolderId.toString()] = {
-                        name: 'Root',
-                        created_at: new Date().toISOString()
-                    };
-                    setMetadata(updatedMetadata);
-                    await saveMetadata(updatedMetadata);
-                }
+            if (targetFolderIdFromUpload) {
+                rootFolderId = targetFolderIdFromUpload;
+                console.log('[UPLOAD] Using specific target folder:', rootFolderId);
             } else {
-                rootFolderId = rootFolder.id;
+                const rootFolderResponse = await foldersAPI.list(null);
+                const rootFolder = rootFolderResponse.folders?.find((f: any) => f.parent_id === null);
+
+                if (!rootFolder?.id) {
+                    console.warn('[UPLOAD] Root folder missing! Initializing self-healing root...');
+                    const rootFolderKey = generateFileKey();
+                    const rfEnv = encryptFolderKey(rootFolderKey, masterKey);
+
+                    const createRes = await foldersAPI.create(
+                        toBase64(rfEnv.encrypted),
+                        toBase64(rfEnv.nonce),
+                        '/',
+                        undefined
+                    );
+
+                    rootFolderId = createRes.folder_id;
+                    if (metadata) {
+                        const updatedMetadata = { ...metadata };
+                        updatedMetadata.folders[rootFolderId.toString()] = {
+                            name: 'Root',
+                            created_at: new Date().toISOString()
+                        };
+                        setMetadata(updatedMetadata);
+                        await saveMetadata(updatedMetadata);
+                    }
+                } else {
+                    rootFolderId = rootFolder.id;
+                }
             }
 
             // 2. Get Folder Key for the ROOT FOLDER
@@ -218,10 +224,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // === CHUNKED UPLOAD ===
 
                 // Init (Quota Check & DB Record)
-                const initResult = await filesAPI.initChunkedUpload({
+                // 1. Step 1: Initialize record on server (Get ID)
+                const initResult = await filesAPI.initUpload({
                     filename: file.name,
                     file_size: file.size,
                     mimeType: file.type || 'application/octet-stream',
+                    folderId: rootFolderId,
                     fileKeyEncrypted: toBase64(fileKeyEnv.encrypted),
                     fileKeyNonce: toBase64(fileKeyEnv.nonce)
                 });
@@ -232,6 +240,23 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // Store backend file ID so we can cancel if needed
                 setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, backendFileId: fileId } : u));
 
+                // 2. Step 2: Save Metadata to Vault FIRST
+                if (metadata) {
+                    console.log('[UPLOAD] Securing metadata in vault for file:', fileId, file.name);
+                    const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+                    updatedMetadata.files[fileId.toString()] = {
+                        filename: file.name,
+                        mime_type: file.type || 'application/octet-stream',
+                        file_size: file.size,
+                        created_at: new Date().toISOString(),
+                        folder_id: rootFolderId.toString()
+                    };
+                    setMetadata(updatedMetadata);
+                    await saveMetadata(updatedMetadata);
+                    console.log('[UPLOAD] ✅ Metadata secured');
+                }
+
+                // 3. Step 3: Upload the bits (Chunked)
                 // Smart Resume: Check Manifest
                 const manifest = await filesAPI.getManifest(fileId);
                 const existingIndices = new Set(manifest.chunks.map(c => c.chunk_index));
@@ -245,26 +270,28 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                         continue;
                     }
 
+                    // Prepare Chunk
+                    const start = i * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE, file.size);
+                    const chunkBlob = file.slice(start, end);
+
+                    // Encrypt Chunk (Independent)
+                    // Move OUTSIDE retry loop: Ensure the same nonce/cipher is used for ALL retries of this chunk
+                    const { encryptedChunk, nonce: chunkNonce } = await encryptChunk(chunkBlob, fileKey);
+                    const chunkNonceBase64 = toBase64(chunkNonce);
+
                     let retryCount = 0;
                     const maxRetries = 3;
                     let success = false;
 
                     while (retryCount < maxRetries && !success) {
                         try {
-                            // Prepare Chunk
-                            const start = i * CHUNK_SIZE;
-                            const end = Math.min(start + CHUNK_SIZE, file.size);
-                            const chunkBlob = file.slice(start, end);
-
-                            // Encrypt Chunk (Independent)
-                            const { encryptedChunk, nonce } = await encryptChunk(chunkBlob, fileKey);
-
                             // Upload Chunk
                             const result = await filesAPI.uploadChunk(
                                 fileId,
                                 i,
                                 encryptedChunk,
-                                toBase64(nonce),
+                                chunkNonceBase64,
                                 encryptedChunk.size
                             );
 
@@ -288,26 +315,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // Finish
                 await filesAPI.finishChunkedUpload(fileId);
 
-                // Update Metadata Blob with file info
-                if (metadata) {
-                    console.log('[UPLOAD] Updating metadata for file:', fileId, file.name);
-                    const updatedMetadata = { ...metadata };
-                    updatedMetadata.files[fileId.toString()] = {
-                        filename: file.name,
-                        mime_type: file.type || 'application/octet-stream',
-                        folder_id: rootFolderId.toString() // Upload to root folder
-                    };
-                    // Update local state immediately
-                    setMetadata(updatedMetadata);
-                    // Then persist to server
-                    await saveMetadata(updatedMetadata);
-                    console.log('[UPLOAD] Metadata saved successfully');
-                    // Small delay to ensure React state propagates
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                } else {
-                    console.warn('[UPLOAD] No metadata object available, cannot save filename');
-                }
-
                 completeUpload(uploadId);
                 refreshQuota();
                 triggerFileRefresh();
@@ -316,37 +323,34 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // === MONOLITHIC UPLOAD === (Legacy / Small Files)
                 const { encryptedBlob } = await encryptFile(file, fileKey);
 
-                const uploadResponse = await filesAPI.upload(
-                    encryptedBlob,
-                    file.name,
-                    file.type || 'application/octet-stream',
-                    undefined, // folderId
-                    {
-                        fileKeyEncrypted: toBase64(fileKeyEnv.encrypted),
-                        fileKeyNonce: toBase64(fileKeyEnv.nonce)
-                    },
-                    (p) => updateProgress(uploadId, p)
-                );
+                // 1. Step 1: Initialize
+                const initRes = await filesAPI.initUpload({
+                    filename: file.name,
+                    file_size: file.size,
+                    mimeType: file.type || 'application/octet-stream',
+                    folderId: rootFolderId,
+                    fileKeyEncrypted: toBase64(fileKeyEnv.encrypted),
+                    fileKeyNonce: toBase64(fileKeyEnv.nonce)
+                });
 
-                // Update Metadata Blob with file info (server returns file_id)
-                if (metadata && uploadResponse.file_id) {
-                    console.log('[UPLOAD] Updating metadata for file:', uploadResponse.file_id, file.name);
-                    const updatedMetadata = { ...metadata };
-                    updatedMetadata.files[uploadResponse.file_id.toString()] = {
+                const fileId = initRes.file_id;
+
+                // 2. Step 2: Save Metadata
+                if (metadata) {
+                    const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+                    updatedMetadata.files[fileId.toString()] = {
                         filename: file.name,
                         mime_type: file.type || 'application/octet-stream',
-                        folder_id: rootFolderId.toString() // Upload to root folder
+                        file_size: file.size,
+                        created_at: new Date().toISOString(),
+                        folder_id: rootFolderId.toString()
                     };
-                    // Update local state immediately
                     setMetadata(updatedMetadata);
-                    // Then persist to server
                     await saveMetadata(updatedMetadata);
-                    console.log('[UPLOAD] Metadata saved successfully');
-                    // Small delay to ensure React state propagates
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                } else {
-                    console.warn('[UPLOAD] Cannot save metadata:', { hasMetadata: !!metadata, fileId: uploadResponse.file_id });
                 }
+
+                // 3. Step 3: Upload Bits
+                await filesAPI.upload(fileId, encryptedBlob, (p) => updateProgress(uploadId, p));
 
                 completeUpload(uploadId);
                 refreshQuota();

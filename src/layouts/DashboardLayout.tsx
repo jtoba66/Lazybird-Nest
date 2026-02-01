@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { Header } from '../components/Header';
 import { UploadProgress } from '../components/UploadProgress';
+import { QuotaBanner } from '../components/QuotaBanner';
 import type { ReactNode } from 'react';
 
 interface DashboardLayoutProps {
@@ -31,6 +32,8 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-w-0 h-full w-full">
+                <QuotaBanner />
+
                 {/* Header */}
                 <div className="mb-2 pt-2 px-2 md:mb-4 md:pt-0 md:px-0">
                     <Header onMenuClick={() => setSidebarOpen(true)} />

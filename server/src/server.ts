@@ -145,6 +145,23 @@ retryScheduler.start();
 startVerificationJob();
 initRetentionWorker();
 
+// Fix #4 & #6: Register cron jobs for edge case cleanup
+import cron from 'node-cron';
+import { cleanupStaleUploads } from './jobs/cleanupStaleUploads';
+import { autoPurgeTrash } from './jobs/autoPurgeTrash';
+
+// Run stale upload cleanup every 6 hours
+cron.schedule('0 */6 * * *', async () => {
+    await cleanupStaleUploads();
+});
+
+// Run trash auto-purge every hour
+cron.schedule('0 * * * *', async () => {
+    await autoPurgeTrash();
+});
+
+console.log('[Cron] Background jobs initialized: stale uploads (6h), trash purge (1h)');
+
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

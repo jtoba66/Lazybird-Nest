@@ -89,14 +89,45 @@ export const NestPage = () => {
 
     const handleDownload = async (file: FileItem) => {
         let toastId: string | null = null;
+        let fileHandle: any = null;
+
         try {
             if (!masterKey) {
                 showToast('Please log in again to download files', 'error');
                 return;
             }
 
+            // PRE-EMPTIVE: If using Native FS for large files, we MUST trigger the picker NOW
+            // to satisfy the "recent user gesture" browser security requirement.
+            const isLargeFile = file.file_size > 500 * 1024 * 1024;
+            const hasNativeFS = 'showSaveFilePicker' in window;
+            const token = localStorage.getItem('nest_token');
+
+            // Fix M8: Warn about browser compatibility for large files
+            if (isLargeFile && !hasNativeFS) {
+                const proceed = confirm(
+                    `Large file detected (${(file.file_size / (1024 * 1024 * 1024)).toFixed(2)} GB).\n\n` +
+                    `Your browser doesn't support streaming downloads, which may use significant memory.\n\n` +
+                    `For best results, use Chrome or Edge. Continue anyway?`
+                );
+                if (!proceed) return;
+            }
+
+            if (isLargeFile && hasNativeFS && token) {
+                try {
+                    // @ts-ignore
+                    fileHandle = await window.showSaveFilePicker({
+                        suggestedName: file.filename,
+                    });
+                } catch (e: any) {
+                    console.warn('[Download] Picker cancelled or failed:', e.name);
+                    if (e.name === 'AbortError') return; // Silent cancel
+                    throw e;
+                }
+            }
+
             // Start Feedback
-            toastId = showToast('Downloading encrypted file...', 'info', Infinity);
+            toastId = showToast('Preparing download...', 'info', Infinity);
 
             // Import crypto functions
             const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('../crypto/v2');
@@ -104,16 +135,7 @@ export const NestPage = () => {
             // 1. Fetch encrypted keys and file metadata from server
             const downloadInfo = await api.get(`/files/download/${file.id}`);
 
-            // 2. Fetch raw encrypted content
-            const contentResponse = await api.get(`/files/raw/${file.id}`, {
-                responseType: 'blob'
-            });
-            const encryptedBlob = contentResponse.data;
-
-            // Update Feedback
-            if (toastId) updateToast(toastId, 'Decrypting locally... (Do not close)', 'info');
-
-            // 3. Decrypt Keys
+            // 2. Decrypt Keys (moved here to support StreamingDownloader)
             const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
             const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
             const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
@@ -122,7 +144,61 @@ export const NestPage = () => {
             const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
             const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
 
-            // 4. Decrypt Content
+            // 2. Fetch File Content
+            if (toastId) updateToast(toastId, 'Downloading encrypted data...', 'info');
+
+            if (fileHandle) {
+                if (toastId) updateToast(toastId, 'Starting streaming download...', 'info');
+
+                // Map chunks to DownloadChunk format
+                const downloadChunks = downloadInfo.data.chunks.map((c: any) => ({
+                    index: c.index, // Server aliased this to 'index'
+                    size: c.size,
+                    nonce: c.nonce,
+                    jackal_merkle: c.jackal_merkle,
+                    status: (c.jackal_merkle && c.jackal_merkle !== 'pending' && c.jackal_merkle !== 'pending-chunks') ? 'cloud' : 'local'
+                }));
+
+                const { StreamingDownloader } = await import('../utils/StreamingDownloader');
+
+                await StreamingDownloader.download({
+                    fileKey,
+                    filename: file.filename,
+                    chunks: downloadChunks,
+                    fileId: file.id,
+                    authToken: token!,
+                    existingHandle: fileHandle,
+                    onProgress: (p) => {
+                        if (toastId) updateToast(toastId, `Downloading... ${p.toFixed(0)}%`, 'info');
+                    }
+                });
+
+                if (toastId) updateToast(toastId, 'Download complete', 'success');
+                setTimeout(() => dismissToast(toastId!), 3000);
+                return;
+            }
+
+            // FALLBACK: Legacy Blob Download (Memory Intensive)
+            if (isLargeFile && !hasNativeFS) {
+                console.warn('Large file download requiring memory blob (Native FS not supported)');
+                if (toastId) updateToast(toastId, 'Warning: Large file, may consume high memory...', 'warning');
+            }
+
+            const contentResponse = await api.get(`/files/raw/${file.id}`, {
+                responseType: 'blob',
+                onDownloadProgress: (progressEvent) => {
+                    const total = progressEvent.total || file.file_size;
+                    const percent = (progressEvent.loaded / total) * 100;
+                    if (toastId) updateToast(toastId, `Downloading... ${percent.toFixed(0)}%`, 'info');
+                }
+            });
+            const encryptedBlob = contentResponse.data;
+
+            // Update Feedback
+            if (toastId) updateToast(toastId, 'Decrypting locally... (Do not close)', 'info');
+
+            // 3. Decrypt Content
+            // (Key decryption moved above to support StreamingDownloader)
             const headerNonce = fileKeyNonce;
             const chunks = downloadInfo.data.chunks;
 
@@ -139,18 +215,16 @@ export const NestPage = () => {
             a.download = file.filename;
             document.body.appendChild(a);
             a.click();
-
-            // Cleanup
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
-            if (toastId) dismissToast(toastId);
-            showToast('Download complete', 'success');
+            if (toastId) updateToast(toastId, 'Download complete', 'success');
+            setTimeout(() => dismissToast(toastId!), 3000);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Download failed:', error);
-            if (toastId) dismissToast(toastId);
-            showToast('Failed to download file', 'error');
+            if (toastId) updateToast(toastId, `Download failed: ${error.message}`, 'error');
+            setTimeout(() => dismissToast(toastId!), 5000);
         }
     };
 
@@ -269,7 +343,7 @@ export const NestPage = () => {
                 const meta = metadata?.files[svrFile.id.toString()];
                 return {
                     ...svrFile,
-                    filename: meta?.filename || `File ${svrFile.id}`,
+                    filename: meta?.filename || svrFile.filename || `File ${svrFile.id}`,
                     mime_type: meta?.mime_type || svrFile.mime_type
                 };
             });

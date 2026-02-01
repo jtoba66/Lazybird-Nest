@@ -44,15 +44,15 @@ export class ErrorBoundary extends Component<Props, State> {
                         </div>
 
                         <div className="space-y-2">
-                            <h1 className="text-2xl font-bold tracking-tight">Something went wrong</h1>
-                            <p className="text-text-muted text-sm leading-relaxed">
+                            <h1 className="text-2xl font-bold tracking-tight text-white">Something went wrong</h1>
+                            <p className="text-gray-300 text-sm leading-relaxed">
                                 We've encountered an unexpected UI error. Your data is safe, but the interface needs a quick restart.
                             </p>
                         </div>
 
                         {import.meta.env.DEV && this.state.error && (
-                            <div className="p-4 bg-black/40 rounded-xl text-left overflow-auto max-h-40 border border-white/5">
-                                <code className="text-xs text-error/80 break-all font-mono">
+                            <div className="p-4 bg-red-500/10 rounded-xl text-left overflow-auto max-h-40 border border-red-500/20">
+                                <code className="text-xs text-red-200 break-all font-mono">
                                     {this.state.error.toString()}
                                 </code>
                             </div>

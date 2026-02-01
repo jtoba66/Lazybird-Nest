@@ -1,7 +1,7 @@
 // @ts-ignore ws has no types bundled here
 import WebSocket from "ws";
 import { ClientHandler, IChainConfig } from "@jackallabs/jackal.js";
-// import { File } from 'buffer'; // Use Global File
+import { File } from "buffer";
 import fs from 'fs';
 import axios from 'axios';
 import mime from 'mime-types';
@@ -129,19 +129,27 @@ export async function uploadFileToJackal(storage: any, filePath: string, fileNam
 
     // 2. Upload (Standard SDK Flow)
     const mimeType = mime.lookup(fileName) || 'application/octet-stream';
-    console.log(`[Jackal] Content-Type: ${mimeType}`);
+    console.log(`[Jackal] 🚀 Starting upload for ${fileName} (MIME: ${mimeType})`);
 
     // Create File Object (Node.js Buffer -> File)
-    // CRITICAL: Use async readFile to prevent blocking event loop on large files (2GB+)
-    // Blocking reads cause socket timeouts during the 5-10s read operation
-    console.log(`[Jackal] Reading file asynchronously...`);
+    console.log(`[Jackal] 📂 Reading file from ${filePath}...`);
     const fileBuffer = await fs.promises.readFile(filePath);
-    const file = new File([fileBuffer], fileName, { type: mimeType });
+    console.log(`[Jackal] 📄 Creating File object. Buffer length: ${fileBuffer.length}`);
+
+    let file: any;
+    try {
+        file = new File([fileBuffer], fileName, { type: mimeType });
+        console.log(`[Jackal] ✅ File object created. Size: ${file.size} bytes`);
+    } catch (err: any) {
+        console.error(`[Jackal] ❌ Failed to create File object: ${err.message}`);
+        throw err;
+    }
+
     let capturedMerkle = "";
     let capturedCid = "";
     let progress100 = false;
 
-    (file as any).onProgress = (p: any) => {
+    file.onProgress = (p: any) => {
         if (p?.progress === 100) {
             progress100 = true;
             if (p?.merkle) {
@@ -150,12 +158,11 @@ export async function uploadFileToJackal(storage: any, filePath: string, fileNam
             }
         }
     };
-    console.log(`[Jackal] File created from buffer. Size: ${file.size} bytes`);
 
-    console.log(`[Jackal] Queueing ${fileName} for upload...`);
+    console.log(`[Jackal] 📥 Queueing ${fileName} for public upload...`);
     await storage.queuePublic([file]);
 
-    console.log("[Jackal] Processing Queue (Standard)...");
+    console.log("[Jackal] ⚙️ Processing Queue (Standard SDK flow)...");
 
     // Retry UploadHandler.uploadFile for transient fetch errors
     const storageAny: any = storage;
@@ -205,8 +212,20 @@ export async function uploadFileToJackal(storage: any, filePath: string, fileNam
         const ret = await retryWithBackoff(() => storage.processAllQueues(), 5, 3000);
         processResult = ret;
     } catch (err: any) {
-        console.error("[Jackal] Upload Failed:", err);
-        throw err;
+        // Critical Logic: If we captured valid 100% progress + Merkle via events, 
+        // we count this as a SUCCESS even if the main promise timed out (e.g. on other providers).
+        if (capturedMerkle && progress100) {
+            console.warn(`[Jackal] ⚠️ Main process failed (${err.message}) but we captured success via events. Treating as SUCCESS.`);
+            // Mock a processResult to allow flow to continue
+            processResult = {
+                merkle: capturedMerkle,
+                cid: capturedCid,
+                txResponse: { rawLog: '' } // minimal mock
+            };
+        } else {
+            console.error("[Jackal] Upload Failed:", err);
+            throw err;
+        }
     } finally {
         console.log = originalLog; // Restore original
     }
@@ -336,36 +355,40 @@ export async function downloadFileFromJackal(merkle: string, filename: string, d
 
     // Try each gateway
     for (const gw of gateWays) {
-        try {
-            const url = `${gw}/file/${merkle}?name=${encodeURIComponent(filename)}`;
-            console.log(`[Jackal Hydrate] Fetching from ${gw}...`);
+        // Retry logic for each gateway
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const url = `${gw}/file/${merkle}?name=${encodeURIComponent(filename)}`;
+                console.log(`[Jackal Hydrate] Fetching from ${gw} (Attempt ${attempt}/3)...`);
 
-            const response = await axios({
-                method: 'GET',
-                url: url,
-                responseType: 'stream',
-                timeout: 30000 // 30s timeout
-            });
-
-            const writer = fs.createWriteStream(destPath);
-            response.data.pipe(writer);
-
-            await new Promise((resolve, reject) => {
-                writer.on('finish', () => {
-                    console.log(`[Jackal Hydrate] Success! Saved to ${destPath}`);
-                    resolve(true);
+                const response = await axios({
+                    method: 'GET',
+                    url: url,
+                    responseType: 'stream',
+                    timeout: 300000 // 5 minutes timeout for large files
                 });
-                writer.on('error', (err) => {
-                    console.error(`[Jackal Hydrate] Write error:`, err);
-                    reject(false);
+
+                const writer = fs.createWriteStream(destPath);
+                response.data.pipe(writer);
+
+                await new Promise((resolve, reject) => {
+                    writer.on('finish', () => {
+                        console.log(`[Jackal Hydrate] Success! Saved to ${destPath}`);
+                        resolve(true);
+                    });
+                    writer.on('error', (err) => {
+                        console.error(`[Jackal Hydrate] Write error:`, err);
+                        reject(err);
+                    });
                 });
-            });
 
-            return true; // Success
+                return true; // Success
 
-        } catch (e: any) {
-            console.warn(`[Jackal Hydrate] Failed on ${gw}: ${e.message}`);
-            continue; // Try next gateway
+            } catch (e: any) {
+                console.warn(`[Jackal Hydrate] Failed on ${gw} (Attempt ${attempt}): ${e.message}`);
+                // Wait briefly before retry
+                if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
+            }
         }
     }
 

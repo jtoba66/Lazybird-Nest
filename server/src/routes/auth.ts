@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import fs from 'fs';
 import { db } from '../db';
-import { users, userCrypto, folders, files } from '../db/schema';
+import { users, userCrypto, folders, files, graveyard, graveyardChunks, fileChunks, analyticsEvents } from '../db/schema';
 import { eq, and, gt, sql } from 'drizzle-orm';
 
 import { validate } from '../middleware/validate';
@@ -103,38 +103,55 @@ router.post('/signup', validate(signupSchema), async (req, res) => {
         // 1. Hash the AuthHash (Double-hashing strategy) -> Stored as password_hash
         const storedAuthHash = await bcrypt.hash(authHash, 12);
 
+        // Fix H5: Wrap signup in transaction for idempotency
         try {
-            // 2. Insert User
-            const [newUser] = await db.insert(users).values({
-                email,
-                password_hash: storedAuthHash
-            }).returning({ id: users.id });
-            const userId = newUser.id;
+            const result = await db.transaction(async (tx) => {
+                // 1. Create User
+                const [newUser] = await tx.insert(users).values({
+                    email,
+                    password_hash: storedAuthHash,
+                    subscription_tier: 'free',
+                    subscription_status: 'active',
+                    storage_quota_bytes: 2 * 1024 * 1024 * 1024, // 2GB
+                    storage_used_bytes: 0,
+                    role: 'user',
+                }).returning({ id: users.id });
 
-            // 3. Insert Crypto Data
-            await db.insert(userCrypto).values({
-                userId,
-                salt: base64ToBuffer(salt),
-                kdf_algorithm: 'argon2id',
-                kdf_params: kdfParams,
-                metadata_blob: base64ToBuffer(encryptedMetadata),
-                metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
-                encrypted_master_key: base64ToBuffer(encryptedMasterKey),
-                encrypted_master_key_nonce: base64ToBuffer(encryptedMasterKeyNonce)
+                const userId = newUser.id;
+
+                // 2. Insert Crypto Data
+                await tx.insert(userCrypto).values({
+                    userId,
+                    salt: base64ToBuffer(salt),
+                    kdf_algorithm: 'argon2id',
+                    kdf_params: kdfParams,
+                    metadata_blob: base64ToBuffer(encryptedMetadata),
+                    metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
+                    encrypted_master_key: base64ToBuffer(encryptedMasterKey),
+                    encrypted_master_key_nonce: base64ToBuffer(encryptedMasterKeyNonce)
+                });
+
+                // 3. Create Root Folder
+                const { hashFolderPath } = await import('../crypto/keyManagement');
+                await tx.insert(folders).values({
+                    userId,
+                    parentId: null,
+                    folder_key_encrypted: base64ToBuffer(rootFolderKeyEncrypted),
+                    folder_key_nonce: base64ToBuffer(rootFolderKeyNonce),
+                    path_hash: hashFolderPath('/')
+                });
+
+                return { userId };
             });
 
-            // 4. Create Root Folder Record
-            const { hashFolderPath } = await import('../crypto/keyManagement');
-
-            await db.insert(folders).values({
-                userId,
-                parentId: null,
-                folder_key_encrypted: base64ToBuffer(rootFolderKeyEncrypted),
-                folder_key_nonce: base64ToBuffer(rootFolderKeyNonce),
-                path_hash: hashFolderPath('/')
+            // Log Analytics Event (outside transaction as it's not critical for user creation atomicity)
+            await db.insert(analyticsEvents).values({
+                type: 'user_signup',
+                bytes: 1,
+                meta: `user_${result.userId}`
             });
 
-            logger.info(`[AUTH-SIGNUP] ✅ User created: ${userId} (${Date.now() - startTime}ms)`);
+            logger.info(`[AUTH-SIGNUP] ✅ User created: ${result.userId} (${Date.now() - startTime}ms)`);
 
             // Send welcome email (fire and forget)
             sendWelcomeEmail(email).catch((err: any) => logger.error('[AUTH-SIGNUP] Failed to send welcome email:', err));
@@ -155,8 +172,42 @@ router.post('/signup', validate(signupSchema), async (req, res) => {
                             .set({ password_hash: storedAuthHash, storage_used_bytes: 0 })
                             .where(eq(users.id, existingUser.id));
 
-                        // 2. Wipe Legacy Data
-                        await db.delete(files).where(eq(files.userId, existingUser.id));
+                        // 2. Wipe Legacy Data (Move to Graveyard first)
+                        const allUserFiles = await db.select().from(files).where(eq(files.userId, existingUser.id));
+
+                        for (const file of allUserFiles) {
+                            // Archive to Graveyard
+                            const [gv] = await db.insert(graveyard).values({
+                                original_file_id: file.id,
+                                user_id: file.userId,
+                                filename: file.jackal_filename || 'unknown',
+                                file_size: file.file_size,
+                                jackal_fid: file.jackal_fid,
+                                merkle_hash: file.merkle_hash,
+                                original_created_at: file.created_at,
+                                deletion_reason: 'account_nuke'
+                            }).returning({ id: graveyard.id });
+
+                            // Archive Chunks
+                            if (file.is_chunked) {
+                                const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id));
+                                if (chunks.length > 0) {
+                                    await db.insert(graveyardChunks).values(
+                                        chunks.map(c => ({
+                                            graveyard_id: gv.id,
+                                            chunk_index: c.chunk_index,
+                                            jackal_merkle: c.jackal_merkle,
+                                            size: c.size
+                                        }))
+                                    );
+                                }
+                            }
+
+                            // Hard Delete from Files (clearing user view)
+                            await db.delete(files).where(eq(files.id, file.id));
+                        }
+
+                        // Clear folders
                         await db.delete(folders).where(eq(folders.userId, existingUser.id));
 
                         // 3. Insert Crypto Data
@@ -319,10 +370,20 @@ router.get('/metadata', async (req, res) => {
 
 router.post('/metadata', async (req, res) => {
     try {
-        const { email, encryptedMetadata, encryptedMetadataNonce } = req.body;
+        // Use JWT for authentication instead of trusting email in body
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
 
-        const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+
+        const { encryptedMetadata, encryptedMetadataNonce } = req.body;
+
+        if (!encryptedMetadata || !encryptedMetadataNonce) {
+            return res.status(400).json({ error: 'Missing metadata fields' });
+        }
 
         await db.update(userCrypto)
             .set({
@@ -330,7 +391,7 @@ router.post('/metadata', async (req, res) => {
                 metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
                 updated_at: new Date()
             })
-            .where(eq(userCrypto.userId, user.id));
+            .where(eq(userCrypto.userId, decoded.userId));
 
         res.json({ success: true });
     } catch (e) {
@@ -371,9 +432,10 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
         encryptedMetadataNonce,
         rootFolderKeyEncrypted,
         rootFolderKeyNonce,
-        kdfParams,
-        wipeData
+        kdfParams
     } = req.body;
+    // Fix H1: Coerce wipeData to boolean for type safety
+    const wipeData = !!req.body.wipeData; // Boolean coercion
 
     try {
         // 1. Verify Token
@@ -391,32 +453,70 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
         if (wipeData === true) {
             logger.warn(`[AUTH] ⚠️ Performing destructive password reset for user ${user.id} (${user.email})`);
 
+            // Invalidate all share tokens before deletion
+            await db.update(files).set({ share_token: null }).where(eq(files.userId, user.id));
+
+            // 1. Archive to Graveyard and cleanup disk space
             const userFiles = await db.select().from(files).where(eq(files.userId, user.id));
 
             for (const file of userFiles) {
-                if (file.encrypted_file_path) {
-                    try {
-                        if (fs.existsSync(file.encrypted_file_path)) {
-                            fs.unlinkSync(file.encrypted_file_path);
-                            logger.info(`[AUTH-WIPE] Deleted local file: ${file.encrypted_file_path}`);
+                // Archive to Graveyard
+                const [gv] = await db.insert(graveyard).values({
+                    original_file_id: file.id,
+                    user_id: file.userId,
+                    filename: file.jackal_filename || 'unknown',
+                    file_size: file.file_size,
+                    jackal_fid: file.jackal_fid,
+                    merkle_hash: file.merkle_hash,
+                    original_created_at: file.created_at,
+                    deletion_reason: 'account_nuke'
+                }).returning({ id: graveyard.id });
+
+                // Archive Chunks
+                if (file.is_chunked) {
+                    const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id));
+                    if (chunks.length > 0) {
+                        await db.insert(graveyardChunks).values(
+                            chunks.map(c => ({
+                                graveyard_id: gv.id,
+                                chunk_index: c.chunk_index,
+                                jackal_merkle: c.jackal_merkle,
+                                size: c.size
+                            }))
+                        );
+
+                        // Cleanup local chunks
+                        for (const chunk of chunks) {
+                            if (chunk.local_path && fs.existsSync(chunk.local_path)) {
+                                try { fs.unlinkSync(chunk.local_path); } catch (e) { }
+                            }
                         }
-                    } catch (err) {
-                        logger.error(`[AUTH-WIPE] Failed to delete file ${file.id}:`, err);
                     }
                 }
 
-                if (file.jackal_fid || file.merkle_hash) {
-                    await db.update(files)
-                        .set({ deleted_at: new Date(), folderId: null, encrypted_file_path: null })
-                        .where(eq(files.id, file.id));
-                    logger.info(`[AUTH-WIPE] Moved Jackal file to Graveyard: ${file.id}`);
-                } else {
-                    await db.delete(files).where(eq(files.id, file.id));
+                // Cleanup local encrypted file
+                if (file.encrypted_file_path && fs.existsSync(file.encrypted_file_path)) {
+                    try { fs.unlinkSync(file.encrypted_file_path); } catch (e) { }
                 }
+
+                // HARD DELETE from Files (this hides it from user account/trash)
+                await db.delete(files).where(eq(files.id, file.id));
             }
 
+            // 2. Clear Folders
             await db.delete(folders).where(eq(folders.userId, user.id));
 
+            // 3. Add Pruning Event to Analytics
+            if ((user.storage_used_bytes || 0) > 0) {
+                await db.insert(analyticsEvents).values({
+                    type: 'prune',
+                    bytes: -(user.storage_used_bytes || 0),
+                    timestamp: new Date(),
+                    meta: `nuke: password-reset (${user.id})`
+                });
+            }
+
+            // 4. Re-initialize Root Folder
             if (rootFolderKeyEncrypted && rootFolderKeyNonce) {
                 const { hashFolderPath } = await import('../crypto/keyManagement');
                 await db.insert(folders).values({
@@ -533,17 +633,52 @@ router.delete('/account', authenticateToken, async (req: AuthRequest, res) => {
 
         logger.warn(`[GDPR-ERASURE] Starting account scrub for user ${userId} (${user.email})`);
 
-        // 2. Process Files
-        await db.delete(files).where(and(eq(files.userId, userId), sql`merkle_hash IS NULL`));
+        // 2. Process Files (Hard Delete and Archive to Graveyard)
+        const allUserFiles = await db.select().from(files).where(eq(files.userId, userId));
 
-        await db.update(files)
-            .set({
-                deleted_at: new Date(),
-                folderId: null,
-                share_token: null,
-                encrypted_file_path: null
-            })
-            .where(and(eq(files.userId, userId), sql`merkle_hash IS NOT NULL AND merkle_hash != 'UNKNOWN'`));
+        for (const file of allUserFiles) {
+            // Archive to Graveyard
+            const [gv] = await db.insert(graveyard).values({
+                original_file_id: file.id,
+                user_id: file.userId,
+                filename: file.jackal_filename || 'unknown',
+                file_size: file.file_size,
+                jackal_fid: file.jackal_fid,
+                merkle_hash: file.merkle_hash,
+                original_created_at: file.created_at,
+                deletion_reason: 'account_deletion'
+            }).returning({ id: graveyard.id });
+
+            // Archive Chunks
+            if (file.is_chunked) {
+                const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id));
+                if (chunks.length > 0) {
+                    await db.insert(graveyardChunks).values(
+                        chunks.map(c => ({
+                            graveyard_id: gv.id,
+                            chunk_index: c.chunk_index,
+                            jackal_merkle: c.jackal_merkle,
+                            size: c.size
+                        }))
+                    );
+
+                    // Cleanup local chunks
+                    for (const chunk of chunks) {
+                        if (chunk.local_path && fs.existsSync(chunk.local_path)) {
+                            try { fs.unlinkSync(chunk.local_path); } catch (e) { }
+                        }
+                    }
+                }
+            }
+
+            // Cleanup local encrypted file
+            if (file.encrypted_file_path && fs.existsSync(file.encrypted_file_path)) {
+                try { fs.unlinkSync(file.encrypted_file_path); } catch (e) { }
+            }
+
+            // HARD DELETE from Files
+            await db.delete(files).where(eq(files.id, file.id));
+        }
 
         // 3. Wipe Metadata & Structure
         await db.delete(folders).where(eq(folders.userId, userId));

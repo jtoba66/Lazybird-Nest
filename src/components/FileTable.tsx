@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../contexts/ToastContext';
 import { createPortal } from 'react-dom';
+import clsx from 'clsx';
 import {
     Image,
     FilePdf,
@@ -14,10 +15,12 @@ import {
     ArrowsDownUp,
     ShareNetwork,
     DownloadSimple,
-    DotsThreeVertical
+    DotsThreeVertical,
+    Lock
 } from '@phosphor-icons/react';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { MoveFileModal } from './MoveFileModal';
+import { useQuotaCheck } from './QuotaBanner';
 
 
 export interface UnifiedItem {
@@ -63,6 +66,7 @@ function formatDate(dateString: string): string {
 export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
     // ... hooks ...
     const { showToast } = useToast();
+    const { isOverQuota } = useQuotaCheck();
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; file: UnifiedItem | null }>({
         isOpen: false,
         file: null,
@@ -125,7 +129,7 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
         setIsMoving(true);
         try {
             await moveModal.file.onMove(folderId);
-            showToast(`"${moveModal.file.name}" moved successfully`, 'success');
+            // showToast(`"${moveModal.file.name}" moved successfully`, 'success'); // Parent handles toast
             setMoveModal({ isOpen: false, file: null });
         } catch (error) {
             console.error("Move failed", error);
@@ -164,11 +168,21 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                         )}
                         {activeItem.onShare && (
                             <button
-                                onClick={() => { activeItem.onShare!(); setActiveMenuKey(null); }}
-                                className="flex items-center gap-3 px-3 py-2.5 hover:bg-primary/10 rounded-lg text-text-main text-xs font-semibold text-left transition-colors"
+                                onClick={() => {
+                                    if (isOverQuota) {
+                                        showToast('Storage quota exceeded. Sharing is disabled.', 'error');
+                                        return;
+                                    }
+                                    activeItem.onShare!();
+                                    setActiveMenuKey(null);
+                                }}
+                                className={clsx(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-left transition-colors",
+                                    isOverQuota ? "opacity-30 grayscale" : "hover:bg-primary/10 text-text-main"
+                                )}
                             >
                                 <ShareNetwork size={16} className="text-primary" weight="bold" />
-                                Share
+                                Share {isOverQuota && <Lock size={12} className="ml-auto text-error" />}
                             </button>
                         )}
                         {activeItem.type === 'file' && activeItem.onMove && (
@@ -309,13 +323,23 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                                                     )}
                                                     {item.onShare && (
                                                         <motion.button
-                                                            whileHover={{ scale: 1.1 }}
-                                                            whileTap={{ scale: 0.9 }}
-                                                            onClick={(e) => { e.stopPropagation(); item.onShare!(); }}
-                                                            className="p-1.5 hover:bg-white/50 rounded-md text-primary transition-colors flex items-center gap-1"
-                                                            title="Share"
+                                                            whileHover={!isOverQuota ? { scale: 1.1 } : {}}
+                                                            whileTap={!isOverQuota ? { scale: 0.9 } : {}}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (isOverQuota) {
+                                                                    showToast('Storage quota exceeded. Sharing is disabled.', 'error');
+                                                                    return;
+                                                                }
+                                                                item.onShare!();
+                                                            }}
+                                                            className={clsx(
+                                                                "p-1.5 transition-colors flex items-center gap-1",
+                                                                isOverQuota ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-white/50 rounded-md text-primary"
+                                                            )}
+                                                            title={isOverQuota ? "Quota Exceeded - Sharing Disabled" : "Share"}
                                                         >
-                                                            <ShareNetwork size={16} weight="bold" />
+                                                            {isOverQuota ? <Lock size={16} weight="bold" className="text-error" /> : <ShareNetwork size={16} weight="bold" />}
                                                         </motion.button>
                                                     )}
                                                     {item.type === 'file' && item.onMove && (

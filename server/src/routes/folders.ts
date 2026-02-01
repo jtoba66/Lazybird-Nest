@@ -90,6 +90,7 @@ router.get('/list', authenticateToken, async (req: AuthRequest, res) => {
             return {
                 id: folder.id,
                 parent_id: folder.parentId,
+                name: `Folder ${folder.id}`,
                 created_at: folder.created_at,
                 file_count: Number(fileStats.count),
                 subfolder_count: Number(subfolderCount.count),
@@ -114,16 +115,24 @@ router.delete('/:folderId', authenticateToken, async (req: AuthRequest, res) => 
     const folderId = parseInt(req.params.folderId);
 
     try {
-        const [fileCount] = await db.select({ count: sql`count(*)` }).from(files).where(and(eq(files.folderId, folderId), eq(files.userId, userId)));
-        if (Number(fileCount.count) > 0) return res.status(400).json({ error: 'Folder not empty' });
+        // Fix #8: Cascade delete - soft-delete all files inside the folder
+        await db.update(files)
+            .set({ deleted_at: new Date() })
+            .where(and(
+                eq(files.folderId, folderId),
+                eq(files.userId, userId),
+                isNull(files.deleted_at) // Only soft-delete files not already in trash
+            ));
 
+        // Check for subfolders (still block deletion if has subfolders)
         const [subfolderCount] = await db.select({ count: sql`count(*)` }).from(folders).where(and(eq(folders.parentId, folderId), eq(folders.userId, userId)));
-        if (Number(subfolderCount.count) > 0) return res.status(400).json({ error: 'Contains subfolders' });
+        if (Number(subfolderCount.count) > 0) return res.status(400).json({ error: 'Contains subfolders. Please delete subfolders first.' });
 
+        // Delete the folder itself
         await db.delete(folders).where(and(eq(folders.id, folderId), eq(folders.userId, userId)));
 
-        logger.info(`[FOLDER-DELETE] Deleted DB record: ${folderId}`);
-        res.json({ success: true });
+        logger.info(`[FOLDER-DELETE] Deleted folder ${folderId} and moved files to trash`);
+        res.json({ success: true, message: 'Folder deleted. Files moved to trash.' });
 
     } catch (error) {
         logger.error('[FOLDER-DELETE] ❌ Failed:', error);
@@ -157,6 +166,69 @@ router.get('/:folderId/key', authenticateToken, async (req: AuthRequest, res) =>
     } catch (error) {
         logger.error('[FOLDER-KEY] ❌ Failed:', error);
         res.status(500).json({ error: 'Failed to get folder key' });
+    }
+});
+
+router.put('/:folderId/move', authenticateToken, async (req: AuthRequest, res) => {
+    const userId = req.user!.userId;
+    const folderId = parseInt(req.params.folderId);
+    const { newParentId } = req.body;
+
+    try {
+        // Validate ownership
+        const [folder] = await db.select().from(folders)
+            .where(and(eq(folders.id, folderId), eq(folders.userId, userId)))
+            .limit(1);
+
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        // Fix L1: Prevent circular folder moves
+        if (newParentId !== null) {
+            // Check if newParentId is a descendant of folderId
+            let currentId: number | null = newParentId;
+            let depth = 0;
+            const maxDepth = 50; // Prevent infinite loops
+
+            while (currentId !== null && depth < maxDepth) {
+                if (currentId === folderId) {
+                    logger.warn(`[FOLDER-MOVE] Circular move attempt: folder ${folderId} -> parent ${newParentId}`);
+                    return res.status(400).json({ error: 'Cannot move folder into its own subfolder (circular reference)' });
+                }
+
+                // Get parent of current folder
+                const [parent] = await db.select({ parentId: folders.parentId })
+                    .from(folders)
+                    .where(and(eq(folders.id, currentId), eq(folders.userId, userId)))
+                    .limit(1);
+
+                if (!parent) break;
+                currentId = parent.parentId;
+                depth++;
+            }
+
+            // Verify new parent exists
+            const [newParent] = await db.select().from(folders)
+                .where(and(eq(folders.id, newParentId), eq(folders.userId, userId)))
+                .limit(1);
+
+            if (!newParent) {
+                return res.status(404).json({ error: 'Target folder not found' });
+            }
+        }
+
+        // Perform the move
+        await db.update(folders)
+            .set({ parentId: newParentId })
+            .where(and(eq(folders.id, folderId), eq(folders.userId, userId)));
+
+        logger.info(`[FOLDER-MOVE] Moved folder ${folderId} to parent ${newParentId}`);
+        res.json({ success: true, message: 'Folder moved successfully' });
+
+    } catch (error) {
+        logger.error('[FOLDER-MOVE] ❌ Failed:', error);
+        res.status(500).json({ error: 'Failed to move folder' });
     }
 });
 

@@ -93,6 +93,53 @@ router.post('/create-portal-session', authenticateToken, async (req: AuthRequest
     }
 });
 
+router.post('/sync-subscription', authenticateToken, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.userId;
+        const { sessionId } = req.body;
+
+        if (!sessionId) return res.status(400).json({ error: 'Session ID required' });
+
+        // 1. Retrieve Session from Stripe to verify legitimacy
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        // 2. Verify it belongs to this user and is paid
+        if (session.metadata?.userId !== String(userId)) {
+            return res.status(403).json({ error: 'Session does not belong to this user' });
+        }
+
+        if (session.payment_status !== 'paid') {
+            return res.status(400).json({ error: 'Payment not completed' });
+        }
+
+        // 3. Update User (Mimic Webhook Logic)
+        if (session.subscription) {
+            const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
+
+            // Fetch subscription details to get correct status/expiry if needed, 
+            // but for 'checkout.session.completed' mimicry, we assume trialing/active start.
+            // Let's fetch the subscription to be safe and accurate.
+            const subscription = await stripe.subscriptions.retrieve(subId);
+
+            await db.update(users).set({
+                subscription_tier: 'pro',
+                subscription_status: subscription.status,
+                stripe_subscription_id: subId,
+                trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+                subscription_expires_at: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
+                storage_quota_bytes: PRICING.pro.storage,
+                stripe_customer_id: session.customer as string
+            }).where(eq(users.id, userId));
+        }
+
+        res.json({ success: true, tier: 'pro' });
+
+    } catch (e: any) {
+        console.error('Sync subscription failed:', e);
+        res.status(500).json({ error: 'Sync failed' });
+    }
+});
+
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -129,7 +176,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
             case 'customer.subscription.updated': {
                 const sub = event.data.object as Stripe.Subscription;
                 const status = sub.status === 'active' ? 'active' : sub.status === 'trialing' ? 'trialing' : sub.status === 'past_due' ? 'past_due' : 'canceled';
-                const expiresAt = sub.current_period_end ? new Date(sub.current_period_end * 1000) : null;
+                const expiresAt = (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000) : null;
                 const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000) : null;
 
                 await db.update(users).set({

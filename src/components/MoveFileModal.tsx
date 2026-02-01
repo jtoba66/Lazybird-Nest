@@ -43,14 +43,30 @@ export const MoveFileModal = ({
             const response = await foldersAPI.list();
             const serverFolders = response.folders || [];
 
-            // Merge metadata names with server data
-            const foldersWithNames = serverFolders.map(folder => ({
-                ...folder,
-                name: metadata?.folders[folder.id.toString()]?.name || `Folder ${folder.id}`
-            }));
 
-            // Filter out the "Root" folder - it's the implicit default, users shouldn't move to it explicitly
-            const visibleFolders = foldersWithNames.filter(folder => folder.name !== 'Root');
+            // Merge metadata names with server data
+            const foldersWithNames = serverFolders.map(folder => {
+                // Check if this is the root folder (parent_id is null/undefined/0)
+                // Root folder should ALWAYS be named "Home", ignoring any metadata implementation details
+                const isRoot = folder.parent_id === null || folder.parent_id === undefined || folder.parent_id === 0;
+
+                if (isRoot) {
+                    return { ...folder, name: 'Home' };
+                }
+
+                // Get the name from metadata first
+                const metadataName = metadata?.folders[folder.id.toString()]?.name;
+
+                return {
+                    ...folder,
+                    name: metadataName || `Folder ${folder.id}`
+                };
+            });
+
+
+
+            // Do not filter out Root anymore. Users need to move files there.
+            const visibleFolders = foldersWithNames;
 
             buildTree(visibleFolders);
         } catch (error) {
@@ -92,6 +108,10 @@ export const MoveFileModal = ({
             }
         });
 
+        if (roots.length === 1) {
+            roots[0].isExpanded = true;
+        }
+
         setFolderTree(roots);
     };
 
@@ -118,7 +138,7 @@ export const MoveFileModal = ({
     const renderTree = (nodes: FolderNode[], depth: number = 0) => {
         return nodes.map(node => {
             const hasChildren = node.children.length > 0;
-            const isDisabled = currentFolderId === node.id;
+            const isCurrentFolder = currentFolderId === node.id;
             const isSelected = selectedFolderId === node.id;
 
             // Filter by search
@@ -128,58 +148,57 @@ export const MoveFileModal = ({
 
             return (
                 <div key={node.id}>
-                    <button
-                        onClick={() => setSelectedFolderId(node.id)}
-                        disabled={isDisabled}
-                        className={`w-full px-3 py-2 transition-all text-left flex items-center gap-2 hover:bg-white/20 rounded-lg ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''
-                            } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        style={{ paddingLeft: `${depth * 20 + 12}px` }}
+                    <div
+                        className={`group flex items-center gap-1 transition-all rounded-lg ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : 'hover:bg-white/10'
+                            }`}
+                        style={{ paddingLeft: `${depth * 16 + 8}px` }}
                     >
-                        {/* Expand/Collapse */}
-                        {hasChildren ? (
-                            <div
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleFolder(node.id);
-                                }}
-                                className="p-0.5 hover:bg-white/30 rounded transition-colors cursor-pointer"
-                            >
-                                {node.isExpanded ? (
-                                    <CaretDown size={14} weight="bold" className="text-text-muted" />
-                                ) : (
-                                    <CaretRight size={14} weight="bold" className="text-text-muted" />
-                                )}
-                            </div>
-                        ) : (
-                            <div className="w-5" />
-                        )}
-
-                        {/* Folder Icon */}
-                        <FolderIcon
-                            size={18}
-                            weight="duotone"
-                            className={isSelected ? "text-primary" : "text-text-muted"}
-                        />
-
-                        {/* Folder Info */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                                <span className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : 'text-text-main'}`}>
-                                    {node.name}
-                                </span>
-                                {(node.file_count !== undefined || node.subfolder_count !== undefined) && (
-                                    <span className="text-[10px] text-text-muted shrink-0">
-                                        {node.file_count || 0}f
-                                        {node.subfolder_count ? `, ${node.subfolder_count}d` : ''}
-                                    </span>
-                                )}
-                            </div>
+                        {/* Expansion Toggle Hit Area */}
+                        <div
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (hasChildren) toggleFolder(node.id);
+                            }}
+                            className={`w-6 h-8 flex items-center justify-center cursor-pointer transition-colors ${hasChildren ? 'hover:bg-white/20' : 'opacity-0 pointer-events-none'} rounded`}
+                        >
+                            {node.isExpanded ? (
+                                <CaretDown size={14} weight="bold" className="text-text-muted" />
+                            ) : (
+                                <CaretRight size={14} weight="bold" className="text-text-muted transition-transform group-hover:scale-110" />
+                            )}
                         </div>
-                    </button>
+
+                        {/* Selection Hit Area */}
+                        <button
+                            onClick={() => setSelectedFolderId(node.id)}
+                            disabled={isCurrentFolder}
+                            className={`flex-1 flex items-center gap-2 py-2 pr-3 text-left transition-colors ${isCurrentFolder ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                }`}
+                        >
+                            <FolderIcon
+                                size={18}
+                                weight="duotone"
+                                className={isSelected ? "text-primary" : "text-text-muted"}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : 'text-text-main'}`}>
+                                        {node.name === 'Root' ? 'Home' : node.name}
+                                    </span>
+                                    {(node.file_count !== undefined || node.subfolder_count !== undefined) && (
+                                        <span className="text-[10px] text-text-muted shrink-0">
+                                            {node.file_count || 0}f
+                                            {node.subfolder_count ? `, ${node.subfolder_count}d` : ''}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </button>
+                    </div>
 
                     {/* Render children if expanded */}
                     {hasChildren && node.isExpanded && (
-                        <div>
+                        <div className="mt-0.5">
                             {renderTree(node.children, depth + 1)}
                         </div>
                     )}

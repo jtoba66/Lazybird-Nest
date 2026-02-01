@@ -11,32 +11,43 @@ import {
     FileArrowUp,
     FolderPlus,
     Trash,
-    X
+    X,
+    Lock
 } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useStorage } from '../contexts/StorageContext';
 import { useUpload } from '../contexts/UploadContext';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
-
+import { useQuotaCheck } from './QuotaBanner';
 
 interface SidebarItemProps {
     icon: React.ElementType;
     label: string;
     active?: boolean;
+    disabled?: boolean;
     onClick?: () => void;
 }
 
-const SidebarItem = ({ icon: Icon, label, active = false, onClick }: SidebarItemProps) => {
+const SidebarItem = ({ icon: Icon, label, active = false, disabled = false, onClick }: SidebarItemProps) => {
     return (
         <button
-            onClick={onClick}
+            onClick={disabled ? undefined : onClick}
             className={clsx(
                 "nav-item w-full",
-                active && "active"
+                active && "active",
+                disabled && "opacity-40 cursor-not-allowed grayscale"
             )}
+            title={disabled ? "Quota Exceeded - Feature Locked" : undefined}
         >
-            <Icon size={20} weight={active ? "fill" : "regular"} />
+            <div className="relative">
+                <Icon size={20} weight={active ? "fill" : "regular"} />
+                {disabled && (
+                    <div className="absolute -top-1 -right-1 bg-error rounded-full p-0.5 shadow-sm">
+                        <Lock size={8} weight="bold" className="text-white" />
+                    </div>
+                )}
+            </div>
             <span>{label}</span>
         </button>
     );
@@ -69,6 +80,7 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
     const { quota, loading } = useStorage();
     const { addUpload } = useUpload();
     const { showToast } = useToast();
+    const { isOverQuota } = useQuotaCheck();
     const isAdmin = user?.email === 'josephtoba29@gmail.com' || user?.role === 'admin';
     const [showNewMenu, setShowNewMenu] = useState(false);
 
@@ -92,10 +104,11 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                 } else if (isGodMode && file.size > TEN_GB) {
                     showToast(`${file.name} exceeds 10GB individual file limit.`, 'error');
                 } else if (!isGodMode && file.size > TEN_GB && quota.tier !== 'pro') {
-                    // Safety check for other tiers if any
                     showToast(`${file.name} is too large.`, 'error');
                 } else {
-                    addUpload(file);
+                    const searchParams = new URLSearchParams(location.search);
+                    const currentFolderId = searchParams.get('folderId');
+                    addUpload(file, currentFolderId ? parseInt(currentFolderId) : null);
                 }
             });
         }
@@ -120,7 +133,9 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                 } else if (!isGodMode && file.size > TEN_GB && quota.tier !== 'pro') {
                     showToast(`${file.name} is too large.`, 'error');
                 } else {
-                    addUpload(file);
+                    const searchParams = new URLSearchParams(location.search);
+                    const currentFolderId = searchParams.get('folderId');
+                    addUpload(file, currentFolderId ? parseInt(currentFolderId) : null);
                 }
             });
         }
@@ -156,10 +171,19 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
             {/* New Button Section */}
             <div className="px-4 mb-5 md:mb-6 relative">
                 <button
-                    onClick={() => setShowNewMenu(!showNewMenu)}
-                    className="flex items-center gap-3 bg-white hover:bg-background/80 text-text-main shadow-md hover:shadow-lg transition-all px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl w-full font-bold group border border-white/40"
+                    onClick={() => {
+                        if (isOverQuota) {
+                            showToast('Storage quota exceeded. Please upgrade to upload.', 'error');
+                            return;
+                        }
+                        setShowNewMenu(!showNewMenu);
+                    }}
+                    className={clsx(
+                        "flex items-center gap-3 bg-white text-text-main shadow-md transition-all px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl w-full font-bold group border border-white/40",
+                        isOverQuota ? "opacity-50 grayscale cursor-not-allowed" : "hover:bg-background/80 hover:shadow-lg"
+                    )}
                 >
-                    <Plus size={24} weight="bold" className="text-primary group-hover:rotate-90 transition-transform duration-300 scale-90 md:scale-100" />
+                    <Plus size={24} weight="bold" className={clsx("text-primary transition-transform duration-300 scale-90 md:scale-100", !isOverQuota && "group-hover:rotate-90")} />
                     <span>New</span>
                 </button>
 
@@ -215,6 +239,7 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                             icon={item.icon}
                             label={item.label}
                             active={location.pathname === item.path}
+                            disabled={isOverQuota && item.path === '/shared'}
                             onClick={() => navigate(item.path)}
                         />
                     ))}

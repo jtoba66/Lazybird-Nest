@@ -124,12 +124,12 @@ export async function sendWelcomeEmail(email: string): Promise<boolean> {
 /**
  * Send storage quota warning email
  */
-export async function sendStorageQuotaWarning(email: string, used: number, quota: number, tier: string): Promise<boolean> {
-  const html = storageQuotaWarningEmail(email, used, quota, tier);
+export async function sendStorageQuotaWarning(email: string): Promise<boolean> {
+  const html = storageQuotaWarningEmail(email, 0, 0, 'unknown');
 
   return sendEmail({
     to: email,
-    subject: 'Storage Almost Full - Nest',
+    subject: 'Storage Quota Exceeded - Nest',
     html
   });
 }

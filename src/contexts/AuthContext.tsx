@@ -8,6 +8,8 @@ interface User {
     email: string;
     role?: string;
     created_at?: string;
+    storageUsed?: number;
+    storageQuota?: number;
 }
 
 interface AuthContextType {
@@ -62,6 +64,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
 
+    // Fix #14: Check master key expiry (90 days)
+    useEffect(() => {
+        const checkKeyExpiry = () => {
+            const savedAtStr = localStorage.getItem('nest_master_key_saved_at');
+            if (savedAtStr) {
+                const savedAt = parseInt(savedAtStr);
+                const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+                if (Date.now() - savedAt > NINETY_DAYS_MS) {
+                    console.warn('[AUTH] Master key expired (90 days). Forcing re-login for key rotation.');
+                    handleSessionLocked();
+                }
+            }
+        };
+        checkKeyExpiry();
+    }, []);
+
     // 1. Restore master key if possible
     useEffect(() => {
         const restoreKeys = async () => {
@@ -74,12 +92,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         setMasterKey(mk);
                     } catch (e) {
                         console.error('[AUTH] Failed to restore Master Key:', e);
+                        // Master key restoration failed - force re-login
+                        handleSessionLocked();
                     }
+                } else if (token && !stored) {
+                    // Token exists but no master key in storage - session is locked
+                    console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
+                    handleSessionLocked();
                 }
             }
         };
         restoreKeys();
     }, [masterKey]);
+
+    // Handle locked session - show toast and redirect to login
+    const handleSessionLocked = () => {
+        // Clear all session data
+        localStorage.removeItem('nest_token');
+        localStorage.removeItem('nest_email');
+        localStorage.removeItem('nest_role');
+        localStorage.removeItem('nest_master_key');
+        localStorage.removeItem('nest_encrypted_master_key');
+        localStorage.removeItem('nest_encrypted_master_key_nonce');
+
+        // Show toast notification
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 16px 32px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            z-index: 10000;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        `;
+        toast.textContent = 'Session expired. Please log in again.';
+        document.body.appendChild(toast);
+
+        // Redirect after showing message
+        setTimeout(() => {
+            window.location.href = '/login';
+        }, 1500);
+    };
 
     // 2. Load metadata once masterKey and token are ready
     useEffect(() => {
@@ -158,11 +220,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const response = await authAPI.login({ email: credentials.email, authHash });
 
         setToken(response.token);
-        setUser({ email: credentials.email, role: response.role });
+        localStorage.setItem('nest_token', response.token); // Fix: Ensure API interceptor can see the token immediately
+        localStorage.setItem('nest_role', response.user.role || 'user');
 
-        localStorage.setItem('nest_token', response.token);
-        localStorage.setItem('nest_email', credentials.email);
-        localStorage.setItem('nest_role', response.role || 'user');
+        setUser({
+            email: credentials.email,
+            role: response.user.role,
+            storageUsed: response.user.storageUsed,
+            storageQuota: response.user.storageQuota
+        });
 
         // 3. Decrypt Vault (if we have the Root Key)
         // If logged in via just AuthHash (unusual), we can't decrypt master key here.
@@ -182,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // Persist master key to localStorage
                 const mkB64 = '---B64---' + toBase64(mk);
                 localStorage.setItem('nest_master_key', mkB64);
+                localStorage.setItem('nest_master_key_saved_at', Date.now().toString()); // Fix #14: Timestamp
 
                 // Verify persistence immediately
                 const verifyMeta = localStorage.getItem('nest_master_key');
@@ -280,23 +347,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const saveMetadata = async (newMetadata: MetadataBlob) => {
-        if (!masterKey) throw new Error('Master Key not available');
+        if (!masterKey) {
+            console.error('[AUTH] Cannot save metadata: Master Key not available');
+            return;
+        }
 
-        // 1. Encrypt
-        const { encryptMetadataBlob, toBase64 } = await import('../crypto/v2');
-        const { encrypted, nonce } = encryptMetadataBlob(newMetadata, masterKey);
+        try {
+            // Fix C1: Fetch current version before save (Optimistic Locking)
+            const { authAPI } = await import('../api/auth');
+            const currentData = await authAPI.getMetadata();
+            const currentVersion = currentData.metadata_version || 1;
 
-        // 2. Send to Server
-        const { authAPI } = await import('../api/auth');
+            const { encryptMetadataBlob, toBase64 } = await import('../crypto/v2');
+            const encrypted = encryptMetadataBlob(newMetadata, masterKey);
 
-        await authAPI.saveMetadata({
-            encryptedMetadata: toBase64(encrypted),
-            encryptedMetadataNonce: toBase64(nonce),
-            email: user?.email || ''
-        });
+            try {
+                await authAPI.saveMetadata({
+                    encryptedMetadata: toBase64(encrypted.encrypted),
+                    encryptedMetadataNonce: toBase64(encrypted.nonce),
+                    metadata_version: currentVersion // Send current version for backend check
+                });
+                setMetadata(newMetadata);
+                console.log('[AUTH] Metadata saved successfully');
+            } catch (error: any) {
+                // Fix C1: Handle version conflict
+                if (error.response?.status === 409) {
+                    console.error('[AUTH] Metadata conflict detected - refreshing from server');
 
-        // 3. Update State
-        setMetadata(newMetadata);
+                    // Show toast notification
+                    const event = new CustomEvent('show-toast', {
+                        detail: { message: 'Metadata updated in another tab. Refreshing...', type: 'warning' }
+                    });
+                    window.dispatchEvent(event);
+
+                    // Reload metadata from server
+                    const freshData = await authAPI.getMetadata();
+                    if (freshData?.encryptedMetadata && freshData?.encryptedMetadataNonce) {
+                        const { decryptMetadataBlob, fromBase64 } = await import('../crypto/v2');
+                        const freshMetadata = decryptMetadataBlob(
+                            fromBase64(freshData.encryptedMetadata),
+                            fromBase64(freshData.encryptedMetadataNonce),
+                            masterKey
+                        );
+                        setMetadata(freshMetadata);
+                    }
+                    throw new Error('Metadata conflict - please retry your operation');
+                }
+                throw error;
+            }
+            console.log('[AUTH] Metadata secured in vault');
+        } catch (error) {
+            console.error('[AUTH] Failed to save metadata:', error);
+            throw error;
+        }
     };
 
     const logout = () => {
@@ -308,6 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('nest_email');
         localStorage.removeItem('nest_role');
         localStorage.removeItem('nest_master_key');
+        localStorage.removeItem('nest_master_key_saved_at'); // Fix C2: Clean up timestamp
         localStorage.removeItem('nest_encrypted_master_key');
         localStorage.removeItem('nest_encrypted_master_key_nonce');
 

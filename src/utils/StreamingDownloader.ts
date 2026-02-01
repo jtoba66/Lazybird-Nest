@@ -10,11 +10,15 @@ export interface DownloadChunk {
 }
 
 export interface DownloadOptions {
-    shareToken: string;
     fileKey: Uint8Array;
     filename: string;
     chunks: DownloadChunk[];
     onProgress?: (progress: number) => void;
+    // Auth Modes
+    shareToken?: string;
+    fileId?: number;
+    authToken?: string;
+    existingHandle?: any; // FileSystemFileHandle
 }
 
 /**
@@ -26,7 +30,7 @@ export interface DownloadOptions {
  */
 export class StreamingDownloader {
     static async download(options: DownloadOptions): Promise<void> {
-        const { shareToken, fileKey, filename, chunks, onProgress } = options;
+        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress, existingHandle } = options;
         const totalSize = chunks.reduce((acc, c) => acc + c.size, 0);
         let bytesDownloaded = 0;
 
@@ -36,15 +40,24 @@ export class StreamingDownloader {
 
         if (hasNativeFS) {
             try {
-                // @ts-ignore
-                const handle = await window.showSaveFilePicker({
-                    suggestedName: filename,
-                });
+                let handle = existingHandle;
+                if (!handle) {
+                    console.log('[Downloader] No pre-acquired handle provided, requesting one...');
+                    // @ts-ignore
+                    handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                    });
+                }
                 writable = await handle.createWritable();
             } catch (e) {
                 console.error('[Downloader] Native FS Picker cancelled or failed:', e);
+                // User might have cancelled, so we just return (or throw if you want UI feedback)
                 throw new Error('Download cancelled (Permission Required)');
             }
+        } else {
+            console.warn('[Downloader] Native File System API not supported. Large files may crash browser.');
+            // Fallback to legacy Blob accumulation? Or just throw for >2GB?
+            // For now, we proceed but writable remains null, triggering the fallback logic below.
         }
 
         // 2. Sequential Chunk Download & Decrypt
@@ -53,20 +66,35 @@ export class StreamingDownloader {
                 console.log(`[Downloader] Processing chunk ${chunk.index + 1}/${chunks.length} (${chunk.status})`);
 
                 let chunkUrl = '';
+                const headers: HeadersInit = {};
+
                 if (chunk.status === 'local') {
-                    chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                    if (shareToken) {
+                        chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                    } else if (fileId && authToken) {
+                        chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
+                        headers['Authorization'] = `Bearer ${authToken}`;
+                    } else {
+                        throw new Error('Missing auth config for local download');
+                    }
                 } else if (chunk.status === 'cloud' && chunk.jackal_merkle) {
                     chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
                 } else {
                     throw new Error(`Chunk ${chunk.index} is not ready yet (Status: ${chunk.status})`);
                 }
 
-                const response = await fetch(chunkUrl);
+                const response = await fetch(chunkUrl, { headers });
+
+                console.log(`[Downloader] Chunk ${chunk.index} Fetch Status: ${response.status}`);
+                console.log(`[Downloader] Type: ${response.headers.get('content-type')}`);
+                console.log(`[Downloader] Length: ${response.headers.get('content-length')}`);
+
                 if (!response.ok) throw new Error(`Failed to fetch chunk ${chunk.index}`);
                 if (!response.body) throw new Error(`Chunk ${chunk.index} body is empty`);
 
                 // Create Decryption Stream for this chunk
                 // Note: Each chunk in our V3 system has its own SecretStream HEADER (nonce)
+                console.log(`[Downloader] Creating decryption stream for Chunk ${chunk.index} (Nonce: ${chunk.nonce.substring(0, 10)}...)`);
                 const decryptionStream = createDecryptionStream(fileKey, fromBase64(chunk.nonce));
 
                 const decryptedStream = response.body.pipeThrough(decryptionStream);

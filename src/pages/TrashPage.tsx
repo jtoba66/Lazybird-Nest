@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Trash, ArrowUUpLeft, Clock, Info } from '@phosphor-icons/react';
+import { Modal } from '../components/Modal';
+import { Trash, ArrowUUpLeft, Clock, Info, Warning } from '@phosphor-icons/react';
 import { filesAPI, type File } from '../api/files';
 import { useToast } from '../contexts/ToastContext';
 import { useRefresh } from '../contexts/RefreshContext';
@@ -13,6 +14,9 @@ export const TrashPage = () => {
     const { fileListVersion } = useRefresh();
     const { refreshQuota } = useStorage();
     const { metadata } = useAuth();
+
+    // Track deletion state for loading indicator
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchTrash = async () => {
         try {
@@ -51,8 +55,75 @@ export const TrashPage = () => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
+    const [fileToDelete, setFileToDelete] = useState<File | null>(null);
+
+    const handleDeleteForever = async () => {
+        if (!fileToDelete) return;
+        setIsDeleting(true);
+        try {
+            await filesAPI.deleteForever(fileToDelete.id);
+            showToast('File permanently deleted', 'success');
+            setFileToDelete(null);
+            fetchTrash();
+            refreshQuota();
+        } catch (error) {
+            console.error('Permanent delete failed:', error);
+            showToast('Failed to delete file', 'error');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     return (
-        <div className="p-4 sm:p-6 md:p-8 animate-in fade-in duration-500">
+        <div className="p-4 sm:p-6 md:p-8 animate-in fade-in duration-500 relative">
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={!!fileToDelete}
+                onClose={() => setFileToDelete(null)}
+                title="Delete Forever?"
+            >
+                <div className="space-y-4">
+                    {/* Warning Icon */}
+                    <div className="flex justify-center">
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                            <Warning size={32} weight="fill" className="text-red-500" />
+                        </div>
+                    </div>
+
+                    {/* Message */}
+                    <div className="text-center space-y-2">
+                        <p className="text-text-main font-medium">
+                            Are you sure you want to permanently delete this file?
+                        </p>
+                        <p className="text-sm text-text-muted">
+                            <span className="font-medium text-text-main break-words [overflow-wrap:anywhere]">
+                                "{fileToDelete ? (metadata?.files[fileToDelete.id.toString()]?.filename || fileToDelete.filename) : ''}"
+                            </span> will be permanently deleted.
+                            <br />
+                            <span className="text-red-500 font-bold">This action cannot be undone.</span>
+                        </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            onClick={() => setFileToDelete(null)}
+                            disabled={isDeleting}
+                            className="flex-1 px-4 py-2.5 bg-bg-secondary hover:bg-card-hover text-text-main rounded-xl font-medium transition-all disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleDeleteForever}
+                            disabled={isDeleting}
+                            className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-all disabled:opacity-50 border border-red-500/20 shadow-lg shadow-red-500/10"
+                        >
+                            {isDeleting ? 'Deleting...' : 'Delete Forever'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
             <div className="flex items-center justify-between mb-5 sm:mb-8">
                 <div>
                     <h1 className="text-2xl sm:text-3xl font-bold text-text-main flex items-center gap-3">
@@ -93,18 +164,27 @@ export const TrashPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {trashFiles.map((file) => (
                         <div key={file.id} className="glass-panel p-4 group hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
+
                             <div className="flex items-start justify-between mb-4">
                                 <div className="p-3 bg-primary/10 rounded-2xl text-primary group-hover:scale-110 transition-transform duration-300">
                                     <Clock size={24} weight="bold" />
                                 </div>
-                                <button
-                                    onClick={() => handleRestore(file.id)}
-                                    className="p-2 hover:bg-primary/10 rounded-xl text-text-muted hover:text-primary transition-all flex items-center gap-2 group/btn"
-                                    title="Restore"
-                                >
-                                    <ArrowUUpLeft size={20} />
-                                    <span className="text-xs font-bold opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap">Restore</span>
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => handleRestore(file.id)}
+                                        className="p-2 hover:bg-primary/10 rounded-xl text-text-muted hover:text-primary transition-all flex items-center gap-2 group/btn"
+                                        title="Restore"
+                                    >
+                                        <ArrowUUpLeft size={20} />
+                                    </button>
+                                    <button
+                                        onClick={() => setFileToDelete(file)}
+                                        className="p-2 hover:bg-red-500/10 rounded-xl text-text-muted hover:text-red-500 transition-all flex items-center gap-2 group/btn"
+                                        title="Delete Permanently"
+                                    >
+                                        <Trash size={20} />
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="space-y-1">
@@ -114,7 +194,7 @@ export const TrashPage = () => {
                                 <div className="flex items-center gap-2 text-xs text-text-muted font-medium">
                                     <span>{formatBytes(file.file_size)}</span>
                                     <span>•</span>
-                                    <span>Deleted {new Date(file.created_at).toLocaleDateString()}</span>
+                                    <span>Deleted {new Date((file as any).deleted_at).toLocaleDateString()}</span>
                                 </div>
                             </div>
 

@@ -22,7 +22,14 @@ export interface SignupCredentials {
 
 export interface AuthResponse {
     token: string;
-    role?: string;
+    user: {
+        id: number;
+        email: string;
+        role?: string;
+        tier?: string;
+        storageUsed?: number;
+        storageQuota?: number;
+    };
     // ZK fields
     encryptedMasterKey?: string;
     encryptedMasterKeyNonce?: string;
@@ -38,12 +45,12 @@ export const authAPI = {
         return data;
     },
 
-    async saveMetadata(data: { encryptedMetadata: string; encryptedMetadataNonce: string; email: string }): Promise<{ success: boolean }> {
+    async saveMetadata(data: { encryptedMetadata: string; encryptedMetadataNonce: string; metadata_version?: number }): Promise<{ success: boolean }> {
         const response = await api.post('/auth/metadata', data);
         return response.data;
     },
 
-    async getMetadata(): Promise<{ encryptedMetadata?: string; encryptedMetadataNonce?: string }> {
+    async getMetadata(): Promise<{ encryptedMetadata?: string; encryptedMetadataNonce?: string; metadata_version?: number }> {
         const { data } = await api.get('/auth/metadata');
         return data;
     },

@@ -21,6 +21,11 @@ export const billingAPI = {
         return data;
     },
 
+    async syncSubscription(sessionId: string): Promise<any> {
+        const { data } = await api.post('/billing/sync-subscription', { sessionId });
+        return data;
+    },
+
     async getSubscriptionStatus(): Promise<SubscriptionStatus> {
         const { data } = await api.get('/billing/subscription');
         return data;

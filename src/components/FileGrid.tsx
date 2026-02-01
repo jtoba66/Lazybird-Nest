@@ -1,11 +1,6 @@
 import { useState, useCallback } from 'react';
-import API_BASE_URL from '../config/api';
 import { CloudArrowUp, FolderPlus, GridFour, Info, CaretUp, Check, Copy } from '@phosphor-icons/react';
-import { useDropzone } from 'react-dropzone';
-import { useUpload } from '../contexts/UploadContext';
-import { useToast } from '../contexts/ToastContext';
-import { useAuth } from '../contexts/AuthContext';
-import { useRefresh } from '../contexts/RefreshContext';
+import { filesAPI } from '../api/files';
 import { foldersAPI } from '../api/folders';
 import { CreateFolderModal } from '../components/CreateFolderModal';
 import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey } from '../crypto/v2';
@@ -32,52 +27,65 @@ export const FileGrid = () => {
         setShareLink('');
 
         try {
-            console.log('[v2-upload] Starting upload:', file.name);
+            console.log('[v2-upload] Starting metadata-first upload:', file.name);
 
-            // 1. Generate File Key
+            // 1. Generate local encryption data
             const fileKey = generateFileKey();
-            console.log('[v2-upload] ✅ File Key generated');
-
-            // 2. Encrypt file with File Key
             const { encryptedBlob } = await encryptFile(file, fileKey);
-            console.log('[v2-upload] ✅ File encrypted');
+            console.log('[v2-upload] ✅ Encryption complete');
 
-            // 3. Prepare FormData
-            const formData = new FormData();
-            formData.append('file', encryptedBlob, file.name);
-            formData.append('filename', file.name);
-            formData.append('mimeType', file.type);
-            formData.append('folderId', ''); // Root folder
-
-            formData.append('fileKeyEncrypted', toBase64(fileKey)); // Placeholder - backend will re-encrypt
-            formData.append('fileKeyNonce', toBase64(new Uint8Array(24))); // Placeholder nonce
-
-            // 5. Upload to backend
-            console.log('[v2-upload] Uploading to backend...');
-
-            const response = await fetch(`${API_BASE_URL}/files/upload`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('nest_token')}`,
-                },
-                body: formData,
+            // 2. Step 1: Initialize record on server (Get ID)
+            const initRes = await filesAPI.initUpload({
+                filename: file.name,
+                file_size: file.size,
+                mimeType: file.type,
+                folderId: null, // Root for now
+                fileKeyEncrypted: toBase64(fileKey),
+                fileKeyNonce: toBase64(new Uint8Array(24)) // Simple padding for now
             });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Upload failed');
+            const fileId = initRes.file_id;
+            console.log('[v2-upload] ✅ Server record initialized:', fileId);
+
+            // 3. Step 2: Save Metadata to Vault FIRST
+            if (metadata) {
+                const newMeta = JSON.parse(JSON.stringify(metadata));
+                newMeta.files[fileId.toString()] = {
+                    filename: file.name,
+                    mime_type: file.type,
+                    file_size: file.size,
+                    created_at: new Date().toISOString(),
+                    folder_id: '' // Root for now
+                };
+                await saveMetadata(newMeta);
+                console.log('[v2-upload] ✅ Metadata secured in vault');
             }
 
-            const result = await response.json();
+            // 4. Step 3: Upload the actual bits
+            console.log('[v2-upload] Uploading bits...');
+            if (initRes.is_chunked) {
+                // Future: Implement chunked logic here if needed
+                // For now, let's stick to simple upload for the FileGrid scope
+                await filesAPI.upload(fileId, encryptedBlob, (progress: number) => {
+                    updateProgress(uploadId, progress);
+                    setUploadProgress(Math.round(progress));
+                });
+            } else {
+                await filesAPI.upload(fileId, encryptedBlob, (progress: number) => {
+                    updateProgress(uploadId, progress);
+                    setUploadProgress(Math.round(progress));
+                });
+            }
 
             completeUpload(uploadId);
             updateProgress(uploadId, 100);
 
-            console.log('[v2-upload] ✅ Upload complete:', result);
-            showToast(`"${file.name}" uploaded successfully!`, 'success');
+            console.log('[v2-upload] ✅ Full upload complete');
+            showToast(`"${file.name}" uploaded safely!`, 'success');
 
-            const shareLink = `${window.location.origin}/s/${result.share_token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
+            const shareLink = `${window.location.origin}/s/${initRes.share_token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
             setShareLink(shareLink);
+            triggerFileRefresh();
 
         } catch (error: any) {
             console.error('[v2-upload] ❌ Upload failed:', error);

@@ -1,8 +1,10 @@
+import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, HardDrives, Database, ArrowsClockwise, Trash, CloudCheck, Warning, CheckCircle, Clock, Spinner } from '@phosphor-icons/react';
+import { Shield, Users, HardDrives, Database, ArrowsClockwise, Trash, CloudCheck, Warning, CheckCircle, Clock, Spinner, MagnifyingGlass } from '@phosphor-icons/react';
 import { useToast } from '../contexts/ToastContext';
 import API_BASE_URL from '../config/api';
+import { ChunksInspectorModal } from '../components/admin/ChunksInspectorModal';
 
 interface SystemMetrics {
     memory: {
@@ -24,7 +26,7 @@ interface SystemMetrics {
 interface FileRecord {
     id: number;
     user_email: string;
-    filename: string;
+    storage_id: string;
     file_size: number;
     jackal_fid: string;
     merkle_hash: string;
@@ -42,6 +44,8 @@ interface FileRecord {
     } | null;
     retry_count?: number;
     failure_reason?: string;
+    storage_type?: 'single' | 'blob';
+    type?: 'soft' | 'permanent';
 }
 
 interface UserRecord {
@@ -52,14 +56,17 @@ interface UserRecord {
     storage_quota_bytes: number;
     file_count: number;
     folder_count: number;
+    is_banned: number;
+    subscription_tier: string;
 }
 
 interface Analytics {
     jackal: {
         total: number;
-        uploaded: number;
-        failed: number;
-        uploadRate: number;
+        active: number;
+        pending: number;
+        graveyard: number;
+        uploadRate?: number; // Optional now, or remove if not sent
     };
     recent: {
         uploads24h: number;
@@ -67,9 +74,10 @@ interface Analytics {
 }
 
 export default function AdminPage() {
-    const [activeTab, setActiveTab] = useState<'overview' | 'files' | 'users' | 'failed' | 'graveyard'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'insights' | 'files' | 'users' | 'failed' | 'graveyard'>('overview');
     const [system, setSystem] = useState<SystemMetrics | null>(null);
     const [files, setFiles] = useState<FileRecord[]>([]);
+    const [inspectFile, setInspectFile] = useState<{ id: number, name: string, source: 'files' | 'graveyard' } | null>(null);
     const [users, setUsers] = useState<UserRecord[]>([]);
     const [analytics, setAnalytics] = useState<Analytics | null>(null);
     const [failedFiles, setFailedFiles] = useState<FileRecord[]>([]);
@@ -79,6 +87,88 @@ export default function AdminPage() {
 
     const navigate = useNavigate();
     const { showToast } = useToast();
+
+    const handleBanUser = async (userId: number) => {
+        try {
+            const token = localStorage.getItem('nest_token');
+            const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/ban`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_banned: data.is_banned } : u));
+                showToast(data.is_banned ? 'User banned' : 'User unbanned', 'success');
+            } else {
+                showToast('Failed to update ban status', 'error');
+            }
+        } catch (err: any) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    const handleToggleTier = async (userId: number) => {
+        try {
+            const token = localStorage.getItem('nest_token');
+            const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/tier`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setUsers(prev => prev.map(u => u.id === userId ? { ...u, subscription_tier: data.tier, storage_quota_bytes: data.quota } : u));
+                showToast(`User moved to ${data.tier.toUpperCase()}`, 'success');
+            } else {
+                showToast('Failed to toggle tier', 'error');
+            }
+        } catch (err: any) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    const handlePurgeUser = async (userId: number, email: string) => {
+        if (!confirm(`Are you SURE you want to purge all files for ${email}? This will move them to the Graveyard and reset their usage to 0.`)) return;
+
+        try {
+            const token = localStorage.getItem('nest_token');
+            const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/purge`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                showToast(`Successfully purged ${data.purged_count} files to Graveyard`, 'success');
+                fetchAllData(); // Refresh all stats
+            } else {
+                showToast('Failed to purge user files', 'error');
+            }
+        } catch (err: any) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    const handlePruneGraveyard = async (graveId: number) => {
+        if (!confirm('Are you SURE you want to prune this file? This will permanently remove it from Jackal network (simulate) and update history.')) return;
+
+        try {
+            const token = localStorage.getItem('nest_token');
+            const res = await fetch(`${API_BASE_URL}/admin/graveyard/${graveId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                showToast('File pruned from network', 'success');
+                // Remove locally to avoid reload
+                setGraveyardFiles(prev => prev.filter(f => f.id !== graveId));
+                // Refresh analytics to show the Drop
+                setTimeout(fetchAllData, 1000);
+            } else {
+                showToast('Failed to prune file', 'error');
+            }
+        } catch (err: any) {
+            showToast(err.message, 'error');
+        }
+    };
 
     const fetchAllData = async () => {
         try {
@@ -164,7 +254,7 @@ export default function AdminPage() {
 
             showToast('Retrying upload to Jackal...', 'info');
 
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/files/${fileId}/retry-upload`, {
+            const response = await fetch(`${API_BASE_URL}/admin/files/${fileId}/retry-upload`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -205,7 +295,7 @@ export default function AdminPage() {
 
             showToast(`Queuing ${failedCount} files for retry...`, 'info');
 
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/retry-all-failed`, {
+            const response = await fetch(`${API_BASE_URL}/admin/retry-all-failed`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -289,6 +379,7 @@ export default function AdminPage() {
                     <div className="flex gap-2 overflow-x-auto custom-scrollbar">
                         {[
                             { id: 'overview', label: 'Overview' },
+                            { id: 'insights', label: 'Insights' },
                             { id: 'files', label: 'Files' },
                             { id: 'users', label: 'Users' },
                             { id: 'failed', label: 'Failed Uploads' },
@@ -311,6 +402,11 @@ export default function AdminPage() {
 
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
+                {/* INSIGHTS TAB */}
+                {activeTab === 'insights' && (
+                    <AnalyticsDashboard />
+                )}
+
                 {/* OVERVIEW TAB */}
                 {activeTab === 'overview' && (
                     <div className="space-y-6">
@@ -319,7 +415,7 @@ export default function AdminPage() {
                             <div className="glass-panel p-6 flex flex-col justify-between">
                                 <div className="flex items-center gap-3 mb-2">
                                     <Database size={20} className="text-primary" />
-                                    <span className="text-xs uppercase tracking-wider text-text-muted font-bold">Total Files</span>
+                                    <span className="text-xs uppercase tracking-wider text-text-muted font-bold">Total Blobs</span>
                                 </div>
                                 <div className="text-2xl sm:text-3xl font-bold font-mono">{system?.database.totalFiles || 0}</div>
                             </div>
@@ -342,10 +438,10 @@ export default function AdminPage() {
 
                             <div className="glass-panel p-6 flex flex-col justify-between">
                                 <div className="flex items-center gap-3 mb-2">
-                                    <CloudCheck size={20} className="text-success" />
-                                    <span className="text-xs uppercase tracking-wider text-text-muted font-bold">Upload Rate</span>
+                                    <Clock size={20} className="text-success" />
+                                    <span className="text-xs uppercase tracking-wider text-text-muted font-bold">24h Uploads</span>
                                 </div>
-                                <div className="text-2xl sm:text-3xl font-bold font-mono">{analytics?.jackal.uploadRate || 0}%</div>
+                                <div className="text-2xl sm:text-3xl font-bold font-mono">{analytics?.recent.uploads24h?.toLocaleString() || 0}</div>
                             </div>
                         </div>
 
@@ -354,24 +450,41 @@ export default function AdminPage() {
                             <div className="glass-panel p-6">
                                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <CloudCheck size={20} className="text-primary" />
-                                    Jackal Upload Statistics
+                                    Managed Blob Overview
                                 </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="bg-white/5 rounded-lg p-4 border border-white/5">
-                                        <div className="text-sm text-text-muted mb-1">Total Files</div>
-                                        <div className="text-2xl font-bold font-mono">{analytics.jackal.total}</div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                    <div className="bg-background-dark/50 p-4 rounded-xl">
+                                        <div className="text-sm text-text-muted mb-1">Total Network Footprint</div>
+                                        <div className="text-2xl font-bold font-mono text-white">
+                                            {analytics.jackal.total.toLocaleString()}
+                                        </div>
                                     </div>
-                                    <div className="bg-success/5 border border-success/10 rounded-lg p-4">
-                                        <div className="text-sm text-success mb-1">Uploaded to Jackal</div>
-                                        <div className="text-2xl font-bold font-mono text-success">{analytics.jackal.uploaded}</div>
+
+                                    <div className="bg-background-dark/50 p-4 rounded-xl border-l-2 border-success">
+                                        <div className="text-sm text-text-muted mb-1">Active (Secured)</div>
+                                        <div className="text-2xl font-bold font-mono text-success">
+                                            {analytics.jackal.active.toLocaleString()}
+                                        </div>
                                     </div>
-                                    <div className="bg-error/5 border border-error/10 rounded-lg p-4">
-                                        <div className="text-sm text-error mb-1">Failed Uploads</div>
-                                        <div className="text-2xl font-bold font-mono text-error">{analytics.jackal.failed}</div>
+
+                                    <div className="bg-background-dark/50 p-4 rounded-xl border-l-2 border-warning">
+                                        <div className="text-sm text-text-muted mb-1">Pending / Failed</div>
+                                        <div className="text-2xl font-bold font-mono text-warning">
+                                            {analytics.jackal.pending.toLocaleString()}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-background-dark/50 p-4 rounded-xl border-l-2 border-danger">
+                                        <div className="text-sm text-text-muted mb-1">Graveyard</div>
+                                        <div className="text-2xl font-bold font-mono text-danger">
+                                            {analytics.jackal.graveyard.toLocaleString()}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         )}
+
 
                         {/* System Health */}
                         {system && (
@@ -442,7 +555,8 @@ export default function AdminPage() {
                                     <tr>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Filename</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Status</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
@@ -454,7 +568,12 @@ export default function AdminPage() {
                                         <tr key={file.id} className="hover:bg-white/5 transition-colors">
                                             <td className="px-6 py-4 text-sm font-mono text-text-muted">#{file.id}</td>
                                             <td className="px-6 py-4 text-sm font-medium">{file.user_email}</td>
-                                            <td className="px-6 py-4 text-sm">{file.jackal_fid || 'N/A'}</td>
+                                            <td className="px-6 py-4 text-sm font-mono text-primary truncate max-w-[200px]" title={file.storage_id}>{file.storage_id}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${file.storage_type === 'blob' ? 'bg-secondary/20 text-secondary border border-secondary/30 shadow-[0_0_8px_rgba(var(--color-secondary-rgb),0.2)]' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                                                    {file.storage_type || 'single'}
+                                                </span>
+                                            </td>
                                             <td className="px-6 py-4 text-sm font-mono">{formatBytes(file.file_size)}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
@@ -487,15 +606,28 @@ export default function AdminPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {file.can_retry && (
+                                                <div className="flex items-center gap-2">
+                                                    {file.can_retry && (
+                                                        <button
+                                                            onClick={() => handleRetryUpload(file.id)}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg text-xs font-bold transition-colors"
+                                                            title="Retry Upload"
+                                                        >
+                                                            <ArrowsClockwise size={14} weight="bold" />
+                                                            Retry
+                                                        </button>
+                                                    )}
+
+                                                    {/* Inspect Button - Always visible for chunked files or just all files */}
                                                     <button
-                                                        onClick={() => handleRetryUpload(file.id)}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg text-xs font-bold transition-colors"
+                                                        onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: 'files' })}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold transition-colors"
+                                                        title="Inspect Chunks"
                                                     >
-                                                        <ArrowsClockwise size={14} weight="bold" />
-                                                        Retry
+                                                        <MagnifyingGlass size={14} weight="bold" />
+                                                        Inspect
                                                     </button>
-                                                )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-text-muted">
                                                 {new Date(file.created_at).toLocaleDateString()}
@@ -517,8 +649,11 @@ export default function AdminPage() {
                                     <tr>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Email</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Status</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Plan</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Files</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Storage Used</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Storage</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Joined</th>
                                     </tr>
                                 </thead>
@@ -527,8 +662,51 @@ export default function AdminPage() {
                                         <tr key={user.id} className="hover:bg-white/5 transition-colors">
                                             <td className="px-6 py-4 text-sm font-mono text-text-muted">#{user.id}</td>
                                             <td className="px-6 py-4 text-sm font-medium">{user.email}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${user.is_banned ? 'bg-error/20 text-error border border-error/30' : 'bg-success/10 text-success border border-success/20'}`}>
+                                                    {user.is_banned ? 'Banned' : 'Active'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${user.subscription_tier === 'pro' ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-white/10 text-text-muted border border-white/10'}`}>
+                                                    {user.subscription_tier || 'free'}
+                                                </span>
+                                            </td>
                                             <td className="px-6 py-4 text-sm font-mono">{user.file_count}</td>
-                                            <td className="px-6 py-4 text-sm font-mono">{formatBytes(user.storage_used_bytes)}</td>
+                                            <td className="px-6 py-4 text-sm font-mono">
+                                                <div className="flex flex-col">
+                                                    <span>{formatBytes(user.storage_used_bytes)}</span>
+                                                    <span className="text-[10px] text-text-muted">of {formatBytes(user.storage_quota_bytes)}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleBanUser(user.id)}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${user.is_banned
+                                                            ? 'bg-success/10 hover:bg-success/20 text-success border-success/30'
+                                                            : 'bg-error/10 hover:bg-error/20 text-error border-error/30'}`}
+                                                    >
+                                                        {user.is_banned ? 'Unban' : 'Ban User'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleToggleTier(user.id)}
+                                                        className="px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-bold transition-all shadow-[0_0_10px_rgba(var(--color-error-rgb),0.1)] hover:shadow-[0_0_15px_rgba(var(--color-error-rgb),0.2)]"
+                                                    >
+                                                        {user.subscription_tier === 'pro' ? 'Make Free' : 'Make Pro'}
+                                                    </button>
+                                                    {user.storage_used_bytes > user.storage_quota_bytes && (
+                                                        <button
+                                                            onClick={() => handlePurgeUser(user.id, user.email)}
+                                                            className="px-3 py-1.5 bg-error text-white hover:bg-error/90 rounded-lg text-xs font-bold transition-all shadow-lg shadow-error/20 flex items-center gap-1.5"
+                                                            title="User is over quota - Move all files to graveyard"
+                                                        >
+                                                            <Trash size={14} weight="bold" />
+                                                            Purge
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-sm text-text-muted">
                                                 {new Date(user.created_at).toLocaleDateString()}
                                             </td>
@@ -565,7 +743,8 @@ export default function AdminPage() {
                                         <tr>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
-                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">JackalFID</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Created</th>
@@ -576,7 +755,12 @@ export default function AdminPage() {
                                             <tr key={file.id} className="hover:bg-white/5 transition-colors">
                                                 <td className="px-6 py-4 text-sm font-mono text-text-muted">#{file.id}</td>
                                                 <td className="px-6 py-4 text-sm font-medium">{file.user_email}</td>
-                                                <td className="px-6 py-4 text-sm text-error font-mono">{file.merkle_hash || 'UNKNOWN'}</td>
+                                                <td className="px-6 py-4 text-sm font-mono text-error break-all">{file.storage_id}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${file.storage_type === 'blob' ? 'bg-secondary/20 text-secondary border border-secondary/30 shadow-[0_0_8px_rgba(var(--color-secondary-rgb),0.2)]' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                                                        {file.storage_type || 'single'}
+                                                    </span>
+                                                </td>
                                                 <td className="px-6 py-4 text-sm font-mono">{formatBytes(file.file_size)}</td>
                                                 <td className="px-6 py-4 text-sm">
                                                     {file.encrypted_file_path ? (
@@ -606,7 +790,7 @@ export default function AdminPage() {
                 {/* GRAVEYARD TAB */}
                 {activeTab === 'graveyard' && (
                     <div className="glass-panel overflow-hidden">
-                        <div className="p-6 border-b border-border">
+                        <div className="p-6 border-b border-white/10">
                             <div className="flex items-center gap-3">
                                 <Trash size={24} className="text-warning" />
                                 <div>
@@ -628,10 +812,10 @@ export default function AdminPage() {
                                         <tr>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
-                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Filename</th>
-                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Merkle Hash</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
-                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Chunked</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Deleted</th>
                                         </tr>
                                     </thead>
@@ -640,17 +824,34 @@ export default function AdminPage() {
                                             <tr key={file.id} className="hover:bg-background/30 transition-colors">
                                                 <td className="px-6 py-4 text-sm font-mono text-text-muted">#{file.id}</td>
                                                 <td className="px-6 py-4 text-sm font-medium">{file.user_email}</td>
-                                                <td className="px-6 py-4 text-sm font-mono text-primary">{file.jackal_filename || `file_${file.id}`}</td>
-                                                <td className="px-6 py-4 text-xs font-mono text-warning break-all max-w-xs">{file.merkle_hash}</td>
-                                                <td className="px-6 py-4 text-sm font-mono">{formatBytes(file.file_size)}</td>
+                                                <td className="px-6 py-4 text-sm font-mono text-primary break-all">{file.storage_id}</td>
                                                 <td className="px-6 py-4 text-sm">
-                                                    {file.is_chunked ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-warning/10 border border-warning/20 text-warning rounded text-xs font-bold">
-                                                            Yes ({file.chunk_count} chunks)
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-text-muted">No</span>
+                                                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${file.storage_type === 'blob' ? 'bg-secondary/20 text-secondary border border-secondary/30 shadow-[0_0_8px_rgba(var(--color-secondary-rgb),0.2)]' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                                                        {file.storage_type || 'single'}
+                                                        {file.is_chunked ? ` (${file.chunk_count} chunks)` : ''}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm font-mono">{formatBytes(file.file_size)}</td>
+                                                <td className="px-6 py-4">
+                                                    {(file.storage_type === 'blob' || file.is_chunked === 1 || file.is_chunked === true) && (
+                                                        <button
+                                                            onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: file.type === 'permanent' ? 'graveyard' : 'files' })}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold transition-colors"
+                                                            title="Inspect Chunks"
+                                                        >
+                                                            <MagnifyingGlass size={14} weight="bold" />
+                                                            Inspect
+                                                        </button>
                                                     )}
+
+                                                    <button
+                                                        onClick={() => handlePruneGraveyard(file.id)}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-bold transition-colors"
+                                                        title="Permanently Prune from Jackal"
+                                                    >
+                                                        <Trash size={14} weight="bold" />
+                                                        Prune
+                                                    </button>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-text-muted">
                                                     {file.deleted_at ? new Date(file.deleted_at).toLocaleDateString() : 'Unknown'}
@@ -664,6 +865,19 @@ export default function AdminPage() {
                     </div>
                 )}
             </div>
-        </div>
+
+            {/* Chunk Inspector Modal */}
+            {
+                inspectFile && (
+                    <ChunksInspectorModal
+                        isOpen={!!inspectFile}
+                        onClose={() => setInspectFile(null)}
+                        fileId={inspectFile.id}
+                        filename={inspectFile.name}
+                        source={inspectFile.source}
+                    />
+                )
+            }
+        </div >
     );
 }

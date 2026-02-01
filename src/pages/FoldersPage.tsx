@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FolderPlus } from '@phosphor-icons/react';
 import { FileTable } from '../components/FileTable';
@@ -22,92 +23,131 @@ interface FileItem {
 }
 
 export const FoldersPage = () => {
-    const { showToast } = useToast();
+    const { showToast, updateToast, dismissToast } = useToast();
+    const navigate = useNavigate();
+    const location = useLocation();
     const { fileListVersion, triggerFileRefresh } = useRefresh();
     const { refreshQuota } = useStorage();
     const { metadata, saveMetadata, masterKey } = useAuth();
 
+    // URL State Management
+    const searchParams = new URLSearchParams(location.search);
+    const folderIdParam = searchParams.get('folderId');
+    const selectedFolderId = (folderIdParam && !isNaN(parseInt(folderIdParam)))
+        ? parseInt(folderIdParam)
+        : null;
+
+    // Standard navigation helper
+    const handleNavigate = (id: number | null) => {
+        if (id === null) {
+            navigate('/folders', { replace: true });
+        } else {
+            navigate(`/folders?folderId=${id}`, { replace: true });
+        }
+    };
+
     // State
-    const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
     const [displayFiles, setDisplayFiles] = useState<FileItem[]>([]);
     const [displayFolders, setDisplayFolders] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+    const [primaryRootId, setPrimaryRootId] = useState<number | null>(null);
 
     // Session Recovery: If key is lost, UI will show "Vault Locked" or prompt re-auth locally
     // We remove the auto-redirect to /login because it causes logout loops during race conditions.
 
-    // Initial Load & Sync
     useEffect(() => {
         const loadContent = async () => {
-            if (!metadata) return; // Wait for metadata decryption
+            if (!metadata) return;
 
             setLoading(true);
             try {
-                // 1. Fetch Server Stats/IDs (The "Physical" storage state)
-                const [filesRes, foldersRes] = await Promise.all([
-                    filesAPI.list(selectedFolderId),
-                    foldersAPI.list(selectedFolderId)
-                ]);
+                let targetId = selectedFolderId;
 
-                // 2. Discover Root if missing in Metadata (Self-Healing)
-                if (selectedFolderId === null && foldersRes.folders && foldersRes.folders.length > 0) {
-                    const dbRoots = foldersRes.folders.filter((f: any) => f.parent_id === null);
-                    // Check if we have this root in metadata
-                    let changesMade = false;
-                    const newMeta = JSON.parse(JSON.stringify(metadata));
-
-                    for (const root of dbRoots) {
-                        if (!newMeta.folders[root.id]) {
-                            console.log('Discovered orphaned root folder:', root.id);
-                            newMeta.folders[root.id] = {
-                                name: 'Root',
-                                created_at: root.created_at
-                            };
-                            changesMade = true;
-                        }
-                    }
-
-                    if (changesMade) {
-                        await saveMetadata(newMeta);
+                // 1. Transparent Root Resolution
+                // If we are at the root path, we check if there's a single root folder to proxy
+                if (targetId === null) {
+                    const rootsRes = await foldersAPI.list(null);
+                    const roots = rootsRes.folders || [];
+                    if (roots.length === 1) {
+                        targetId = roots[0].id;
+                        setPrimaryRootId(targetId);
+                        console.log(`[TransparentRoot] Proxying root folder: ${targetId}`);
+                    } else {
+                        setPrimaryRootId(null);
                     }
                 }
 
-                // 3. Merge Metadata (Names) with Server Data (Stats)
-                const mergedFolders = (foldersRes.folders || []).map((svrFolder: any) => {
-                    const meta = metadata.folders[svrFolder.id.toString()];
-                    return {
-                        ...svrFolder,
-                        name: meta?.name || `Folder ${svrFolder.id}`, // Fallback if orphaned
-                    };
-                });
+                // 2. Fetch Server Data (using resolved targetId)
+                const [filesRes, foldersRes] = await Promise.all([
+                    filesAPI.list(targetId),
+                    foldersAPI.list(targetId)
+                ]);
 
-                // 4. Filter out the "Root" folder (it's implicit) but keep other top-level folders
-                const visibleFolders = mergedFolders.filter((folder: any) => folder.name !== 'Root');
+                // 3. Self-Heal metadata
+                let changesMade = false;
+                const newMeta = JSON.parse(JSON.stringify(metadata));
 
-                // 5. Merge Files (Use metadata for names, server for stats)
-                const mergedFiles = (filesRes.files || []).map((svrFile: any) => {
-                    const meta = metadata.files[svrFile.id.toString()];
-                    return {
-                        ...svrFile,
-                        filename: meta?.filename || `File ${svrFile.id}`, // Use metadata name
-                        mime_type: meta?.mime_type || svrFile.mime_type
+                // If targetId is not null, ensure it exists in metadata
+                if (targetId !== null && !newMeta.folders[targetId.toString()]) {
+                    console.log(`[Self-Heal] Folder ${targetId} missing from metadata. Adding...`);
+                    newMeta.folders[targetId.toString()] = {
+                        name: `Folder ${targetId}`,
+                        created_at: new Date().toISOString()
                     };
-                });
+                    changesMade = true;
+                }
+
+                // If at absolute root with multiple folders, ensure they are in metadata
+                if (selectedFolderId === null && targetId === null && foldersRes.folders) {
+                    for (const f of foldersRes.folders) {
+                        if (f.parent_id === null && !newMeta.folders[f.id.toString()]) {
+                            newMeta.folders[f.id.toString()] = { name: f.name || 'Root', created_at: f.created_at };
+                            changesMade = true;
+                        }
+                    }
+                }
+
+                if (changesMade) {
+                    await saveMetadata(newMeta);
+                }
+
+                // 4. Prepare Display State
+                const currentMeta = changesMade ? newMeta : metadata;
+
+                // Filter out self-referencing folders
+                const visibleFolders = (foldersRes.folders || [])
+                    .filter((f: any) => f.id !== targetId)
+                    .map((f: any) => ({
+                        ...f,
+                        name: currentMeta.folders[f.id.toString()]?.name || f.name || `Folder ${f.id}`
+                    }));
+
+                const visibleFiles = (filesRes.files || []).map((f: any) => ({
+                    ...f,
+                    filename: currentMeta.files[f.id.toString()]?.filename || f.filename || `File ${f.id}`
+                }));
 
                 setDisplayFolders(visibleFolders);
-                setDisplayFiles(mergedFiles);
+                setDisplayFiles(visibleFiles);
 
-            } catch (error) {
-                console.error('Failed to load content:', error);
-                showToast('Failed to load folder contents', 'error');
+            } catch (error: any) {
+                console.error('[Folders-Load] ❌ Failed:', error);
+                if (error.response?.status === 403 || error.response?.status === 404) {
+                    showToast('Folder unavailable, returning home.', 'warning');
+                    handleNavigate(null);
+                } else {
+                    showToast('Failed to load folder contents', 'error');
+                }
             } finally {
                 setLoading(false);
             }
         };
 
         loadContent();
-    }, [selectedFolderId, fileListVersion, metadata]); // Depend on metadata updates
+    }, [selectedFolderId, fileListVersion, metadata?.v]);
+
+    // Auto-dive logic is now consolidated into loadContent for consistency.
 
     // Handlers
     const handleCreateFolder = async (folderName: string) => {
@@ -119,15 +159,15 @@ export const FoldersPage = () => {
             const folderKey = generateFolderKey();
             const { encrypted, nonce } = encryptFolderKey(folderKey, masterKey);
 
-            // Path Hash (server will handle hashing)
-            const pathHash = folderName; // Server hashes this
+            // If at root, and we have a primary root, use it as parent
+            const parentId = selectedFolderId || primaryRootId || undefined;
 
             // 2. Create on Server
             const res = await foldersAPI.create(
                 toBase64(encrypted),
                 toBase64(nonce),
-                pathHash,
-                selectedFolderId || undefined
+                folderName,
+                parentId
             );
             const newId = res.folder_id;
 
@@ -151,26 +191,37 @@ export const FoldersPage = () => {
 
     const handleDeleteFolder = async (folderId: number) => {
         if (!metadata) return;
+
+        const confirmed = window.confirm('Are you sure you want to delete this folder? All files inside will be moved to trash.');
+        if (!confirmed) return;
+
         try {
-            // 1. Delete on Server
             await foldersAPI.delete(folderId);
 
-            // 2. Update Metadata
-            const newMeta = JSON.parse(JSON.stringify(metadata));
-            delete newMeta.folders[folderId];
+            // Fix H3: Update metadata to remove folder and child files
+            const updatedMetadata = { ...metadata };
 
-            // 3. Encrypt & Save
-            await saveMetadata(newMeta);
+            // Remove folder from metadata
+            delete updatedMetadata.folders[folderId];
 
+            // Remove all files in this folder from metadata
+            Object.keys(updatedMetadata.files).forEach(fileId => {
+                const fileFolder = updatedMetadata.files[fileId]?.folder_id;
+                if (fileFolder === folderId.toString() || fileFolder === folderId) {
+                    delete updatedMetadata.files[fileId];
+                }
+            });
+
+            // Save updated metadata to server
+            await saveMetadata(updatedMetadata);
+
+            // Trigger file refresh to reload from server
             triggerFileRefresh();
-            showToast('Folder deleted', 'success');
+
+            showToast('Folder deleted successfully', 'success');
         } catch (error: any) {
-            console.error('Delete folder failed:', error);
-            if (error.response?.data?.error === 'Folder not empty') {
-                showToast(`Cannot delete: Folder not empty (${error.response.data.file_count || 0} files)`, 'error');
-            } else {
-                showToast('Failed to delete folder', 'error');
-            }
+            console.error('[FOLDERS] Delete failed:', error);
+            showToast(error.response?.data?.error || 'Failed to delete folder', 'error');
         }
     };
 
@@ -228,6 +279,7 @@ export const FoldersPage = () => {
     };
 
     const handleDownload = async (file: FileItem) => {
+        let toastId: string | undefined;
         try {
             if (!masterKey) {
                 showToast('Please log in again to download files', 'error');
@@ -236,19 +288,12 @@ export const FoldersPage = () => {
 
             // Import crypto functions
             const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('../crypto/v2');
-
-            showToast('Starting download...', 'info');
+            toastId = showToast('Starting download...', 'info', Infinity);
 
             // 1. Fetch encrypted keys and file metadata from server
             const downloadInfo = await api.get(`/files/download/${file.id}`);
 
-            // 2. Fetch raw encrypted content
-            const contentResponse = await api.get(`/files/raw/${file.id}`, {
-                responseType: 'blob'
-            });
-            const encryptedBlob = contentResponse.data;
-
-            // 3. Decrypt Keys
+            // 2. Decrypt Keys (moved up to support StreamingDownloader)
             const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
             const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
             const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
@@ -257,8 +302,83 @@ export const FoldersPage = () => {
             const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
             const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
 
+            // NEW: Use StreamingDownloader for Large Files (>500MB) if supported
+            const isLargeFile = file.file_size > 500 * 1024 * 1024;
+            const hasNativeFS = 'showSaveFilePicker' in window;
+            const token = localStorage.getItem('nest_token');
+
+            if (isLargeFile && hasNativeFS && token) {
+                if (toastId) updateToast(toastId, 'Starting streaming download...', 'info');
+
+                // Map chunks to DownloadChunk format
+                const downloadChunks = downloadInfo.data.chunks.map((c: any) => ({
+                    index: c.index,
+                    size: c.size,
+                    nonce: c.nonce,
+                    jackal_merkle: c.jackal_merkle,
+                    status: (c.jackal_merkle && c.jackal_merkle !== 'pending' && c.jackal_merkle !== 'pending-chunks') ? 'cloud' : 'local'
+                }));
+
+                const { StreamingDownloader } = await import('../utils/StreamingDownloader');
+
+                // Notify user to select file location (since Native FS picker halts JS execution)
+                if (toastId) updateToast(toastId, 'Please select where to save the file...', 'info');
+
+                let lastUpdate = 0;
+                await StreamingDownloader.download({
+                    fileKey,
+                    filename: file.filename,
+                    chunks: downloadChunks,
+                    fileId: file.id,
+                    authToken: token,
+                    onProgress: (p) => {
+                        // Log first few updates to debug
+                        if (p < 5 || p > 95 || Math.floor(p) % 10 === 0) console.log(`[UI-DL] Progress: ${p.toFixed(2)}%`);
+
+                        // Throttle updates to every 5% or 500ms to allow React to render
+                        const now = Date.now();
+                        if (now - lastUpdate > 200 || p === 100) {
+                            if (toastId) updateToast(toastId, `Downloading... ${p.toFixed(0)}%`, 'info');
+                            lastUpdate = now;
+                        }
+                    }
+                });
+
+                // Dismiss progress toast
+                if (toastId) dismissToast(toastId);
+
+                // Show distinct success toast
+                setTimeout(() => showToast('Download complete! File saved.', 'success'), 500);
+                return;
+            }
+
+            // FALLBACK: Legacy Blob Download
+            if (isLargeFile && !hasNativeFS) {
+                console.warn('Large file download requiring memory blob (Native FS not supported)');
+                if (toastId) updateToast(toastId, 'Warning: Large file, may consume high memory...', 'warning');
+            }
+
+            // 3. Fetch Raw Encrypted Content
+            const contentResponse = await api.get(`/files/raw/${file.id}`, {
+                responseType: 'blob',
+                onDownloadProgress: (progressEvent) => {
+                    const total = progressEvent.total || file.file_size;
+                    const percent = (progressEvent.loaded / total) * 100;
+                    if (toastId) updateToast(toastId, `Downloading... ${percent.toFixed(0)}%`, 'info');
+                }
+            });
+            const encryptedBlob = contentResponse.data;
+
+            if (toastId) updateToast(toastId, 'Decrypting locally... (Do not close)', 'info');
+
             // 4. Decrypt Content
-            const decryptedBytes = await decryptFile(encryptedBlob, downloadInfo.data.chunks || null, fileKey); // Nonce is inside the blob for v2
+            // Allow UI to update before heavy crypto
+            await new Promise(r => setTimeout(r, 50));
+
+            const headerNonce = fileKeyNonce;
+            const chunks = downloadInfo.data.chunks;
+
+            const decryptedBytes = await decryptFile(encryptedBlob, (chunks && chunks.length > 0) ? chunks : headerNonce, fileKey);
 
             // 5. Trigger Browser Download
             const blob = new Blob([decryptedBytes as unknown as BlobPart], { type: file.mime_type });
@@ -273,11 +393,14 @@ export const FoldersPage = () => {
             // Cleanup
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+
+            if (toastId) dismissToast(toastId);
             showToast('Download complete', 'success');
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Download failed:', error);
-            showToast('Failed to download file', 'error');
+            if (toastId) dismissToast(toastId);
+            showToast(`Download failed: ${error.message}`, 'error');
         }
     };
 
@@ -314,33 +437,26 @@ export const FoldersPage = () => {
             const currentFolderKey = decryptFolderKey(currentFolderKeyEncrypted, currentFolderKeyNonce, masterKey);
             const fileKey = decryptFileKey(currentFileKeyEncrypted, currentFileKeyNonce, currentFolderKey);
 
-            // 3. Get the target folder's key (or root folder's key)
-            let targetFolderKey: Uint8Array;
+            // 3. Resolve actual target ID and folder key
+            // In Transparent Root mode, 'null' target means moving to the primaryRoot.
+            const actualTargetId = targetFolderId || primaryRootId;
 
-            if (targetFolderId === null) {
-                // Moving to root - get root folder's key
-                const rootFolderResponse = await foldersAPI.list(null);
-                const rootFolder = rootFolderResponse.folders?.find((f: any) => f.parent_id === null);
-                if (!rootFolder?.id) {
-                    throw new Error('Root folder not found');
-                }
-                const { key: folderKeyEncryptedBase64, nonce: folderKeyNonceBase64 } = await foldersAPI.getKey(rootFolder.id);
-                const folderKeyEncrypted = fromBase64(folderKeyEncryptedBase64);
-                const folderKeyNonce = fromBase64(folderKeyNonceBase64);
-                targetFolderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
-            } else {
-                // Moving to a specific folder
-                const { key: folderKeyEncryptedBase64, nonce: folderKeyNonceBase64 } = await foldersAPI.getKey(targetFolderId);
-                const folderKeyEncrypted = fromBase64(folderKeyEncryptedBase64);
-                const folderKeyNonce = fromBase64(folderKeyNonceBase64);
-                targetFolderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
+            if (actualTargetId === null) {
+                throw new Error('Destination folder not found.');
             }
+
+            const { key: folderKeyEncryptedBase64, nonce: folderKeyNonceBase64 } = await foldersAPI.getKey(actualTargetId);
+            const folderKeyEncrypted = fromBase64(folderKeyEncryptedBase64);
+            const folderKeyNonce = fromBase64(folderKeyNonceBase64);
+            const targetFolderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
 
             // 4. Re-encrypt the file key with the target folder's key
             const reencryptedFileKey = encryptFileKey(fileKey, targetFolderKey);
 
             // 5. Call the API with re-encrypted keys
-            await filesAPI.move(fileId, targetFolderId, {
+            // We still send targetFolderId (which might be null) to the server if that's what's intended,
+            // but for a true Transparent Root, the server move should probably target actualTargetId.
+            await filesAPI.move(fileId, actualTargetId, {
                 fileKeyEncrypted: toBase64(reencryptedFileKey.encrypted),
                 fileKeyNonce: toBase64(reencryptedFileKey.nonce)
             });
@@ -398,6 +514,17 @@ export const FoldersPage = () => {
             currentId = parent;
             attempts++;
         }
+        // Robust Root Hiding:
+        // Any folder with parent_id === null is a terminal root.
+        // We hide it because the breadcrumb already has a "Home" button for the base level.
+        if (path.length > 0) {
+            const firstId = path[0].id;
+            const parentId = structureMap.get(firstId);
+            if (parentId === null) {
+                path.shift();
+            }
+        }
+
         return path;
     };
 
@@ -431,7 +558,7 @@ export const FoldersPage = () => {
                     <div className="flex-1 min-w-0 mr-4">
                         <Breadcrumbs
                             path={getBreadcrumbPath()}
-                            onNavigate={setSelectedFolderId}
+                            onNavigate={handleNavigate}
                         />
                     </div>
                     <motion.button
@@ -485,7 +612,7 @@ export const FoldersPage = () => {
                                         file_count: folder.file_count,
                                         subfolder_count: folder.subfolder_count,
                                         folder_size: folder.folder_size,
-                                        onNavigate: () => setSelectedFolderId(folder.id),
+                                        onNavigate: () => handleNavigate(folder.id),
                                         onDelete: () => handleDeleteFolder(folder.id),
                                     })),
                                     ...displayFiles.map(file => ({

@@ -383,16 +383,23 @@ export async function encryptChunk(
         ? fromBase64(pushState.header as unknown as string)
         : pushState.header;
 
+    console.log(`[v2-crypto] > Chunk Header (Nonce): ${toHex(header)}`);
+
     // 2. Encrypt Data in 64MB blocks (Standard)
     const encryptedParts: Uint8Array[] = [];
     const CHUNK_SIZE = 64 * 1024 * 1024;
 
     let offset = 0;
+    let subChunkIndex = 0;
+
     while (offset < chunkBlob.size) {
         const end = Math.min(offset + CHUNK_SIZE, chunkBlob.size);
         const isLast = end >= chunkBlob.size;
 
-        const chunkData = new Uint8Array(await chunkBlob.slice(offset, end).arrayBuffer());
+        // Slice safely
+        const slice = chunkBlob.slice(offset, end);
+        const chunkData = new Uint8Array(await slice.arrayBuffer());
+
         const encrypted = sodium.crypto_secretstream_xchacha20poly1305_push(
             pushState.state,
             chunkData,
@@ -400,11 +407,17 @@ export async function encryptChunk(
             isLast ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE
         );
         encryptedParts.push(encrypted as Uint8Array);
+
+        if (subChunkIndex % 5 === 0) console.log(`[v2-crypto] >> Sub-chunk ${subChunkIndex}: ${chunkData.length} bytes -> ${encrypted.length} bytes (Last: ${isLast})`);
+
         offset = end;
+        subChunkIndex++;
     }
 
     // 3. Construct Blob (Ciphertext Only - Header is returned separately as 'nonce' for DB)
     const encryptedChunk = new Blob(encryptedParts as any, { type: 'application/octet-stream' });
+    console.log(`[v2-crypto] ✅ Chunk encrypted. Total size: ${encryptedChunk.size}`);
+
     return { encryptedChunk, nonce: header };
 }
 
@@ -520,68 +533,114 @@ export async function decryptFile(
     const decryptedParts: Uint8Array[] = [];
     let offset = 0;
 
-    // Detect if we are using the Segmented Stream Protocol (SSP)
+    // Detect if we are using the Segmented Stream Protocol (SSP) OR Metadata-based segmentation
     const isSegmented = Array.isArray(providedChunksOrNonce) && providedChunksOrNonce.length > 0;
-    const providedNonce = (!isSegmented && providedChunksOrNonce instanceof Uint8Array) ? providedChunksOrNonce : null;
+
+    // Track current chunk index if segmented
+    let chunkIndex = 0;
 
     try {
         while (offset < encryptedBlob.size) {
             let currentSegmentSize = 0;
-            let currentHeader: Uint8Array;
+            let currentHeader: Uint8Array | undefined;
 
             if (isSegmented) {
-                // 1. Read 4-byte Size Header (Segmented Stream Protocol)
-                if (offset + 4 > encryptedBlob.size) break;
-                const sizeSlice = encryptedBlob.slice(offset, offset + 4);
-                const sizeBuf = new Uint8Array(await sizeSlice.arrayBuffer());
-                const view = new DataView(sizeBuf.buffer);
-                currentSegmentSize = view.getUint32(0, true);
-                offset += 4;
-                console.log(`[v2-crypto] SSP: Reading segment of total size ${currentSegmentSize}`);
-            }
+                // METADATA SEGMENTATION: Use the size and nonce provided in the chunks array
+                const chunks = providedChunksOrNonce as any[];
+                if (chunkIndex >= chunks.length) break; // Should not happen if sizes match
 
-            // 2. Determine Header for current segment
-            if (offset === 0 && providedNonce && providedNonce.length === headerSize) {
-                currentHeader = providedNonce;
+                const chunkMeta = chunks[chunkIndex];
+                currentSegmentSize = chunkMeta.size;
 
-                // Peek at the start of the blob to see if the header is also embedded.
-                // If it is, we MUST skip it to avoid treating the header as ciphertext.
-                const peekSlice = encryptedBlob.slice(0, headerSize);
-                const peekData = new Uint8Array(await peekSlice.arrayBuffer());
+                // Ensure nonce is Uint8Array
+                const nonceValue = chunkMeta.nonce;
+                currentHeader = typeof nonceValue === 'string' ? fromBase64(nonceValue) : (nonceValue as Uint8Array);
 
-                if (sodium.memcmp(peekData, currentHeader)) {
-                    offset += headerSize;
-                    console.log('[v2-crypto] Skipping matching embedded header');
-                } else {
-                    console.log('[v2-crypto] Using provided external header (not embedded)');
-                }
+                console.log(`[v2-crypto] Decrypting Chunk ${chunkMeta.index}`);
+                console.log(`[v2-crypto] > Meta Size: ${currentSegmentSize}`);
+                console.log(`[v2-crypto] > Header (Nonce): ${toHex(currentHeader)}`);
+                console.log(`[v2-crypto] > File Key (start): ${toHex(fileKey.slice(0, 8))}...`);
+
+                chunkIndex++;
             } else {
-                if (offset + headerSize > encryptedBlob.size) break; // Finished
-                const headerSlice = encryptedBlob.slice(offset, offset + headerSize);
-                currentHeader = new Uint8Array(await headerSlice.arrayBuffer());
-                offset += headerSize;
-                console.log('[v2-crypto] Initializing sub-stream from embedded header');
+                // MONOLITHIC / STREAM SEGMENTATION
+
+                // MONOLITHIC / STREAM SEGMENTATION
+
+                // 2. Read Header from the start of the stream (Standard Sodium SecretStream)
+                if (offset === 0) {
+                    if (encryptedBlob.size < headerSize) {
+                        throw new Error('File too small to contain header');
+                    }
+
+                    const headerSlice = encryptedBlob.slice(0, headerSize);
+                    currentHeader = new Uint8Array(await headerSlice.arrayBuffer());
+                    offset += headerSize;
+                    console.log(`[v2-crypto] Initialized monolithic stream with embedded header (${toHex(currentHeader)})`);
+                } else if (!currentHeader) {
+                    // Should verify if we have a header for subsequent offsets in monolithic mode
+                    // In monolithic, header is only read once. We need to persist it?
+                    // Actually, init_pull is called inside the loop.
+                    // sodium.crypto_secretstream_xchacha20poly1305_init_pull NEEDS the header.
+                    // But for monolithic, we only init once?
+                    // NO. The outer loop is `while offset < size`.
+                    // If we loop, we call init_pull AGAIN.
+                    // For monolithic, we should NOT invoke init_pull multiple times on the same stream unless we use the STATE.
+                    // But we DON'T persist 'pullState' across outer loop iterations!
+                    // The outer loop structure assumes SEGMENTS.
+
+                    // CRITICAL LOGIC FIX:
+                    // Monolithic files should be ONE segment.
+                    // If 'isSegmented' is false, the outer loop should ideally run ONCE.
+                    // But currently it runs 'while offset < size'.
+                    // Inside, 'while (!segmentFinished)'.
+                    // For monolithic, segmentFinished only happens at END of file.
+                    // So the inner loop should consume the whole file.
+                    // If it does, offset increases to end. Outer loop terminates.
+                    // So 'currentHeader' is only needed once.
+                    // However, compiler thinks 'currentHeader' might be undefined if we somehow loop again.
+                    throw new Error("Unexpected state: Monolithic loop iteration without header");
+                }
             }
 
-            const pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(currentHeader, fileKey);
+            let pullState: any; // Type as 'any' or 'StateAddress' if available locally
+
+            // Initialize pullState if not already initialized (for monolithic) or for each new segment
+            if (isSegmented) {
+                if (!currentHeader) throw new Error("Missing Chunk Header");
+                pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(currentHeader, fileKey);
+            } else {
+                // Monolithic: Init once
+                if (!pullState) {
+                    if (!currentHeader) throw new Error("Missing Monolithic Header");
+                    pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(currentHeader, fileKey);
+                }
+            }
+
 
             // 3. Decrypt this segment
             let segmentFinished = false;
-            let segmentBytesRead = headerSize; // bytes read so far relative to currentSegmentSize
+            let segmentBytesRead = 0; // Bytes read for this segment's CIPHERTEXT (excluding externally handled headers)
 
-            // Special Case: if we are using SSP and we just read the header from the stream (offset was incremented),
-            // then segmentBytesRead is correctly headerSize.
-            // If we are at offset 0 and using an external providedNonce, we might have skipped the header.
-            // The logic above already handles offset incrementing correctly.
+            // Special Case: If using embedded headers (monolithic), the header was just read from offset.
+            // But currentSegmentSize is not defined for monolithic (it runs until stream end/tag).
 
             while (offset < encryptedBlob.size && !segmentFinished) {
                 let nextPullSize: number;
 
                 if (isSegmented) {
-                    // Pull the REMAINING ciphertext in this segment
-                    // currentSegmentSize includes the header. segmentBytesRead also includes the header.
-                    // So, the remaining ciphertext is currentSegmentSize - segmentBytesRead.
+                    // Start of Chunk: We haven't read any ciphertext yet.
+                    // currentSegmentSize is the TOTAL size of the stored chunk (which usually includes overhead?)
+                    // Actually, 'size' in DB from 'fileChunks' is the file size on disk.
+                    // The 'encryptChunk' output is stored directly.
+                    // So 'currentSegmentSize' IS the amount of bytes we need to read from blob.
+
                     nextPullSize = currentSegmentSize - segmentBytesRead;
+
+                    // Cap at standard chunk size if needed, but usually we pull the whole chunk if memory allows?
+                    // Let's pull in 64MB blocks to be safe if chunks are huge.
+                    nextPullSize = Math.min(nextPullSize, STANDARD_ENCRYPTED_CHUNK);
+
                     if (nextPullSize <= 0) {
                         segmentFinished = true;
                         break;
@@ -597,69 +656,12 @@ export async function decryptFile(
                 const chunkSlice = encryptedBlob.slice(offset, offset + nextPullSize);
                 const chunkData = new Uint8Array(await chunkSlice.arrayBuffer());
 
+                // console.log(`[v2-crypto] Pulling block at offset ${offset} (size: ${chunkData.length})`);
+
                 const result = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, chunkData, null);
 
                 if (!result) {
-                    // Fail-safe: Tag mismatch.
-                    // Scenario A: We tried using providedNonce but the file actually has a DIFFERENT embedded header (Stale DB nonce).
-                    // Scenario B: We are legacy large-block.
-
-                    if (offset === 0 && providedNonce && !isSegmented) {
-                        console.warn('[v2-crypto] Decryption with provided nonce failed. Attempting to use embedded header...');
-                        // Reset and try using the start of the blob as the header
-                        const headerSlice = encryptedBlob.slice(0, headerSize);
-                        const embeddedHeader = new Uint8Array(await headerSlice.arrayBuffer());
-
-                        // Treat the blob as [Header][Ciphertext]
-                        const newPullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(embeddedHeader, fileKey);
-
-                        // We need to pull from offset + headerSize now? 
-                        // Wait, previous attempt was offset=0 to length.
-                        // New attempt is offset=headerSize to length.
-                        const retryOffset = headerSize;
-                        const retryLength = nextPullSize - headerSize; // Just an approximation, we need to read appropriately
-
-                        if (retryLength > 0) {
-                            const retrySlice = encryptedBlob.slice(retryOffset, retryOffset + retryLength);
-                            const retryData = new Uint8Array(await retrySlice.arrayBuffer());
-                            const retryResult = sodium.crypto_secretstream_xchacha20poly1305_pull(newPullState, retryData, null);
-
-                            if (retryResult) {
-                                console.log('[v2-crypto] ✅ Fallback to embedded header succeeded.');
-                                decryptedParts.push(retryResult.message as Uint8Array);
-
-                                // Update main loop state to continue from here if there were more chunks (unlikely for monolithic, but good for correctness)
-                                // actually, if we switch strategies we probably finish here for the first chunk.
-                                // For simplicity, let's assume this fixes the *first* block.
-                                // We need to update `pullState` for subsequent blocks if any?
-                                // Replacing the `pullState` object reference is tricky since it's const in this scope (or let?).
-                                // Let's just break and handle it, or we need to refactor to allow state swap.
-
-                                // Given this is likely a small file (monolithic), we can just return this result if it finished?
-                                if (retryResult.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL) {
-                                    segmentFinished = true;
-                                    offset += nextPullSize; // We consumed the whole block (header + ciphertext) effectively
-                                    break; // Break inner loop
-                                }
-
-                                // If not final, we are in a weird state where we verified the header but need to continue.
-                                // This requires refactoring the outer loop variable `pullState`.
-                            }
-                        }
-                    }
-
-                    // Emergency fallback: legacy large block (already existing)
-                    if (!isSegmented && decryptedParts.length === 0) {
-                        console.warn('[v2-crypto] Standard pull failed. Trying legacy large-block recovery...');
-                        const fallbackData = new Uint8Array(await encryptedBlob.slice(offset).arrayBuffer());
-                        const fallbackResult = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, fallbackData, null);
-                        if (fallbackResult) {
-                            decryptedParts.push(fallbackResult.message as Uint8Array);
-                            offset = encryptedBlob.size;
-                            segmentFinished = true;
-                            break;
-                        }
-                    }
+                    console.error(`[v2-crypto] ❌ Pull failed at offset ${offset}. ChunkData len: ${chunkData.length}. Header: ${isSegmented ? 'Meta' : 'Stream'}`);
                     throw new Error('Decryption failed: Tag/Ciphertext mismatch or stream corruption');
                 }
 
@@ -702,10 +704,23 @@ export function createDecryptionStream(fileKey: Uint8Array, header: Uint8Array):
 
     let pullState: any = null;
     let buffer = new Uint8Array(0);
+    let bytesProcessed = 0;
+    let chunkCount = 0;
+
+    console.log(`[v2-crypto] 🚀 Stream Decrypt Init. Header (Hex): ${toHex(header)} (Length: ${header.length}B)`);
+    console.log(`[v2-crypto] > File Key (start): ${toHex(fileKey.slice(0, 8))}...`);
 
     return new TransformStream({
         start() {
-            pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, fileKey);
+            try {
+                if (header.length !== sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES) {
+                    throw new Error(`Invalid header length: expected ${sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES}, got ${header.length}`);
+                }
+                pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, fileKey);
+            } catch (e) {
+                console.error('[v2-crypto] ❌ Stream Init Pull Failed:', e);
+                throw e;
+            }
         },
         transform(chunk, controller) {
             // Buffer incoming bytes until we have a full crypto block
@@ -716,29 +731,60 @@ export function createDecryptionStream(fileKey: Uint8Array, header: Uint8Array):
 
             // Process chunks of STANDARD_ENCRYPTED_CHUNK size
             while (buffer.length >= STANDARD_ENCRYPTED_CHUNK) {
-                const toProcess = buffer.slice(0, STANDARD_ENCRYPTED_CHUNK);
+                const toProcess = buffer.subarray(0, STANDARD_ENCRYPTED_CHUNK);
+                // Use slice for the remaining buffer as it creates a fresh copy, allowing the old large buffer to be GC'd
                 buffer = buffer.slice(STANDARD_ENCRYPTED_CHUNK);
 
                 try {
                     const result = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, toProcess, null);
-                    if (!result) throw new Error('Decryption failed: Tag/Ciphertext mismatch');
+                    if (!result) {
+                        throw new Error(`Decryption failed: Tag/Ciphertext mismatch at segment offset ${bytesProcessed} (Block Index ${chunkCount})`);
+                    }
                     controller.enqueue(result.message as Uint8Array);
+                    bytesProcessed += toProcess.length;
+                    chunkCount++;
+
+                    if (chunkCount % 5 === 0) {
+                        console.log(`[v2-crypto] >> Decrypted Block ${chunkCount} (Total: ${(bytesProcessed / 1024 / 1024).toFixed(0)} MB)`);
+                    }
+
+                    if (result.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL && buffer.length > 0) {
+                        console.warn(`[v2-crypto] ⚠️ Received TAG_FINAL but buffer still has ${buffer.length} bytes! Stream might be corrupted or combined incorrectly.`);
+                    }
                 } catch (e) {
+                    console.error(`[v2-crypto] ❌ Stream block decryption failed:`, {
+                        offset: bytesProcessed,
+                        blockIndex: chunkCount,
+                        blockSize: toProcess.length,
+                        bufferRemaining: buffer.length,
+                        error: e
+                    });
                     controller.error(e);
                     return;
                 }
             }
         },
         flush(controller) {
-            // Process any remaining bytes (the final chunk)
+            // Process any remaining bytes (the final smaller chunk)
             if (buffer.length > 0) {
                 try {
+                    console.log(`[v2-crypto] 🏁 Stream Flush: processing final ${buffer.length} bytes at offset ${bytesProcessed}`);
+
+                    if (buffer.length < CRYPTO_OVERHEAD) {
+                        throw new Error(`Final block too small: expected at least ${CRYPTO_OVERHEAD} bytes, got ${buffer.length}. The file might be truncated.`);
+                    }
+
                     const result = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, buffer, null);
-                    if (!result) throw new Error('Decryption failed on final block');
+                    if (!result) throw new Error('Decryption failed on final block (Mismatch)');
+
                     controller.enqueue(result.message as Uint8Array);
+                    console.log(`[v2-crypto] ✅ Stream Flush Success.`);
                 } catch (e) {
+                    console.error('[v2-crypto] ❌ Stream Flush Failed:', e);
                     controller.error(e);
                 }
+            } else {
+                console.log(`[v2-crypto] ✅ Stream Finished smoothly (no remaining bytes).`);
             }
         }
     });

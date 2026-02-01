@@ -19,6 +19,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { RevokeConfirmationModal } from '../components/RevokeConfirmationModal';
 import api from '../lib/api';
+import { useQuotaCheck } from '../components/QuotaBanner';
 
 interface SharedFile {
     id: number;
@@ -32,6 +33,7 @@ interface SharedFile {
 export const SharedLinksPage = () => {
     const { showToast } = useToast();
     const { metadata, masterKey } = useAuth();
+    const { isOverQuota } = useQuotaCheck();
     const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
     const [filteredFiles, setFilteredFiles] = useState<SharedFile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -99,6 +101,11 @@ export const SharedLinksPage = () => {
 
     const copyLink = async (file: SharedFile) => {
         try {
+            if (isOverQuota) {
+                showToast('Storage quota exceeded. Link generation disabled.', 'error');
+                return;
+            }
+
             if (!masterKey) {
                 showToast('Please log in again to copy links', 'error');
                 return;
@@ -435,9 +442,11 @@ export const SharedLinksPage = () => {
                                                 }}
                                                 className={`p-1.5 sm:p-2 rounded-lg transition-all transform active:scale-95 ${copiedId === file.id
                                                     ? 'bg-primary/20 text-primary'
-                                                    : 'hover:bg-primary/20 text-text-muted hover:text-primary'
+                                                    : isOverQuota
+                                                        ? 'opacity-30 cursor-not-allowed grayscale'
+                                                        : 'hover:bg-primary/20 text-text-muted hover:text-primary'
                                                     }`}
-                                                title="Copy share link"
+                                                title={isOverQuota ? 'Quota Exceeded - Sharing Disabled' : 'Copy share link'}
                                             >
                                                 {copiedId === file.id ? (
                                                     <>

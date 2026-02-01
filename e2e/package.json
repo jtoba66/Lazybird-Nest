@@ -1,0 +1,12 @@
+{
+    "name": "nest-e2e-tests",
+    "version": "1.0.0",
+    "description": "End-to-end browser tests for Nest",
+    "main": "test.js",
+    "scripts": {
+        "test": "node test.js"
+    },
+    "dependencies": {
+        "puppeteer": "^22.0.0"
+    }
+}

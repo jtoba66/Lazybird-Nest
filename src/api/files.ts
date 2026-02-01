@@ -32,25 +32,14 @@ export interface DownloadInfo {
 
 export const filesAPI = {
     async upload(
+        fileId: number,
         encryptedFile: Blob,
-        filename: string,
-        mimeType: string,
-        folderId?: number,
-        keys?: { fileKeyEncrypted: string; fileKeyNonce: string },
         onProgress?: (progress: number) => void
-    ): Promise<UploadResponse> {
+    ): Promise<{ success: boolean }> {
         const formData = new FormData();
         formData.append('file', encryptedFile, 'encrypted');
-        formData.append('filename', filename);
-        formData.append('mimeType', mimeType);
-        if (folderId) formData.append('folderId', String(folderId));
-        if (keys) {
-            formData.append('fileKeyEncrypted', keys.fileKeyEncrypted);
-            formData.append('fileKeyNonce', keys.fileKeyNonce);
-        }
-        formData.append('isChunked', 'false');
 
-        const { data } = await api.post('/files/upload', formData, {
+        const { data } = await api.post(`/files/${fileId}/upload`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
             onUploadProgress: (progressEvent) => {
                 if (progressEvent.total && onProgress) {
@@ -64,14 +53,14 @@ export const filesAPI = {
     },
 
     // v3 Chunked Upload
-    async initChunkedUpload(metadata: {
+    async initUpload(metadata: {
         filename: string;
         file_size: number;
         mimeType: string;
-        folderId?: number;
+        folderId?: number | null;
         fileKeyEncrypted: string;
         fileKeyNonce: string;
-    }): Promise<{ success: boolean; file_id: number; share_token: string }> {
+    }): Promise<{ success: boolean; file_id: number; share_token: string; is_chunked: boolean }> {
         const { data } = await api.post('/files/upload/init', metadata);
         return data;
     },
@@ -169,6 +158,11 @@ export const filesAPI = {
 
     async restore(fileId: number): Promise<{ success: boolean; message: string }> {
         const { data } = await api.post(`/files/restore/${fileId}`);
+        return data;
+    },
+
+    async deleteForever(fileId: number): Promise<{ success: boolean; message: string }> {
+        const { data } = await api.delete(`/files/${fileId}/permanent`);
         return data;
     }
 };

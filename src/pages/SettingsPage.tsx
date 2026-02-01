@@ -20,6 +20,8 @@ import { storageAPI } from '../api/storage';
 import { filesAPI } from '../api/files';
 import { useToast } from '../contexts/ToastContext';
 import { PasswordChangeModal } from '../components/PasswordChangeModal';
+import { useSearchParams } from 'react-router-dom';
+import { billingAPI } from '../api/billing';
 
 export const SettingsPage = () => {
     const { user } = useAuth();
@@ -46,6 +48,42 @@ export const SettingsPage = () => {
             })
             .finally(() => { });
     }, []);
+
+    // Handle Stripe Redirect (Upgrade Success)
+    const [searchParams, setSearchParams] = useSearchParams();
+    const syncAttempted = useState(false); // Use state to prevent double-firing in Strict Mode
+
+    useEffect(() => {
+        const upgrade = searchParams.get('upgrade');
+        const sessionId = searchParams.get('session_id');
+
+        if (upgrade === 'success' && sessionId && !syncAttempted[0]) {
+            syncAttempted[1](true); // Mark as attempted immediately
+
+            const syncSubscription = async () => {
+                try {
+                    // 1. Call Sync Endpoint directly (skip "Verifying" toast for speed)
+                    await billingAPI.syncSubscription(sessionId);
+
+                    // 2. Success Feedback
+                    showToast('Upgraded to Pro! Enjoy your 100GB.', 'success');
+
+                    // 3. Refresh Quota & UI
+                    const newQuota = await storageAPI.getQuota();
+                    setQuota(newQuota);
+
+                    // Note: Sidebar might trail slightly until next full reload, but that's smoother than forcing it now.
+                } catch (error) {
+                    console.error('Sync failed:', error);
+                    showToast('Subscription verification failed. Please contact support.', 'error');
+                }
+            };
+
+            syncSubscription();
+            // Clean URL silently
+            setSearchParams({}, { replace: true });
+        }
+    }, [searchParams]);
 
     const formatBytes = (bytes: number | undefined) => {
         if (!bytes || bytes === 0) return '0 B';
@@ -174,10 +212,10 @@ export const SettingsPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                 {/* Left Column: Profile & Storage */}
-                <div className="lg:col-span-5 space-y-6">
+                <div className="lg:col-span-5 flex flex-col gap-6 h-full">
 
                     {/* Profile Card */}
-                    <div className="glass-panel p-6 sm:p-8 flex flex-col items-center text-center relative overflow-hidden group">
+                    <div className="glass-panel p-6 sm:p-8 flex flex-col items-center text-center relative overflow-hidden group shrink-0">
                         <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 
                         <div className="w-20 h-20 sm:w-28 sm:h-28 bg-gradient-to-br from-white/10 to-white/5 rounded-full flex items-center justify-center mb-6 border-4 border-white/5 shadow-2xl relative">
@@ -189,7 +227,7 @@ export const SettingsPage = () => {
 
                         <h2 className="text-xl sm:text-2xl font-bold text-text-main mb-1">{user?.email || 'User'}</h2>
                         <div className="flex items-center gap-2 text-sm text-text-muted mb-6">
-                            <ShieldCheck className="text-green-400" weight="fill" />
+                            <ShieldCheck className="text-blue-400" weight="fill" />
                             <span>Account Encrypted</span>
                         </div>
 
@@ -203,7 +241,7 @@ export const SettingsPage = () => {
                     </div>
 
                     {/* Storage Widget */}
-                    <div className="glass-panel p-5 sm:p-6 relative overflow-hidden group">
+                    <div className="glass-panel p-5 sm:p-6 relative overflow-hidden group shrink-0">
                         {/* Background glow */}
                         <div className="absolute -top-10 -right-10 w-48 h-48 bg-primary/10 rounded-full blur-3xl group-hover:bg-primary/20 transition-all duration-700"></div>
 
@@ -264,6 +302,52 @@ export const SettingsPage = () => {
                             )}
                         </div>
                     </div>
+
+                    {/* Danger Zone Group (Left Column - Matches Height) */}
+                    <div className="flex-1 flex flex-col gap-4 min-h-0">
+                        <h3 className="text-xl font-bold text-error flex items-center gap-2 px-1 shrink-0">
+                            <Warning weight="fill" size={24} />
+                            Danger Zone
+                        </h3>
+
+                        {/* Clear Local Cache - Stretched */}
+                        <div className="flex-1 flex flex-col justify-between border border-error/20 bg-error/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-error/10 transition-colors"></div>
+                            <div className="relative z-10 mb-2">
+                                <h4 className="font-bold text-text-main mb-2">Clear Local Cache</h4>
+                                <p className="text-sm text-text-muted leading-relaxed">
+                                    Removes all local encryption keys and session data.
+                                </p>
+                            </div>
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={clearCache}
+                                className="w-full py-2.5 bg-error/10 border border-error/30 text-error rounded-xl text-sm font-bold hover:bg-error hover:text-white transition-all relative z-10 mt-auto"
+                            >
+                                Clear Cache
+                            </motion.button>
+                        </div>
+
+                        {/* Permanent Deletion - Stretched */}
+                        <div className="flex-1 flex flex-col justify-between border border-error/20 bg-error/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-error/10 transition-colors"></div>
+                            <div className="relative z-10 mb-2">
+                                <h4 className="font-bold text-text-main mb-2">Delete Account</h4>
+                                <p className="text-sm text-text-muted leading-relaxed">
+                                    Permanently delete your account and scrub your identity.
+                                </p>
+                            </div>
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => setShowDeleteModal(true)}
+                                className="w-full py-2.5 bg-error text-white rounded-xl text-sm font-bold hover:shadow-[0_0_20px_rgba(var(--error-rgb),0.4)] transition-all relative z-10 mt-auto"
+                            >
+                                Delete Account
+                            </motion.button>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Right Column: Security & Privacy */}
@@ -272,7 +356,7 @@ export const SettingsPage = () => {
                     {/* Security Center */}
                     <div className="glass-panel p-8 flex flex-col">
                         <h3 className="text-xl font-bold text-text-main mb-6 flex items-center gap-2">
-                            <ShieldCheck weight="duotone" className="text-green-400" size={28} />
+                            <ShieldCheck weight="duotone" className="text-blue-400" size={28} />
                             Security Center
                         </h3>
 
@@ -357,7 +441,7 @@ export const SettingsPage = () => {
                             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
                                 <div className="px-5 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
                                     <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Transparency Report (SAR)</span>
-                                    <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold">ZK VERIFIED</span>
+                                    <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">ZK VERIFIED</span>
                                 </div>
                                 <div className="p-0">
                                     <table className="w-full text-left text-xs border-collapse">
@@ -370,23 +454,23 @@ export const SettingsPage = () => {
                                         <tbody className="divide-y divide-white/5">
                                             <tr>
                                                 <td className="px-5 py-3 text-text-main font-medium">Account Email</td>
-                                                <td className="px-5 py-3 text-red-400 font-bold uppercase tracking-tight">Plaintext (Public)</td>
+                                                <td className="px-5 py-3 text-slate-500 font-medium uppercase tracking-tight">Plain Text</td>
                                             </tr>
                                             <tr>
                                                 <td className="px-5 py-3 text-text-main font-medium">Billing & Quota</td>
-                                                <td className="px-5 py-3 text-red-400 font-bold uppercase tracking-tight">Plaintext (Public)</td>
+                                                <td className="px-5 py-3 text-slate-500 font-medium uppercase tracking-tight">Plain Text</td>
                                             </tr>
                                             <tr>
                                                 <td className="px-5 py-3 text-text-main font-medium">File & Folder Names</td>
-                                                <td className="px-5 py-3 text-green-400 font-bold uppercase tracking-tight">Zero-Knowledge (Hidden)</td>
+                                                <td className="px-5 py-3 text-slate-700 font-medium uppercase tracking-tight">Encrypted</td>
                                             </tr>
                                             <tr>
                                                 <td className="px-5 py-3 text-text-main font-medium">File Content (Blobs)</td>
-                                                <td className="px-5 py-3 text-green-400 font-bold uppercase tracking-tight">Zero-Knowledge (Hidden)</td>
+                                                <td className="px-5 py-3 text-slate-700 font-medium uppercase tracking-tight">Encrypted</td>
                                             </tr>
                                             <tr>
                                                 <td className="px-5 py-3 text-text-main font-medium">Vault Keys</td>
-                                                <td className="px-5 py-3 text-green-400 font-bold uppercase tracking-tight">Zero-Knowledge (Hidden)</td>
+                                                <td className="px-5 py-3 text-slate-700 font-medium uppercase tracking-tight">Encrypted</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -422,73 +506,27 @@ export const SettingsPage = () => {
                 </div>
             </div>
 
-            {/* Danger Zone */}
-            <div className="mt-8 space-y-4">
-                <h3 className="text-xl font-bold text-error flex items-center gap-2 px-1">
-                    <Warning weight="fill" size={24} />
-                    Danger Zone
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Clear Local Cache */}
-                    <div className="border border-error/20 bg-error/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between group">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-error/10 transition-colors"></div>
+            {/* Sentry Test Section (Bottom - Admin Only) */}
+            <div className="mt-8">
+                {user?.email === 'josephtoba29@gmail.com' && (
+                    <div className="border border-blue-500/20 bg-blue-500/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between group max-w-xl mx-auto">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-blue-500/10 transition-colors"></div>
                         <div className="relative z-10 mb-6">
-                            <h4 className="font-bold text-text-main mb-2">Clear Local Cache</h4>
+                            <h4 className="font-bold text-text-main mb-2">Sentinel Stress Test</h4>
                             <p className="text-sm text-text-muted leading-relaxed">
-                                Removes all local encryption keys and session data from this browser. This will sign you out.
+                                Trigger an intentional UI exception to verify Sentry error tracking and sentinel reporting.
                             </p>
                         </div>
                         <motion.button
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={clearCache}
-                            className="w-full py-2.5 bg-error/10 border border-error/30 text-error rounded-xl text-sm font-bold hover:bg-error hover:text-white transition-all relative z-10"
+                            onClick={() => setTriggerCrash(true)}
+                            className="w-full py-2.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-xl text-sm font-bold hover:bg-blue-500 hover:text-white transition-all relative z-10"
                         >
-                            Clear Cache
+                            Test Sentinel
                         </motion.button>
                     </div>
-
-                    {/* Permanent Deletion */}
-                    <div className="border border-error/20 bg-error/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between group">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-error/10 transition-colors"></div>
-                        <div className="relative z-10 mb-6">
-                            <h4 className="font-bold text-text-main mb-2">Delete Account</h4>
-                            <p className="text-sm text-text-muted leading-relaxed">
-                                Permanently delete your Nest account and scrub your personal identity. This is <strong>irreversible</strong>.
-                            </p>
-                        </div>
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setShowDeleteModal(true)}
-                            className="w-full py-2.5 bg-error text-white rounded-xl text-sm font-bold hover:shadow-[0_0_20px_rgba(var(--error-rgb),0.4)] transition-all relative z-10"
-                        >
-                            Delete Account
-                        </motion.button>
-                    </div>
-
-                    {/* Sentry Test Card (Admin Only) */}
-                    {user?.email === 'josephtoba29@gmail.com' && (
-                        <div className="border border-blue-500/20 bg-blue-500/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-blue-500/10 transition-colors"></div>
-                            <div className="relative z-10 mb-6">
-                                <h4 className="font-bold text-text-main mb-2">Sentinel Stress Test</h4>
-                                <p className="text-sm text-text-muted leading-relaxed">
-                                    Trigger an intentional UI exception to verify Sentry error tracking and sentinel reporting.
-                                </p>
-                            </div>
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => setTriggerCrash(true)}
-                                className="w-full py-2.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-xl text-sm font-bold hover:bg-blue-500 hover:text-white transition-all relative z-10"
-                            >
-                                Test Sentinel
-                            </motion.button>
-                        </div>
-                    )}
-                </div>
+                )}
             </div>
 
             {/* Account Deletion Modal */}
