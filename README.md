@@ -1,73 +1,167 @@
-# React + TypeScript + Vite
+# Nest
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **Zero-Knowledge Encrypted Cloud Storage System**
+> *Secure by design. Private by default.*
 
-Currently, two official plugins are available:
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Status](https://img.shields.io/badge/status-production_ready-success.svg)
+![Security](https://img.shields.io/badge/encryption-AES--256--GCM-green.svg)
+![Storage](https://img.shields.io/badge/storage-decentralized-purple.svg)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Nest is an enterprise-grade, zero-knowledge cloud storage platform engineered for absolute data privacy. It leverages client-side encryption and decentralized storage networks to ensure that **only the user** holds the keys to their data. The server acts purely as a blind facilitator, having zero visibility into file contents, filenames, or folder structures.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🏗 System Architecture
 
-## Expanding the ESLint configuration
+Nest employs a **Hybrid Zero-Knowledge Architecture**. All sensitive operations (encryption, decryption, key management) occur strictly in the browser. The server handles authentication, metadata synchronization, and encrypted blob storage facilitation.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+```mermaid
+graph TD
+    Client[Client (Browser)] -->|Auth Token| Server[API Server]
+    Client -->|Encrypted Chunks| Jackal[Jackal Storage Protocol]
+    
+    subgraph "Trust Boundary (Client Side)"
+        Client
+        KeyDerivation[Argon2id KDF]
+        Encryption[AES-256-GCM]
+    end
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+    subgraph "Zero-Knowledge Zone (Server)"
+        Server
+        DB[(PostgreSQL)]
+    end
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+    Client -- "1. Login (Auth Hash)" --> Server
+    Server -- "2. salt + encrypted_master_key" --> Client
+    Client -- "3. Derive Key & Unlock Vault" --> KeyDerivation
+    Client -- "4. Encrypt File" --> Encryption
+    Encryption -- "5. Upload Encrypted Blob" --> Server
+    Server -- "6. Proxy to Storage" --> Jackal
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🚀 Key Features
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 🔐 Zero-Knowledge Security
+*   **Client-Side Encryption:** Files are encrypted with `AES-256-GCM` before they ever leave the user's device.
+*   **Encrypted Metadata:** Filenames, folder structures, and file types are encrypted. The database only sees opaque blobs and random UUIDs.
+*   **Master Key Architecture:** A derived Master Key unlocks Folder Keys, which in turn unlock File Keys. This hierarchical key management allows for secure and distinct sharing scopes.
+
+### 💾 Decentralized Storage
+*   **Jackal Protocol Integration:** Files are stored on the Jackal decentralized storage network, ensuring high availability and censorship resistance.
+*   **Chunking & Resiliency:** Large files are split into encrypted chunks, allowing for resumable uploads and handling files up to **10GB**.
+*   **Redundancy:** Files are verified on the Jackal gateway to insure durability.
+
+### ⚡ Enterprise Capabilities
+*   **Secure Sharing:** Create time-bound, encrypted share links. External users decrypt files locally using a hash fragment key (never sent to the server).
+*   **Quota Management:** Granular storage quotas per user tier (Free/Pro/God Mode).
+*   **Trash & Recovery:** Soft-delete functionality with a configurable retention policy (default 24h auto-purge).
+*   **Idempotent Uploads:** Robust upload queue handling to prevent duplicates and race conditions.
+
+---
+
+## 🛠 Technology Stack
+
+### Frontend (Client)
+*   **Framework:** [React 19](https://react.dev/)
+*   **Build Tool:** [Vite](https://vitejs.dev/)
+*   **Language:** TypeScript
+*   **Styling:** TailwindCSS + Phosphor Icons
+*   **Encryption:** `libsodium-wrappers` (WASM), `hash-wasm`
+*   **State Management:** React Context + Optimistic UI updates
+
+### Backend (Server)
+*   **Runtime:** Node.js (Express)
+*   **Database:** PostgreSQL (via [Drizzle ORM](https://orm.drizzle.team/))
+*   **Authentication:** JWT + Argon2id (for password hashing)
+*   **Storage:** Jackal.js SDK
+*   **Security:** Helmet, CORS, Rate Limiting (Express-Rate-Limit)
+*   **Logging:** Winston (Structured logging)
+
+---
+
+## 🚦 Getting Started
+
+### Prerequisites
+*   Node.js v20+
+*   PostgreSQL
+*   Doppler (for environment secret management)
+
+### Installation
+
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/jtoba66/Lazybird-Nest.git
+    cd Lazybird-Nest
+    ```
+
+2.  **Install dependencies (Root & Server)**
+    ```bash
+    npm install
+    cd server && npm install
+    ```
+
+3.  **Environment Setup**
+    Ensure you have access to the configured Doppler project, or create `.env` files matching the schema in `server/src/config/env.ts`.
+
+4.  **Database Migration**
+    ```bash
+    cd server
+    npm run db:push
+    ```
+
+5.  **Run Locally**
+    You can run both client and server concurrently using the root dev script:
+    ```bash
+    # From root directory
+    npm run dev
+    ```
+    *   Frontend: `http://localhost:5173`
+    *   Backend: `http://localhost:3004`
+
+---
+
+## 🛡 Security Deep Dive
+
+### The "No-Knowledge" Guarantee
+Nest is built on the principle that the server is **untrusted**.
+
+1.  **Login Process:**
+    *   User enters email/password.
+    *   Client derives `AuthHash` (for login) and `MasterKey` (for data) independently.
+    *   Only `AuthHash` is sent to the server (over TLS). `MasterKey` **never** leaves the memory of the client device.
+
+2.  **Data Hierarchy:**
+    *   `MasterKey` decrypts -> `RootFolderKey`
+    *   `RootFolderKey` decrypts -> `SubFolderKeys`
+    *   `SubFolderKey` decrypts -> `FileKeys`
+    *   `FileKey` decrypts -> `File Payload`
+
+ This isolation ensures that even if the database is completely compromised, attacker obtains only useless, high-entropy random data.
+
+---
+
+## 📦 Deployment
+
+### Build
+```bash
+# Frontend
+npm run build
+
+# Backend
+cd server && npm run build
 ```
+
+### Production Considerations
+*   **HTTPS is Mandatory:** The Web Crypto API and Service Workers require a secure context.
+*   **WASM Support:** Ensure your web server serves `.wasm` files with the correct MIME type (`application/wasm`).
+*   **Memory Limits:** For handling large file encryption, Node.js heap size may need adjustment (`--max-old-space-size=4096`).
+
+---
+
+## 📄 License
+
+Nest is proprietary software. All rights reserved.
+[MIT License](LICENSE) (if open-source).
