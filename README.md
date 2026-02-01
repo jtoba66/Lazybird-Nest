@@ -43,17 +43,30 @@ graph TD
 
 ```mermaid
 graph TD
-    Client["Client (Browser)"] -->|1. Request File| Server[API Server]
-    Server -->|2. Fetch Blob| Jackal[Jackal Storage]
-    Jackal -->|3. Encrypted Stream| Server
-    Server -->|4. Encrypted Blob| Client
-
-    subgraph "Trust Boundary (Local Device)"
-        Client -->|5. Unlock| Vault[Key Vault]
-        Vault -->|6. Keys| Decrypt[AES-256-GCM]
-        Client -.->|7. Decrypt| Decrypt
-        Decrypt -->|8. View| User[User]
+    subgraph "Untrusted Zone (Cloud)"
+        API[API Server]
+        Storage[Jackal Network]
     end
+
+    subgraph "Trusted Zone (Your Device)"
+        User[User (Human)]
+        Browser["Client (Browser)"]
+        Vault[Key Vault]
+        Crypto[Decryption Engine]
+    end
+
+    %% Request Flow
+    User -->|1. Click File| Browser
+    Browser -->|2. GET /files/:id| API
+    API -->|3. Fetch Encrypted Blob| Storage
+    Storage -->|4. Stream Data| API
+    API -->|5. Return Encrypted Blob| Browser
+
+    %% Decryption Flow
+    Browser -->|6. Retrieve Master Key| Vault
+    Vault -->|7. Derive File Key| Crypto
+    Browser -->|8. Pass Blob| Crypto
+    Crypto -->|9. Render Plaintext| User
 ```
 
 ---
