@@ -141,6 +141,15 @@ Nest is built on the principle that the server is **untrusted**.
 
  This isolation ensures that even if the database is completely compromised, attacker obtains only useless, high-entropy random data.
 
+### 🔐 Cryptography Suite
+Nest utilizes a hybrid encryption scheme to balance security and performance:
+
+| Component | Algorithm | Purpose |
+| :--- | :--- | :--- |
+| **Key Management** | **XChaCha20-Poly1305** | Used for wrapping Master Keys, Folder Keys, and Filenames. Chosen for its nonce-misuse resistance and 192-bit nonces. |
+| **File Encryption** | **AES-256-GCM** | Used for high-throughput stream encryption of file blobs. Provides authenticated encryption with hardware acceleration. |
+| **Identity** | **Argon2id** | Memory-hard password hashing function used to derive the authentication hash and master key from the user's password. |
+
 ---
 
 ## 📦 Deployment
