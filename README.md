@@ -43,7 +43,7 @@ graph TD
 
 ```mermaid
 graph TD
-    Client[Client (Browser)] -->|1. Request File| Server[API Server]
+    Client["Client (Browser)"] -->|1. Request File| Server[API Server]
     Server -->|2. Fetch Blob| Jackal[Jackal Storage]
     Jackal -->|3. Encrypted Stream| Server
     Server -->|4. Encrypted Blob| Client
