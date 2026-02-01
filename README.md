@@ -49,7 +49,7 @@ graph TD
     end
 
     subgraph "Trusted Zone (Your Device)"
-        User[User (Human)]
+        User["User (Human)"]
         Browser["Client (Browser)"]
         Vault[Key Vault]
         Crypto[Decryption Engine]
