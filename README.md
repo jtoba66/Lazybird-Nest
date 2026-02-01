@@ -39,6 +39,28 @@ graph TD
     Server -- "6. Proxy to Storage" --> Jackal
 ```
 
+### Data Retrieval & Decryption Flow
+
+```mermaid
+graph TD
+    Client["Client (Browser)"] -->|1. Request File| Server[API Server]
+    Server -->|2. Fetch Blob| Jackal[Jackal Storage]
+    Jackal -->|3. Encrypted Stream| Server
+    Server -->|4. Encrypted Blob + Keys| Client
+    
+    subgraph "Trust Boundary (Client Side)"
+        Client
+        Vault[Key Vault]
+        Decryption[AES-256-GCM]
+        Viewer[File Viewer]
+    end
+    
+    Client -- "5. Retrieve Keys" --> Vault
+    Vault -- "FolderKey -> FileKey" --> Decryption
+    Client -- "6. Decrypt Blob" --> Decryption
+    Decryption -- "7. Plaintext" --> Viewer
+```
+
 ---
 
 ## 🚀 Key Features
