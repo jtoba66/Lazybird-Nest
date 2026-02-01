@@ -42,23 +42,22 @@ graph TD
 ### Data Retrieval & Decryption Flow
 
 ```mermaid
-graph TD
-    Client["Client (Browser)"] -->|1. Request File| Server[API Server]
-    Server -->|2. Fetch Blob| Jackal[Jackal Storage]
-    Jackal -->|3. Encrypted Stream| Server
-    Server -->|4. Encrypted Blob + Keys| Client
-    
-    subgraph "Trust Boundary (Client Side)"
-        Client
-        Vault[Key Vault]
-        Decryption[AES-256-GCM]
-        Viewer[File Viewer]
+sequenceDiagram
+    participant User as Client (Browser)
+    participant Server as API Server
+    participant Jackal as Jackal Storage
+
+    User->>Server: 1. Request File
+    Server->>Jackal: 2. Fetch Encrypted Blob
+    Jackal-->>Server: 3. Stream Data
+    Server-->>User: 4. Return Encrypted Blob + Keys
+
+    rect rgb(40, 40, 40)
+        Note left of User: 🛡️ Trust Boundary
+        User->>User: 5. Unlock Vault (Master Key)
+        User->>User: 6. Derive File Key
+        User->>User: 7. Decrypt Content (AES-256)
     end
-    
-    Client -- "5. Retrieve Keys" --> Vault
-    Vault -- "FolderKey -> FileKey" --> Decryption
-    Client -- "6. Decrypt Blob" --> Decryption
-    Decryption -- "7. Plaintext" --> Viewer
 ```
 
 ---
