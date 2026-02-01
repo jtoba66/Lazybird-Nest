@@ -19,7 +19,6 @@ Nest employs a **Hybrid Zero-Knowledge Architecture**. All sensitive operations 
 ```mermaid
 graph TD
     Client["Client (Browser)"] -->|Auth Token| Server[API Server]
-    Client -->|Encrypted Chunks| Jackal[Jackal Storage Protocol]
     
     subgraph "Trust Boundary (Client Side)"
         Client
