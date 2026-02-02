@@ -26,6 +26,9 @@ import { globalLimiter } from './middleware/rateLimiter';
 const app = express();
 const PORT = env.PORT;
 
+// Trust first proxy (Caddy) for accurate client IP detection
+app.set('trust proxy', 1);
+
 // Apply global rate limiter
 app.use(globalLimiter);
 
