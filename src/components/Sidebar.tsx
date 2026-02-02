@@ -20,6 +20,7 @@ import { useUpload } from '../contexts/UploadContext';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuotaCheck } from './QuotaBanner';
+import nestLogo from '../assets/nest-logo.png';
 
 interface SidebarItemProps {
     icon: React.ElementType;
@@ -163,7 +164,7 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
             {/* Logo */}
             <div className="px-5 md:px-6 mb-6 md:mb-8 flex items-center gap-3">
                 <div className="w-11 h-11 md:w-12 md:h-12 flex items-center justify-center">
-                    <img src="/src/assets/nest-logo.png" alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150" />
+                    <img src={nestLogo} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150" />
                 </div>
                 <span className="text-xl md:text-2xl font-bold tracking-tight text-text-main">Nest</span>
             </div>
