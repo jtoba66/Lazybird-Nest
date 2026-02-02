@@ -1,0 +1,3 @@
+{$DOMAIN} {
+    reverse_proxy nest-backend:3004
+}
