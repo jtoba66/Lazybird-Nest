@@ -768,7 +768,7 @@ router.get('/share/:shareToken/chunk/:index', async (req, res) => {
 
 router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadInitSchema), async (req: AuthRequest, res) => {
     const userId = req.user!.userId;
-    const { filename, file_size, folderId, fileKeyEncrypted, fileKeyNonce } = req.body;
+    const { filename, file_size, folderId, fileKeyEncrypted, fileKeyNonce, sessionId } = req.body;
 
     try {
         const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -791,24 +791,28 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             }
         }
 
-        // IDEMPOTENCY CHECK: match by size, folder, and pending status
-        // (Since filename is encrypted/opaque in jackal_filename, we rely on size + folder + user context)
-        const [existingPending] = await db.select().from(files).where(and(
-            eq(files.userId, userId),
-            eq(files.file_size, file_size),
-            folderId ? eq(files.folderId, parseInt(folderId)) : isNull(files.folderId),
-            or(
-                eq(files.jackal_fid, 'pending-chunks'),
-                eq(files.merkle_hash, 'pending-chunks'),
-                eq(files.jackal_fid, 'pending'), // Also check for simple pending uploads
-                eq(files.merkle_hash, 'pending')
-            ),
-            isNull(files.deleted_at)
-        )).limit(1);
+        // IDEMPOTENCY CHECK: Only apply if no sessionId provided (legacy clients)
+        // When sessionId is provided, each upload is intentionally unique
+        if (!sessionId) {
+            const [existingPending] = await db.select().from(files).where(and(
+                eq(files.userId, userId),
+                eq(files.file_size, file_size),
+                folderId ? eq(files.folderId, parseInt(folderId)) : isNull(files.folderId),
+                or(
+                    eq(files.jackal_fid, 'pending-chunks'),
+                    eq(files.merkle_hash, 'pending-chunks'),
+                    eq(files.jackal_fid, 'pending'),
+                    eq(files.merkle_hash, 'pending')
+                ),
+                isNull(files.deleted_at)
+            )).limit(1);
 
-        if (existingPending) {
-            logger.info(`[UPLOAD-INIT] Resuming existing pending upload: ${existingPending.id}`);
-            return res.json({ success: true, file_id: existingPending.id, share_token: existingPending.share_token, resumed: true });
+            if (existingPending) {
+                logger.info(`[UPLOAD-INIT] Resuming existing pending upload: ${existingPending.id}`);
+                return res.json({ success: true, file_id: existingPending.id, share_token: existingPending.share_token, resumed: true });
+            }
+        } else {
+            logger.info(`[UPLOAD-INIT] New upload with sessionId: ${sessionId.substring(0, 8)}...`);
         }
 
         const isChunked = file_size > 500 * 1024 * 1024; // Auto-select based on size or explicit flag

@@ -223,6 +223,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             if (file.size >= CHUNK_THRESHOLD) {
                 // === CHUNKED UPLOAD ===
 
+                // Generate unique session ID for this upload attempt
+                const sessionId = crypto.randomUUID();
+
                 // Init (Quota Check & DB Record)
                 // 1. Step 1: Initialize record on server (Get ID)
                 const initResult = await filesAPI.initUpload({
@@ -231,7 +234,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                     mimeType: file.type || 'application/octet-stream',
                     folderId: rootFolderId,
                     fileKeyEncrypted: toBase64(fileKeyEnv.encrypted),
-                    fileKeyNonce: toBase64(fileKeyEnv.nonce)
+                    fileKeyNonce: toBase64(fileKeyEnv.nonce),
+                    sessionId
                 });
 
                 // Check for payment/quota error or strict error
@@ -323,6 +327,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // === MONOLITHIC UPLOAD === (Legacy / Small Files)
                 const { encryptedBlob } = await encryptFile(file, fileKey);
 
+                // Generate unique session ID for this upload attempt
+                const sessionId = crypto.randomUUID();
+
                 // 1. Step 1: Initialize
                 const initRes = await filesAPI.initUpload({
                     filename: file.name,
@@ -330,7 +337,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                     mimeType: file.type || 'application/octet-stream',
                     folderId: rootFolderId,
                     fileKeyEncrypted: toBase64(fileKeyEnv.encrypted),
-                    fileKeyNonce: toBase64(fileKeyEnv.nonce)
+                    fileKeyNonce: toBase64(fileKeyEnv.nonce),
+                    sessionId
                 });
 
                 const fileId = initRes.file_id;

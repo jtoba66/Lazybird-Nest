@@ -336,6 +336,32 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
 });
 
 // ============================================================================
+// GET CURRENT USER (For session restoration on refresh)
+// ============================================================================
+
+router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
+    try {
+        const [user] = await db.select({
+            id: users.id,
+            email: users.email,
+            tier: users.subscription_tier,
+            storageUsed: users.storage_used_bytes,
+            storageQuota: users.storage_quota_bytes,
+            role: users.role
+        }).from(users).where(eq(users.id, req.user!.userId)).limit(1);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({ user });
+    } catch (e) {
+        logger.error('[AUTH-ME] ❌ Get user failed:', e);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ============================================================================
 // METADATA SYNC
 // ============================================================================
 

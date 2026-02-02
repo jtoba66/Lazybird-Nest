@@ -7,7 +7,8 @@ export const uploadInitSchema = z.object({
         folderId: z.union([z.number(), z.null()]).optional(),
         fileKeyEncrypted: z.string().min(10),
         fileKeyNonce: z.string().min(10),
-        mimeType: z.string().optional()
+        mimeType: z.string().optional(),
+        sessionId: z.string().uuid().optional() // Unique ID per upload attempt
     })
 });
 

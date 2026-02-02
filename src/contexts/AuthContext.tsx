@@ -144,8 +144,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     // 2. Load metadata once masterKey and token are ready
+    // Also restore user info from /me endpoint if user is null but token exists
     useEffect(() => {
         const restoreSession = async () => {
+            // If we have a token but no user, fetch user info from /me endpoint
+            if (token && !user) {
+                try {
+                    console.log('[AUTH] Restoring user info from /me endpoint...');
+                    const { data } = await import('../lib/api').then(m => m.default.get('/auth/me'));
+                    if (data?.user) {
+                        setUser({
+                            email: data.user.email,
+                            role: data.user.role,
+                            storageUsed: data.user.storageUsed,
+                            storageQuota: data.user.storageQuota
+                        });
+                        // Persist to localStorage for faster subsequent loads
+                        localStorage.setItem('nest_email', data.user.email);
+                        localStorage.setItem('nest_role', data.user.role || 'user');
+                        console.log('[AUTH] User info restored from /me endpoint');
+                    }
+                } catch (e) {
+                    console.error('[AUTH] Failed to restore user info from /me:', e);
+                }
+            }
+
             if (token && masterKey) {
                 try {
                     console.log('[AUTH] Starting metadata restoration...');
@@ -221,6 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setToken(response.token);
         localStorage.setItem('nest_token', response.token); // Fix: Ensure API interceptor can see the token immediately
+        localStorage.setItem('nest_email', credentials.email); // Fix: Persist email for session restoration
         localStorage.setItem('nest_role', response.user.role || 'user');
 
         setUser({

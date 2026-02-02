@@ -60,6 +60,7 @@ export const filesAPI = {
         folderId?: number | null;
         fileKeyEncrypted: string;
         fileKeyNonce: string;
+        sessionId?: string; // Unique ID per upload attempt for idempotency
     }): Promise<{ success: boolean; file_id: number; share_token: string; is_chunked: boolean }> {
         const { data } = await api.post('/files/upload/init', metadata);
         return data;
