@@ -24,6 +24,9 @@ services:
       - PORT=3004
     volumes:
       - ./uploads:/app/uploads
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: always
 
 volumes:
