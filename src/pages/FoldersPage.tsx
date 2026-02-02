@@ -191,9 +191,7 @@ export const FoldersPage = () => {
 
     const handleDeleteFolder = async (folderId: number) => {
         if (!metadata) return;
-
-        const confirmed = window.confirm('Are you sure you want to delete this folder? All files inside will be moved to trash.');
-        if (!confirmed) return;
+        // Note: Confirmation is handled by the UI modal before calling this function
 
         try {
             await foldersAPI.delete(folderId);
