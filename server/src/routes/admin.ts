@@ -751,16 +751,22 @@ router.get('/analytics/history', authenticateToken, requireAdmin, async (req, re
             logger.info(`[ANALYTICS] Backfilled ${backfillEvents.length} events.`);
         }
 
-        // 1. Calculate baseline (all storage from events BEFORE the lookback window)
+        // 1. Calculate CURRENT TOTAL storage (sum of ALL events, regardless of time window)
+        const currentTotalResult = await db.execute(sql`
+            SELECT COALESCE(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END), 0) as total
+            FROM analytics_events
+        `);
+        const currentTotal = Math.max(0, Number((currentTotalResult as any)[0]?.total || 0));
+
+        // 2. Calculate baseline (storage that existed BEFORE the lookback window)
         const baselineResult = await db.execute(sql`
             SELECT COALESCE(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END), 0) as total
             FROM analytics_events
             WHERE timestamp < NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
         `);
-
         const baseline = Number((baselineResult as any)[0]?.total || 0);
 
-        // 2. Get time-bucketed data within the lookback window with running cumulative sum
+        // 3. Get time-bucketed data within the lookback window with running cumulative sum
         const history = await db.execute(sql`
             SELECT 
                 date_trunc(${sql.raw(`'${interval}'`)}, timestamp) as date,
@@ -772,22 +778,39 @@ router.get('/analytics/history', authenticateToken, requireAdmin, async (req, re
             ORDER BY 1 ASC
         `);
 
-        // 3. Add baseline to each data point to get absolute storage at that time
+        // 4. Add baseline to each data point to get absolute storage at that time
         const formattedHistory = (history as any[]).map((row: any) => ({
             date: row.date,
             bytes: Math.max(0, baseline + Number(row.delta || 0))
         }));
 
+        // 5. ALWAYS add "now" as the final data point showing current total storage
+        // This ensures the graph never ends at 0 when files still exist
+        const now = new Date();
+        const lastHistoryDate = formattedHistory.length > 0
+            ? new Date(formattedHistory[formattedHistory.length - 1].date)
+            : null;
+
+        // Only add if "now" is different from the last data point's date
+        if (!lastHistoryDate || now.getTime() - lastHistoryDate.getTime() > 3600000) { // 1 hour threshold
+            formattedHistory.push({
+                date: now.toISOString(),
+                bytes: currentTotal
+            });
+        } else {
+            // Update the last point to show current total (in case of drift)
+            formattedHistory[formattedHistory.length - 1].bytes = currentTotal;
+        }
+
         // Ensure at least one data point for chart rendering
         if (formattedHistory.length === 0) {
-            // Show current total storage (baseline is all we have)
             formattedHistory.push({
-                date: new Date().toISOString(),
-                bytes: Math.max(0, baseline)
+                date: now.toISOString(),
+                bytes: currentTotal
             });
         }
 
-        logger.info(`[ANALYTICS-DEBUG] Range: ${range}, Baseline: ${baseline}, Data points: ${formattedHistory.length}, Sample: ${JSON.stringify(formattedHistory.slice(0, 2))}`);
+        logger.info(`[ANALYTICS-DEBUG] Range: ${range}, Baseline: ${baseline}, CurrentTotal: ${currentTotal}, Data points: ${formattedHistory.length}, Last: ${JSON.stringify(formattedHistory[formattedHistory.length - 1])}`);
         res.json(formattedHistory);
 
     } catch (err: any) {
