@@ -327,7 +327,7 @@ export async function verifyOnGateway(merkle: string, maxAttempts = 10, delayMs 
     for (let i = 1; i <= maxAttempts; i++) {
         try {
             console.log(`[Jackal-Verify] Attempting gateway check ${i}/${maxAttempts} for ${merkle}...`);
-            const res = await axios.head(gatewayUrl, { timeout: 10000 });
+            const res = await axios.head(gatewayUrl, { timeout: 30000 });
             if (res.status === 200) {
                 console.log(`[Jackal-Verify] ✅ File verified on gateway: ${merkle}`);
                 return true;

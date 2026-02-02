@@ -44,7 +44,7 @@ async function runVerificationCycle() {
         for (const file of filesToCheck) {
             try {
                 if (!file.merkle_hash) continue;
-                const verified = await verifyOnGateway(file.merkle_hash, 1, 1000);
+                const verified = await verifyOnGateway(file.merkle_hash, 5, 60000);
 
                 if (verified) {
                     console.log(`[VerificationJob] ✅ File verified: ${file.jackal_filename} (ID: ${file.id})`);
