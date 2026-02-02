@@ -19,11 +19,10 @@ FROM node:20-slim
 WORKDIR /app
 
 # Install system dependencies (including Doppler)
-RUN apt-get update && apt-get install -y wget gnupg apt-transport-https ca-certificates && \
-    wget -q -t3 'https://packages.doppler.com/public/cli/rsa.8004D69E501C7328.key' -O /etc/apt/trusted.gpg.d/doppler-relay.gpg && \
-    echo "deb https://packages.doppler.com/public/cli/deb/debian any-version main" | tee /etc/apt/sources.list.d/doppler-relay.list && \
-    apt-get update && \
-    apt-get install -y doppler && \
+RUN apt-get update && apt-get install -y curl && \
+    curl -sLf --retry 3 --tlsv1.2 --proto "=https" 'https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key' | gpg --dearmor -o /usr/share/keyrings/doppler-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/doppler-archive-keyring.gpg] https://packages.doppler.com/public/cli/deb/debian any-version main" | tee /etc/apt/sources.list.d/doppler-cli.list && \
+    apt-get update && apt-get install -y doppler && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy built artifacts and dependencies
