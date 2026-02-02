@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LockKey, EnvelopeSimple, Eye, EyeSlash } from '@phosphor-icons/react';
+import logoImg from '../assets/nest-logo.png';
 
 export const LoginPage = () => {
     const [email, setEmail] = useState('');
@@ -68,12 +69,7 @@ export const LoginPage = () => {
             <div className="w-full max-w-md animate-scale-in">
                 <div className="text-center mb-8">
                     <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                        import logoImg from '../assets/nest-logo.png';
-
-                        // ... (in component)
-                        <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                            <img src={logoImg} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
-                        </div>
+                        <img src={logoImg} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
                     </div>
                     <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 tracking-tight drop-shadow-md">Welcome Back</h1>
                     <p className="text-slate-400 text-base sm:text-lg">Sign in to your Nest account</p>
