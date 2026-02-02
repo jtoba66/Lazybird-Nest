@@ -14,7 +14,7 @@ const logger = winston.createLogger({
     transports: [
         // 1. Daily Rotate File for persistent audit logging
         new winston.transports.DailyRotateFile({
-            filename: path.join(__dirname, '../../../logs/audit-%DATE%.log'),
+            filename: path.join(process.cwd(), 'logs/audit-%DATE%.log'),
             datePattern: 'YYYY-MM-DD',
             zippedArchive: true,
             maxSize: '20m',
@@ -23,7 +23,7 @@ const logger = winston.createLogger({
         }),
         // 2. Error log file specifically
         new winston.transports.DailyRotateFile({
-            filename: path.join(__dirname, '../../../logs/error-%DATE%.log'),
+            filename: path.join(process.cwd(), 'logs/error-%DATE%.log'),
             datePattern: 'YYYY-MM-DD',
             zippedArchive: true,
             maxSize: '20m',
