@@ -157,6 +157,7 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
         await db.insert(analyticsEvents).values({
             type: 'upload',
             bytes: file.size,
+            timestamp: new Date(),
             meta: `file_${fileId}`
         });
 
@@ -715,6 +716,7 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
         await db.insert(analyticsEvents).values({
             type: 'share_download',
             bytes: file.file_size,
+            timestamp: new Date(),
             meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
         });
 
@@ -839,6 +841,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
         await db.insert(analyticsEvents).values({
             type: 'upload',
             bytes: file_size,
+            timestamp: new Date(),
             meta: `file_${newFile.id}`
         });
 
@@ -1139,6 +1142,7 @@ router.get('/raw/:fileId', authenticateToken, async (req: AuthRequest, res) => {
             await db.insert(analyticsEvents).values({
                 type: 'hydration_failed',
                 bytes: 0,
+                timestamp: new Date(),
                 meta: `file_${fileId}`
             });
 
