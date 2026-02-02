@@ -30,8 +30,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
-# Create uploads directory
-RUN mkdir -p uploads && chown -R node:node uploads
+# Create uploads and logs directories
+RUN mkdir -p uploads logs && chown -R node:node uploads logs
 
 # Switch to non-root user
 USER node
