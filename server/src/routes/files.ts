@@ -809,7 +809,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
 
             if (existingPending) {
                 logger.info(`[UPLOAD-INIT] Resuming existing pending upload: ${existingPending.id}`);
-                return res.json({ success: true, file_id: existingPending.id, share_token: existingPending.share_token, resumed: true });
+                return res.json({ success: true, file_id: existingPending.id, resumed: true });
             }
         } else {
             logger.info(`[UPLOAD-INIT] New upload with sessionId: ${sessionId.substring(0, 8)}...`);
@@ -825,11 +825,11 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             folderId: folderId ? parseInt(folderId) : null,
             is_chunked: isChunked ? 1 : 0,
             chunk_count: 0,
-            share_token: crypto.randomBytes(16).toString('hex'),
+            // share_token is intentionally NOT set here - created on-demand when user shares
             jackal_filename: 'pending',
             file_key_encrypted: base64ToBuffer(fileKeyEncrypted),
             file_key_nonce: base64ToBuffer(fileKeyNonce)
-        }).returning({ id: files.id, share_token: files.share_token, is_chunked: files.is_chunked });
+        }).returning({ id: files.id, is_chunked: files.is_chunked });
 
         const jackalFilename = `${userId}_${newFile.id}_${crypto.randomUUID()}`;
         await db.update(files).set({ jackal_filename: jackalFilename }).where(eq(files.id, newFile.id));
@@ -842,7 +842,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             meta: `file_${newFile.id}`
         });
 
-        res.json({ success: true, file_id: newFile.id, share_token: newFile.share_token, is_chunked: !!newFile.is_chunked });
+        res.json({ success: true, file_id: newFile.id, is_chunked: !!newFile.is_chunked });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
