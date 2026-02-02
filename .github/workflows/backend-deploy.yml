@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "server/**"
+      - "docker-compose.yml"
+      - "Caddyfile"
       - ".github/workflows/backend-deploy.yml"
 
 jobs:
