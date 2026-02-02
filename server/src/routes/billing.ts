@@ -100,6 +100,17 @@ router.post('/sync-subscription', authenticateToken, async (req: AuthRequest, re
 
         if (!sessionId) return res.status(400).json({ error: 'Session ID required' });
 
+        // Race condition check: Skip if already Pro with valid subscription
+        const [currentUser] = await db.select({
+            subscription_tier: users.subscription_tier,
+            stripe_subscription_id: users.stripe_subscription_id
+        }).from(users).where(eq(users.id, userId)).limit(1);
+
+        if (currentUser?.subscription_tier === 'pro' && currentUser?.stripe_subscription_id) {
+            logger.info(`[BILLING-SYNC] User ${userId} already Pro, skipping duplicate sync`);
+            return res.json({ success: true, tier: 'pro', alreadySynced: true });
+        }
+
         // 1. Retrieve Session from Stripe to verify legitimacy
         const session = await stripe.checkout.sessions.retrieve(sessionId);
 
@@ -142,8 +153,11 @@ router.post('/sync-subscription', authenticateToken, async (req: AuthRequest, re
 
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!sig || !webhookSecret) return res.status(400).send('Webhook error');
+    const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+    if (!sig || !webhookSecret) {
+        logger.warn('[BILLING-WEBHOOK] Missing signature or webhook secret');
+        return res.status(400).send('Webhook error');
+    }
 
     let event: Stripe.Event;
     try {
@@ -157,24 +171,31 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
             case 'checkout.session.completed': {
                 const session = event.data.object as Stripe.Checkout.Session;
                 const userId = session.metadata?.userId;
+                logger.info(`[BILLING-WEBHOOK] checkout.session.completed for user ${userId}`);
                 if (userId && session.subscription) {
                     const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
+                    // Fetch subscription to get accurate trial_end
+                    const subscription = await stripe.subscriptions.retrieve(subId);
                     await db.update(users).set({
                         subscription_tier: 'pro',
-                        subscription_status: 'trialing',
+                        subscription_status: subscription.status,
                         stripe_subscription_id: subId,
-                        trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                        stripe_customer_id: session.customer as string,
+                        trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+                        subscription_expires_at: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
                         storage_quota_bytes: PRICING.pro.storage
                     }).where(eq(users.id, parseInt(userId)));
 
                     const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, parseInt(userId))).limit(1);
                     if (user?.email) sendSubscriptionStartedEmail(user.email).catch(console.error);
+                    logger.info(`[BILLING-WEBHOOK] User ${userId} upgraded to Pro`);
                 }
                 break;
             }
             case 'customer.subscription.created':
             case 'customer.subscription.updated': {
                 const sub = event.data.object as Stripe.Subscription;
+                logger.info(`[BILLING-WEBHOOK] ${event.type} for customer ${sub.customer}`);
                 const status = sub.status === 'active' ? 'active' : sub.status === 'trialing' ? 'trialing' : sub.status === 'past_due' ? 'past_due' : 'canceled';
                 const expiresAt = (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000) : null;
                 const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000) : null;
@@ -187,10 +208,12 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     stripe_subscription_id: sub.id,
                     storage_quota_bytes: PRICING.pro.storage
                 }).where(eq(users.stripe_customer_id, sub.customer as string));
+                logger.info(`[BILLING-WEBHOOK] Subscription updated: status=${status}`);
                 break;
             }
             case 'customer.subscription.deleted': {
                 const sub = event.data.object as Stripe.Subscription;
+                logger.info(`[BILLING-WEBHOOK] subscription.deleted for customer ${sub.customer}`);
                 const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.stripe_customer_id, sub.customer as string)).limit(1);
                 if (user) {
                     await db.update(users).set({
@@ -200,21 +223,25 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                         storage_quota_bytes: PRICING.free.storage
                     }).where(eq(users.id, user.id));
                     if (user.email) sendSubscriptionCanceledEmail(user.email).catch(console.error);
+                    logger.info(`[BILLING-WEBHOOK] User ${user.id} downgraded to Free`);
                 }
                 break;
             }
             case 'invoice.payment_succeeded': {
                 const invoice = event.data.object as Stripe.Invoice;
+                logger.info(`[BILLING-WEBHOOK] payment_succeeded for customer ${invoice.customer}`);
                 await db.update(users).set({ subscription_status: 'active' })
                     .where(and(eq(users.stripe_customer_id, invoice.customer as string), eq(users.subscription_tier, 'pro')));
                 break;
             }
             case 'invoice.payment_failed': {
                 const invoice = event.data.object as Stripe.Invoice;
+                logger.warn(`[BILLING-WEBHOOK] payment_failed for customer ${invoice.customer}`);
                 const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.stripe_customer_id, invoice.customer as string)).limit(1);
                 if (user) {
                     await db.update(users).set({ subscription_status: 'past_due' }).where(eq(users.id, user.id));
                     if (user.email) sendPaymentFailedEmail(user.email).catch(console.error);
+                    logger.warn(`[BILLING-WEBHOOK] User ${user.id} marked as past_due`);
                 }
                 break;
             }

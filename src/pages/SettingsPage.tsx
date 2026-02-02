@@ -20,14 +20,18 @@ import { storageAPI } from '../api/storage';
 import { filesAPI } from '../api/files';
 import { useToast } from '../contexts/ToastContext';
 import { PasswordChangeModal } from '../components/PasswordChangeModal';
+import { CancelWarningModal } from '../components/CancelWarningModal';
 import { useSearchParams } from 'react-router-dom';
 import { billingAPI } from '../api/billing';
+
+const FREE_TIER_QUOTA = 2 * 1024 * 1024 * 1024; // 2GB
 
 export const SettingsPage = () => {
     const { user } = useAuth();
     const [quota, setQuota] = useState({ used: 0, quota: 2147483648, tier: 'free', percentage: 0 });
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [showCancelWarning, setShowCancelWarning] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [triggerCrash, setTriggerCrash] = useState(false);
     const { showToast } = useToast();
@@ -290,6 +294,11 @@ export const SettingsPage = () => {
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={async () => {
+                                        // Check if over free tier quota before redirecting
+                                        if (quota.used > FREE_TIER_QUOTA) {
+                                            setShowCancelWarning(true);
+                                            return;
+                                        }
                                         const { billingAPI } = await import('../api/billing');
                                         const { url } = await billingAPI.createPortalSession();
                                         window.location.href = url;
@@ -533,6 +542,20 @@ export const SettingsPage = () => {
             <AccountDeletionModal
                 isOpen={showDeleteModal}
                 onClose={() => setShowDeleteModal(false)}
+            />
+
+            {/* Cancel Warning Modal (Over-Quota) */}
+            <CancelWarningModal
+                isOpen={showCancelWarning}
+                onClose={() => setShowCancelWarning(false)}
+                onProceed={async () => {
+                    setShowCancelWarning(false);
+                    const { billingAPI } = await import('../api/billing');
+                    const { url } = await billingAPI.createPortalSession();
+                    window.location.href = url;
+                }}
+                currentUsage={quota.used}
+                freeQuota={FREE_TIER_QUOTA}
             />
         </motion.div>
     );
