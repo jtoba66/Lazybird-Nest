@@ -29,11 +29,23 @@ jobs:
       - name: Deploy to Contabo
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.CONTABO_HOST }}
-          username: ${{ secrets.CONTABO_USER }}
-          key: ${{ secrets.CONTABO_SSH_KEY }}
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          # If you use a password instead of key, use password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/nest/server
+            # Navigate to the project root (as per Deployment Guide)
+            cd /opt/nest
+
+            # Pull latest code
             git pull origin main
+
+            # Export Doppler Token for the build/run
             export DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }}
-            docker-compose up -d --build
+
+            # Rebuild and restart containers
+            # We use --build to ensure the Dockerfile changes are picked up
+            docker compose up -d --build --remove-orphans
+
+            # Prune old images to save space
+            docker image prune -f

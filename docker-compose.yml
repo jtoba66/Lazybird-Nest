@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   nest-backend:
-    build: .
+    build: ./server
     ports:
       - "3004:3004"
     environment:

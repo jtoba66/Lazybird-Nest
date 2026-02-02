@@ -1,39 +1,45 @@
 # Build Stage
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Install dependencies for building (including native modules if any)
-RUN apk add --no-cache python3 make g++
-
+# Install build dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
+# Copy source
 COPY . .
+
+# Build TypeScript
 RUN npm run build
 
 # Production Stage
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Install Doppler CLI
-RUN wget -q -O - https://packages.doppler.com/public/cli/gpg.82367221.key | gpg --import && \
-    echo 'https://packages.doppler.com/public/cli/alpine/any-version/main' | tee -a /etc/apk/repositories && \
-    apk add --no-cache doppler
+# Install system dependencies (including Doppler)
+RUN apt-get update && apt-get install -y wget gnupg && \
+    wget -q -t3 'https://packages.doppler.com/public/cli/rsa.8004D69E501C7328.key' -O /etc/apt/trusted.gpg.d/doppler-relay.gpg && \
+    echo "deb https://packages.doppler.com/public/cli/deb/debian any-version main" | tee /etc/apt/sources.list.d/doppler-relay.list && \
+    apt-get update && \
+    apt-get install -y doppler && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
-# Install only production dependencies
-RUN npm install --omit=dev
-
+# Copy built artifacts and dependencies
 COPY --from=builder /app/dist ./dist
-# Keep src for ts-node if needed, but preferably use dist
-# COPY --from=builder /app/src ./src 
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
 
 # Create uploads directory
-RUN mkdir -p uploads
+RUN mkdir -p uploads && chown -R node:node uploads
 
+# Switch to non-root user
+USER node
+
+# Expose port
 EXPOSE 3004
 
-# Use doppler to run the compiled javascript
+# Run with Doppler
+# Note: Requires DOPPLER_TOKEN environment variable at runtime
 CMD ["doppler", "run", "--", "node", "dist/server.js"]
