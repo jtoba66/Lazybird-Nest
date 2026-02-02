@@ -751,18 +751,21 @@ router.get('/analytics/history', authenticateToken, requireAdmin, async (req, re
             logger.info(`[ANALYTICS] Backfilled ${backfillEvents.length} events.`);
         }
 
-        // 1. Calculate CURRENT TOTAL storage (sum of ALL events, regardless of time window)
+        // 1. Calculate CURRENT TOTAL storage (sum of ALL storage events)
+        // Note: 'upload' events have positive bytes, 'prune' events have negative bytes
         const currentTotalResult = await db.execute(sql`
-            SELECT COALESCE(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END), 0) as total
+            SELECT COALESCE(SUM(bytes), 0) as total
             FROM analytics_events
+            WHERE type IN ('upload', 'prune')
         `);
         const currentTotal = Math.max(0, Number((currentTotalResult as any)[0]?.total || 0));
 
         // 2. Calculate baseline (storage that existed BEFORE the lookback window)
         const baselineResult = await db.execute(sql`
-            SELECT COALESCE(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END), 0) as total
+            SELECT COALESCE(SUM(bytes), 0) as total
             FROM analytics_events
-            WHERE timestamp < NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
+            WHERE type IN ('upload', 'prune')
+            AND timestamp < NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
         `);
         const baseline = Number((baselineResult as any)[0]?.total || 0);
 
@@ -770,10 +773,11 @@ router.get('/analytics/history', authenticateToken, requireAdmin, async (req, re
         const history = await db.execute(sql`
             SELECT 
                 date_trunc(${sql.raw(`'${interval}'`)}, timestamp) as date,
-                SUM(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END)) 
+                SUM(SUM(bytes)) 
                     OVER (ORDER BY date_trunc(${sql.raw(`'${interval}'`)}, timestamp)) as delta
             FROM analytics_events
-            WHERE timestamp >= NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
+            WHERE type IN ('upload', 'prune')
+            AND timestamp >= NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
             GROUP BY date_trunc(${sql.raw(`'${interval}'`)}, timestamp)
             ORDER BY 1 ASC
         `);
