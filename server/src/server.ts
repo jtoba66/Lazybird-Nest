@@ -49,7 +49,11 @@ if (env.NODE_ENV === 'production') {
 
 // Security middleware
 app.use(helmet());
-const allowedOrigins = (env.FRONTEND_URL || 'http://localhost:5173').split(',');
+const allowedOrigins = [
+    ...(env.FRONTEND_URL || 'http://localhost:5173').split(','),
+    'https://nest.lazybird.io',
+    'https://lazybird-nest.netlify.app' // Also allow Netlify subdomain just in case
+];
 app.use(cors({
     origin: (origin, callback) => {
         // allow requests with no origin (like mobile apps or curl requests)
