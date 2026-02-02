@@ -787,6 +787,7 @@ router.get('/analytics/history', authenticateToken, requireAdmin, async (req, re
             });
         }
 
+        logger.info(`[ANALYTICS-DEBUG] Range: ${range}, Baseline: ${baseline}, Data points: ${formattedHistory.length}, Sample: ${JSON.stringify(formattedHistory.slice(0, 2))}`);
         res.json(formattedHistory);
 
     } catch (err: any) {

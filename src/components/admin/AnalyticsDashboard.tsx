@@ -51,6 +51,7 @@ export const AnalyticsDashboard = () => {
             const histData = await histRes.json();
 
             if (Array.isArray(histData)) {
+                console.log('[ANALYTICS-DEBUG-FRONTEND] History data received:', histData.length, 'points, Sample:', histData.slice(0, 2));
                 setHistory(histData);
             } else {
                 console.error('History data is not an array:', histData);
