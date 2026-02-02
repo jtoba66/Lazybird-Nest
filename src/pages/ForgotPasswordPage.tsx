@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, EnvelopeSimple } from '@phosphor-icons/react';
+import nestLogo from '../assets/nest-logo.png';
 
 export const ForgotPasswordPage = () => {
     const [email, setEmail] = useState('');
@@ -34,7 +35,7 @@ export const ForgotPasswordPage = () => {
                     {/* Header Outside Glass Card */}
                     <div className="text-center mb-8">
                         <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                            <img src="/src/assets/nest-logo.png" alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
+                            <img src={nestLogo} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
                         </div>
                         <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-3 tracking-tight drop-shadow-sm">Check your email</h1>
                         <p className="text-slate-500 text-base sm:text-lg">We've sent reset instructions for your account</p>
@@ -73,7 +74,7 @@ export const ForgotPasswordPage = () => {
             <div className="w-full max-w-md animate-scale-in">
                 <div className="text-center mb-8">
                     <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                        <img src="/src/assets/nest-logo.png" alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
+                        <img src={nestLogo} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
                     </div>
                     <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-3 tracking-tight drop-shadow-sm">Forgot password?</h1>
                     <p className="text-slate-500 text-base sm:text-lg">Enter your email to reset your password</p>

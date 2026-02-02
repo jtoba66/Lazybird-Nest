@@ -12,12 +12,13 @@ import {
 } from '@phosphor-icons/react';
 import { fromBase64 } from '../crypto/v2';
 import { StreamingDownloader } from '../utils/StreamingDownloader';
+import nestLogo from '../assets/nest-logo.png';
 
 // Custom Unique Icon Component - Protected Prism
 const ProtectedPrism = () => (
     <div className="relative w-28 h-28 flex items-center justify-center">
         {/* Inner Core (The Nest Logo) */}
-        <img src="/src/assets/nest-logo.png" alt="Nest Logo" className="relative z-10 w-20 h-20 object-contain mix-blend-screen scale-125" />
+        <img src={nestLogo} alt="Nest Logo" className="relative z-10 w-20 h-20 object-contain mix-blend-screen scale-125" />
 
         {/* Outer Rotating Shield Ring 1 */}
         <motion.div
@@ -200,7 +201,7 @@ export const SharePage = () => {
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ ease: "easeOut", duration: 0.4 }} className="max-w-sm w-full relative z-10">
                     <div className="backdrop-blur-3xl bg-white/40 rounded-[1.75rem] sm:rounded-[2rem] p-6 sm:p-8 text-center border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] ring-1 ring-white/40">
                         <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                            <img src="/src/assets/nest-logo.png" alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
+                            <img src={nestLogo} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
                         </div>
                         <h2 className="text-xl font-semibold text-slate-800 mb-3 tracking-tight">Link Invalid</h2>
                         <p className="text-slate-500 mb-8 text-sm leading-relaxed">{error}</p>
