@@ -4,6 +4,11 @@ import { filesAPI } from '../api/files';
 import { foldersAPI } from '../api/folders';
 import { CreateFolderModal } from '../components/CreateFolderModal';
 import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey } from '../crypto/v2';
+import { useAuth } from '../contexts/AuthContext';
+import { useUpload } from '../contexts/UploadContext';
+import { useToast } from '../contexts/ToastContext';
+import { useRefresh } from '../contexts/RefreshContext';
+import { useDropzone } from 'react-dropzone';
 
 export const FileGrid = () => {
     const { metadata, masterKey, saveMetadata } = useAuth();

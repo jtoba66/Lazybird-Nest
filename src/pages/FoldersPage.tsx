@@ -205,7 +205,7 @@ export const FoldersPage = () => {
             // Remove all files in this folder from metadata
             Object.keys(updatedMetadata.files).forEach(fileId => {
                 const fileFolder = updatedMetadata.files[fileId]?.folder_id;
-                if (fileFolder === folderId.toString() || fileFolder === folderId) {
+                if (fileFolder === folderId.toString()) {
                     delete updatedMetadata.files[fileId];
                 }
             });

@@ -42,7 +42,7 @@ export const LoginPage = () => {
             // 3. Authenticate
             setLoadingMessage('Authenticating...');
             const authHash = deriveAuthHash(rootKey);
-            const response = await login({ email, authHash, rootKey });
+            await login({ email, authHash, rootKey });
 
             // 4. Decrypt Master Key (Handled internally by AuthContext.login)
             // The context will update the state and localStorage automatically.
