@@ -751,46 +751,43 @@ router.get('/analytics/history', authenticateToken, requireAdmin, async (req, re
             logger.info(`[ANALYTICS] Backfilled ${backfillEvents.length} events.`);
         }
 
-        // 1. Calculate Baseline (Sum of all events before lookback)
-        // Net Storage = Sum(Uploads) - Sum(Prunes)
+        // 1. Calculate baseline (all storage from events BEFORE the lookback window)
         const baselineResult = await db.execute(sql`
             SELECT COALESCE(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END), 0) as total
             FROM analytics_events
             WHERE timestamp < NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
         `);
 
-        let runningTotal = Number((baselineResult as any)[0]?.total || 0);
+        const baseline = Number((baselineResult as any)[0]?.total || 0);
 
-        // 2. Fetch Deltas
-        const deltas = await db.execute(sql`
+        // 2. Get time-bucketed data within the lookback window with running cumulative sum
+        const history = await db.execute(sql`
             SELECT 
                 date_trunc(${sql.raw(`'${interval}'`)}, timestamp) as date,
-                SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END) as delta
+                SUM(SUM(CASE WHEN type = 'upload' THEN bytes ELSE -bytes END)) 
+                    OVER (ORDER BY date_trunc(${sql.raw(`'${interval}'`)}, timestamp)) as delta
             FROM analytics_events
             WHERE timestamp >= NOW() - INTERVAL '${sql.raw(lookbackDays.toString())} days'
-            GROUP BY 1
+            GROUP BY date_trunc(${sql.raw(`'${interval}'`)}, timestamp)
             ORDER BY 1 ASC
         `);
 
-        // 3. Accumulate History
-        const history = (deltas as any[]).map((row: any) => {
-            runningTotal += Number(row.delta);
-            return {
-                date: row.date,
-                // Ensure we never show negative storage due to sync drift
-                bytes: runningTotal < 0 ? 0 : runningTotal
-            };
-        });
+        // 3. Add baseline to each data point to get absolute storage at that time
+        const formattedHistory = (history as any[]).map((row: any) => ({
+            date: row.date,
+            bytes: Math.max(0, baseline + Number(row.delta || 0))
+        }));
 
         // Ensure at least one data point for chart rendering
-        if (history.length === 0) {
-            history.push({
+        if (formattedHistory.length === 0) {
+            // Show current total storage (baseline is all we have)
+            formattedHistory.push({
                 date: new Date().toISOString(),
-                bytes: runningTotal < 0 ? 0 : runningTotal
+                bytes: Math.max(0, baseline)
             });
         }
 
-        res.json(history);
+        res.json(formattedHistory);
 
     } catch (err: any) {
         logger.error('[ADMIN-Analytics] ❌ History failed:', err);
