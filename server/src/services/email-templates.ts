@@ -255,25 +255,25 @@ export function storageQuotaWarningEmail(email: string, used: number, quota: num
 }
 
 /**
- * File Upload Success (with share link)
+ * File Upload Success (Zero-Knowledge - no filename)
  */
-export function fileUploadedEmail(filename: string) {
+export function fileUploadedEmail() {
     const title = 'File Secured';
     const content = `
         <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-success">Uploaded</span>
+            <span class="status-badge status-success">Secured</span>
         </div>
-        <h1 class="h1" style="text-align: center;">File encrypted and stored</h1>
+        <h1 class="h1" style="text-align: center;">Your file is now encrypted and stored</h1>
         <p class="p" style="text-align: center;">
-            Your file <strong>${filename}</strong> has been encrypted and securely uploaded to your Nest.
+            We'd tell you the name, but we genuinely don't know it. That's zero-knowledge encryption working exactly as intended.
         </p>
 
         <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL?.split(',')[0].trim()}/dashboard" class="btn">View Files</a>
+            <a href="${process.env.FRONTEND_URL?.split(',')[0].trim()}/folders" class="btn">View Files</a>
         </div>
 
         <p class="p" style="text-align: center; margin-top: 24px; font-size: 13px;">
-            Only you hold the keys to decrypt this file. It is now safely stored on the decentralized layer.
+            Only you hold the keys. Your data is safe on the decentralized network.
         </p>
     `;
     return wrapTemplate(content, title);
@@ -357,7 +357,7 @@ export function subscriptionStartedEmail() {
         </div>
         <h1 class="h1" style="text-align: center;">Upgrade Successful</h1>
         <p class="p" style="text-align: center;">
-            Thank you for upgrading to Nest Pro! Your 100GB storage quota is now active.
+            Thank you for upgrading to Nest Pro. Your 100GB storage quota is now active.
         </p>
 
         <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
@@ -417,6 +417,97 @@ export function paymentFailedEmail() {
         <p class="p" style="text-align: center; font-size: 13px; margin-top: 24px;">
             We will attempt the payment again in a few days.
         </p>
+    `;
+    return wrapTemplate(content, title);
+}
+
+/**
+ * Payment Received Email (Monthly Renewal)
+ */
+export function paymentReceivedEmail(amount: string) {
+    const title = 'Payment Received';
+    const content = `
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span class="status-badge status-success">Paid</span>
+        </div>
+        <h1 class="h1" style="text-align: center;">Payment Received</h1>
+        <p class="p" style="text-align: center;">
+            Your monthly Nest Pro payment of ${amount} has been processed successfully. Thank you for your continued support.
+        </p>
+
+        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
+            <p style="margin: 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">Next billing date</p>
+            <p style="margin: 4px 0 0 0; color: ${THEME.colors.textMuted};">Approximately 30 days from now</p>
+        </div>
+
+        <div style="text-align: center; margin-top: 32px;">
+            <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Manage Subscription</a>
+        </div>
+    `;
+    return wrapTemplate(content, title);
+}
+
+/**
+ * Security Alert Email (New Login)
+ */
+export function securityAlertEmail() {
+    const title = 'New Sign-In';
+    const content = `
+        <h1 class="h1" style="text-align: center;">New sign-in to your account</h1>
+        <p class="p" style="text-align: center;">
+            There was a new sign-in to your Nest account. If this was you, no action is needed.
+        </p>
+
+        <div style="background-color: #FEF2F2; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; border: 1px solid #FEE2E2;">
+            <p style="margin: 0; font-size: 14px; color: ${THEME.colors.textMain};">
+                If you didn't sign in, please change your password immediately.
+            </p>
+        </div>
+
+        <div style="text-align: center; margin-top: 32px;">
+            <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Change Password</a>
+        </div>
+    `;
+    return wrapTemplate(content, title);
+}
+
+/**
+ * Share Link Weekly Digest
+ */
+export function shareLinkDigestEmail(totalDownloads: number, maxFileDownloads: number) {
+    const title = 'Your Files are Popular';
+    const content = `
+        <h1 class="h1" style="text-align: center;">Weekly Share Summary</h1>
+        <p class="p" style="text-align: center;">
+            Your shared files were downloaded <strong>${totalDownloads}</strong> times this week.
+        </p>
+
+        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
+            <p style="margin: 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">Most Popular File</p>
+            <p style="margin: 4px 0 0 0; color: ${THEME.colors.textMuted};">${maxFileDownloads} downloads</p>
+        </div>
+
+        <div style="text-align: center; margin-top: 32px;">
+            <a href="${process.env.FRONTEND_URL || '#'}/shared" class="btn">Manage Links</a>
+        </div>
+    `;
+    return wrapTemplate(content, title);
+}
+
+/**
+ * Account Inactive Nudge
+ */
+export function accountInactiveEmail() {
+    const title = 'We Miss You';
+    const content = `
+        <h1 class="h1" style="text-align: center;">It's been a while</h1>
+        <p class="p" style="text-align: center;">
+            We haven't seen you in your Nest lately. Just a reminder that your encrypted files are safe and waiting for you.
+        </p>
+
+        <div style="text-align: center; margin-top: 32px;">
+            <a href="${process.env.FRONTEND_URL || '#'}/login" class="btn">Sign In</a>
+        </div>
     `;
     return wrapTemplate(content, title);
 }

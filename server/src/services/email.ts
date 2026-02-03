@@ -45,8 +45,41 @@ import {
   fileUploadFailedEmail,
   subscriptionStartedEmail,
   subscriptionCanceledEmail,
-  paymentFailedEmail
+  paymentFailedEmail,
+  paymentReceivedEmail,
+  securityAlertEmail,
+  cancellationFarewellEmail,
+  shareLinkDigestEmail,
+  accountInactiveEmail
 } from './email-templates';
+
+// ... (existing send functions) ...
+
+/**
+ * Send share link digest email
+ */
+export async function sendShareLinkDigestEmail(email: string, totalDownloads: number, maxFileDownloads: number): Promise<boolean> {
+  const html = shareLinkDigestEmail(totalDownloads, maxFileDownloads);
+
+  return sendEmail({
+    to: email,
+    subject: 'Your Weekly Share Summary - Nest',
+    html
+  });
+}
+
+/**
+ * Send account inactive email
+ */
+export async function sendAccountInactiveEmail(email: string): Promise<boolean> {
+  const html = accountInactiveEmail();
+
+  return sendEmail({
+    to: email,
+    subject: 'We Miss You at Nest',
+    html
+  });
+}
 
 /**
  * Send email
@@ -135,14 +168,14 @@ export async function sendStorageQuotaWarning(email: string): Promise<boolean> {
 }
 
 /**
- * Send file upload success email
+ * Send file upload success email (zero-knowledge - no filename)
  */
-export async function sendFileUploadedEmail(email: string, filename: string): Promise<boolean> {
-  const html = fileUploadedEmail(filename);
+export async function sendFileUploadedEmail(email: string): Promise<boolean> {
+  const html = fileUploadedEmail();
 
   return sendEmail({
     to: email,
-    subject: `File Secured: ${filename} - Nest`,
+    subject: 'File Secured - Nest',
     html
   });
 }
@@ -195,6 +228,45 @@ export async function sendPaymentFailedEmail(email: string): Promise<boolean> {
   return sendEmail({
     to: email,
     subject: 'Action Required: Payment Failed - Nest',
+    html
+  });
+}
+
+/**
+ * Send payment received email (monthly renewal)
+ */
+export async function sendPaymentReceivedEmail(email: string, amount: string): Promise<boolean> {
+  const html = paymentReceivedEmail(amount);
+
+  return sendEmail({
+    to: email,
+    subject: 'Payment Received - Nest Pro',
+    html
+  });
+}
+
+/**
+ * Send security alert email (new login)
+ */
+export async function sendSecurityAlertEmail(email: string): Promise<boolean> {
+  const html = securityAlertEmail();
+
+  return sendEmail({
+    to: email,
+    subject: 'New Sign-In to Your Account - Nest',
+    html
+  });
+}
+
+/**
+ * Send cancellation farewell email (with consequences)
+ */
+export async function sendCancellationFarewellEmail(email: string): Promise<boolean> {
+  const html = cancellationFarewellEmail();
+
+  return sendEmail({
+    to: email,
+    subject: 'Your Subscription Has Been Canceled - Nest',
     html
   });
 }

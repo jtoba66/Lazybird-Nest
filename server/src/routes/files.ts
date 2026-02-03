@@ -240,7 +240,7 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
         });
 
         // 8. Send File Uploaded Email
-        sendFileUploadedEmail(req.user!.email, filename).catch(console.error);
+        sendFileUploadedEmail(req.user!.email).catch(console.error);
 
     } catch (error: any) {
         logger.error('[FILE-UP] ❌ Upload failed:', error);

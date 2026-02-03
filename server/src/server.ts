@@ -169,6 +169,12 @@ cron.schedule('0 * * * *', async () => {
 
 console.log('[Cron] Background jobs initialized: stale uploads (6h), trash purge (1h)');
 
+// Fix: Register email digest jobs
+import { shareLinkDigestJob, accountInactiveJob } from './cron/emailJobs';
+shareLinkDigestJob.start();
+accountInactiveJob.start();
+console.log('[Cron] Email digest jobs initialized: share digest (Mon), inactive nudge (Wed)');
+
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

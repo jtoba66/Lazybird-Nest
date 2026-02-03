@@ -23,7 +23,8 @@ import {
 import {
     sendPasswordResetEmail,
     sendWelcomeEmail,
-    sendPasswordResetConfirmation
+    sendPasswordResetConfirmation,
+    sendSecurityAlertEmail
 } from '../services/email';
 import { env } from '../config/env';
 import { authLimiter } from '../middleware/rateLimiter';
@@ -306,6 +307,9 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
         );
 
         logger.info(`[AUTH-LOGIN] ✅ Success: ${user.id}`);
+
+        // Send security alert email (fire and forget)
+        sendSecurityAlertEmail(user.email).catch(err => logger.error('[AUTH-LOGIN] Failed to send security alert:', err));
 
         // Fetch keys for response (we already checked existence in step 3)
         // Re-using cryptoData from step 3 if available, or fetching if strictly needed

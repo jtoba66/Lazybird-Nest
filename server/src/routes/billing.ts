@@ -10,7 +10,9 @@ import logger from '../utils/logger';
 import {
     sendSubscriptionStartedEmail,
     sendSubscriptionCanceledEmail,
-    sendPaymentFailedEmail
+    sendPaymentFailedEmail,
+    sendPaymentReceivedEmail,
+    sendCancellationFarewellEmail
 } from '../services/email';
 
 const router = express.Router();
@@ -222,7 +224,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                         stripe_subscription_id: null,
                         storage_quota_bytes: PRICING.free.storage
                     }).where(eq(users.id, user.id));
-                    if (user.email) sendSubscriptionCanceledEmail(user.email).catch(console.error);
+                    if (user.email) sendCancellationFarewellEmail(user.email).catch(console.error);
                     logger.info(`[BILLING-WEBHOOK] User ${user.id} downgraded to Free`);
                 }
                 break;
@@ -232,6 +234,15 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 logger.info(`[BILLING-WEBHOOK] payment_succeeded for customer ${invoice.customer}`);
                 await db.update(users).set({ subscription_status: 'active' })
                     .where(and(eq(users.stripe_customer_id, invoice.customer as string), eq(users.subscription_tier, 'pro')));
+
+                // Send payment received email (skip initial payment - already sent subscription started)
+                if (invoice.billing_reason === 'subscription_cycle') {
+                    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.stripe_customer_id, invoice.customer as string)).limit(1);
+                    if (user?.email) {
+                        const amount = invoice.amount_paid ? `$${(invoice.amount_paid / 100).toFixed(2)}` : '$4.99';
+                        sendPaymentReceivedEmail(user.email, amount).catch(console.error);
+                    }
+                }
                 break;
             }
             case 'invoice.payment_failed': {
