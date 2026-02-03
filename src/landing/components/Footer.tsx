@@ -1,8 +1,15 @@
 import { TwitterLogo, GithubLogo } from '@phosphor-icons/react';
+import { motion } from 'framer-motion';
 
 const Footer = () => {
     return (
-        <footer className="py-24 border-t border-slate-200 bg-white">
+        <motion.footer
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1 }}
+            className="py-24 border-t border-slate-200 bg-white"
+        >
             <div className="container mx-auto px-6">
                 <div className="flex flex-col md:flex-row justify-between items-start gap-12 mb-20">
                     <div className="flex flex-col gap-6 max-w-sm">
@@ -79,7 +86,7 @@ const Footer = () => {
                     </div>
                 </div>
             </div>
-        </footer>
+        </motion.footer>
     );
 };
 

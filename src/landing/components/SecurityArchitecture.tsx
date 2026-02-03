@@ -1,4 +1,5 @@
 import { LockKey, CloudArrowUp, Database } from '@phosphor-icons/react';
+import { motion } from 'framer-motion';
 import PremiumIcon from './PremiumIcon';
 
 const SecurityArchitecture = () => {
@@ -7,7 +8,13 @@ const SecurityArchitecture = () => {
             {/* Technical Grid Background */}
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
 
-            <div className="container mx-auto px-6 relative z-10">
+            <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.8 }}
+                className="container mx-auto px-6 relative z-10"
+            >
                 <div className="text-center mb-24">
                     <h2 className="text-4xl md:text-5xl font-display font-bold mb-6 text-text-main">Zero-Knowledge <span className="text-primary">Architecture</span></h2>
                     <p className="text-text-muted max-w-2xl mx-auto text-xl font-sans">
@@ -59,7 +66,7 @@ const SecurityArchitecture = () => {
                 </div>
 
 
-            </div>
+            </motion.div>
         </section>
     );
 };

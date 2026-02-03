@@ -71,7 +71,13 @@ const FAQ = () => {
 
     return (
         <section id="faq" className="py-32 bg-white relative overflow-hidden">
-            <div className="container mx-auto px-6 relative z-10">
+            <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.8 }}
+                className="container mx-auto px-6 relative z-10"
+            >
                 <div className="max-w-4xl mx-auto">
                     <div className="text-left mb-12 border-b border-text-main pb-8">
                         <h2 className="text-4xl md:text-5xl font-display font-extrabold tracking-tight text-text-main uppercase">
@@ -89,7 +95,7 @@ const FAQ = () => {
                         ))}
                     </div>
                 </div>
-            </div>
+            </motion.div>
         </section>
     );
 };

@@ -60,7 +60,13 @@ const PricingCard = ({
 const Pricing = () => {
     return (
         <section id="pricing" className="py-32 bg-white relative overflow-hidden border-t border-slate-100">
-            <div className="container mx-auto px-6 relative z-10">
+            <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.8 }}
+                className="container mx-auto px-6 relative z-10"
+            >
                 <div className="text-center max-w-3xl mx-auto mb-20">
                     <h2 className="text-4xl md:text-5xl font-display font-bold mb-6 text-text-main uppercase tracking-tight">
                         Simple <span className="text-primary italic">Pricing</span>.
@@ -93,7 +99,7 @@ const Pricing = () => {
                         ]}
                     />
                 </div>
-            </div>
+            </motion.div>
         </section>
     );
 };
