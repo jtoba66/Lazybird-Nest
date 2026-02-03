@@ -86,9 +86,6 @@ const Hero = () => {
                                 Get Started
                                 <ArrowRight className="group-hover:translate-x-1 transition-transform" weight="bold" />
                             </Link>
-                            <button className="w-full sm:w-auto px-8 py-4 bg-white text-text-main border border-slate-200 hover:border-slate-300 rounded-2xl font-display font-bold text-lg transition-all shadow-premium hover:shadow-premium-hover flex items-center justify-center gap-2">
-                                Documentation
-                            </button>
                         </motion.div>
                     </div>
 
