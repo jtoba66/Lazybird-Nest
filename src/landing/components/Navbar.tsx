@@ -27,7 +27,7 @@ const Navbar = () => {
                 <div className="flex items-center gap-3 group cursor-pointer">
                     <img src="/nest-logo.png" alt="Nest - Private Cloud Storage" className="h-10 w-auto drop-shadow-sm" />
                     <span className="text-2xl font-display font-bold tracking-tight text-text-main mt-1">
-                        Nest
+                        LazyBird's Nest
                     </span>
                 </div>
 

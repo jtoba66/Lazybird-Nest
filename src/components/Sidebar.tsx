@@ -166,7 +166,7 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                 <div className="w-11 h-11 md:w-12 md:h-12 flex items-center justify-center">
                     <img src={nestLogo} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150" />
                 </div>
-                <span className="text-xl md:text-2xl font-bold tracking-tight text-text-main">Nest</span>
+                <span className="text-xl md:text-2xl font-bold tracking-tight text-text-main">LazyBird's Nest</span>
             </div>
 
             {/* New Button Section */}

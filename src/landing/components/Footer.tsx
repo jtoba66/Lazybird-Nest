@@ -8,7 +8,7 @@ const Footer = () => {
                     <div className="flex flex-col gap-6 max-w-sm">
                         <div className="flex items-center gap-3">
                             <img src="/nest-logo.png" alt="Nest Logo" className="h-8 w-auto opacity-90" />
-                            <span className="text-2xl font-display font-bold tracking-tight text-text-main">Nest</span>
+                            <span className="text-2xl font-display font-bold tracking-tight text-text-main">LazyBird's Nest</span>
                         </div>
                         <p className="text-text-muted leading-relaxed font-sans">
                             The secure layer for your digital life.
