@@ -59,10 +59,7 @@ const Footer = () => {
                                     <span>Blog</span>
                                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 font-bold uppercase tracking-tighter">Soon</span>
                                 </li>
-                                <li className="flex items-center gap-2 opacity-40 cursor-not-allowed">
-                                    <span>Contact</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 font-bold uppercase tracking-tighter">Soon</span>
-                                </li>
+                                <li><a href="mailto:admin@lazybird.io" className="hover:text-primary transition-colors">Contact</a></li>
                             </ul>
                         </div>
                         <div>
