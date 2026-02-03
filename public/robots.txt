@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://nest.lazybird.io/sitemap.xml

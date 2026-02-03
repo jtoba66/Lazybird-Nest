@@ -48,7 +48,7 @@ export const LoginPage = () => {
             // 4. Decrypt Master Key (Handled internally by AuthContext.login)
             // The context will update the state and localStorage automatically.
 
-            navigate('/');
+            navigate('/dashboard');
 
         } catch (err: any) {
             console.error(err);

@@ -34,7 +34,7 @@ export const SignupPage = () => {
 
         try {
             await signup({ email, password });
-            navigate('/nest');
+            navigate('/dashboard');
         } catch (err: any) {
             console.error('Signup error:', err);
             setError(err.message || 'Failed to create account. Please try again.');

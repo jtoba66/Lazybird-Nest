@@ -2,6 +2,12 @@
 @import "@fontsource/outfit/500.css";
 @import "@fontsource/outfit/600.css";
 @import "@fontsource/outfit/700.css";
+@import "@fontsource/space-grotesk/400.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
 
 @tailwind base;
 @tailwind components;
@@ -164,4 +170,16 @@
   a {
     -webkit-tap-highlight-color: transparent;
   }
+}
+
+.text-glow {
+  text-shadow: 0 0 40px rgba(118, 138, 150, 0.3);
+}
+
+.glass-card {
+  @apply bg-white/40 backdrop-blur-md border border-white/50 shadow-sm hover:shadow-premium-hover transition-all duration-300;
+}
+
+html {
+  scroll-behavior: smooth;
 }

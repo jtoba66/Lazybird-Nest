@@ -20,6 +20,7 @@ import { RecoverySetupPage } from './pages/RecoverySetupPage';
 import { TrashPage } from './pages/TrashPage';
 import { TermsPage } from './pages/TermsPage';
 import { PricingPage } from './pages/PricingPage';
+import { LandingPage } from './pages/LandingPage';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -50,8 +51,9 @@ function App() {
                       }
                     />
 
+                    <Route path="/" element={<LandingPage />} />
                     <Route
-                      path="/"
+                      path="/dashboard"
                       element={
                         <ProtectedRoute>
                           <DashboardLayout>
@@ -120,7 +122,7 @@ function App() {
                       }
                     />
 
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>
                 </BrowserRouter>
               </ToastProvider>

@@ -23,7 +23,7 @@ import { useQuotaCheck } from './QuotaBanner';
 import nestLogo from '../assets/nest-logo.png';
 
 interface SidebarItemProps {
-    icon: React.ElementType;
+    icon: any;
     label: string;
     active?: boolean;
     disabled?: boolean;
@@ -63,7 +63,7 @@ function formatBytes(bytes: number): string {
 }
 
 const SIDEBAR_ITEMS = [
-    { icon: House, label: 'Nest', path: '/' },
+    { icon: House, label: 'Nest', path: '/dashboard' },
     { icon: FolderOpen, label: 'File Manager', path: '/folders' },
     { icon: ShareNetwork, label: 'Shared Links', path: '/shared' },
     { icon: Trash, label: 'Trash', path: '/trash' },
