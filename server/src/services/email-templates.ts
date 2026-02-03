@@ -472,6 +472,38 @@ export function securityAlertEmail() {
 }
 
 /**
+ * Cancellation Farewell Email (with consequences)
+ */
+export function cancellationFarewellEmail() {
+    const title = 'Subscription Canceled';
+    const content = `
+        <h1 class="h1" style="text-align: center;">Sorry to see you go</h1>
+        <p class="p" style="text-align: center;">
+            Your Nest Pro subscription has been canceled. You'll continue to have Pro features until the end of your current billing period.
+        </p>
+
+        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; margin: 24px 0;">
+            <p style="margin: 0 0 12px 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">What happens next:</p>
+            <ul style="margin: 0; padding-left: 20px; color: ${THEME.colors.textMuted}; font-size: 14px;">
+                <li style="margin-bottom: 8px;">Your storage quota will return to 2GB</li>
+                <li style="margin-bottom: 8px;">If you have more than 2GB stored, new uploads will be blocked</li>
+                <li style="margin-bottom: 8px;">New share links cannot be created while over quota</li>
+                <li style="margin-bottom: 8px;">Your existing files remain safe and accessible</li>
+            </ul>
+        </div>
+
+        <p class="p" style="text-align: center; font-size: 13px;">
+            We'd love to know why you're leaving. Your feedback helps us improve.
+        </p>
+
+        <div style="text-align: center; margin-top: 32px;">
+            <a href="${process.env.FRONTEND_URL || '#'}/pricing" class="btn">Resubscribe</a>
+        </div>
+    `;
+    return wrapTemplate(content, title);
+}
+
+/**
  * Share Link Weekly Digest
  */
 export function shareLinkDigestEmail(totalDownloads: number, maxFileDownloads: number) {
