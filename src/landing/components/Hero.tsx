@@ -37,7 +37,7 @@ const Hero = () => {
                             transition={{ duration: 0.6, delay: 0.3 }}
                             className="max-w-xl mx-auto lg:mx-0 mb-16 relative z-10"
                         >
-                            <p className="text-xl text-text-muted leading-relaxed font-sans mb-8">
+                            <p className="text-xl text-text-muted leading-relaxed font-display font-medium mb-8">
                                 Private cloud storage for your files
                             </p>
 
