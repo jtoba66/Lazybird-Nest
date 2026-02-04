@@ -40,13 +40,9 @@ const Footer = () => {
                             </ul>
                         </div>
                         <div>
-                            <h4 className="font-display font-bold mb-6 text-text-main uppercase text-sm tracking-wider">Documentation</h4>
+                            <h4 className="font-display font-bold mb-6 text-text-main uppercase text-sm tracking-wider">Resources</h4>
                             <ul className="space-y-4 text-text-muted text-sm font-medium font-sans">
-                                <li><Link to="/docs" className="hover:text-primary transition-colors">Introduction</Link></li>
-                                <li><Link to="/docs/architecture" className="hover:text-primary transition-colors">Architecture</Link></li>
-                                <li><Link to="/docs/api" className="hover:text-primary transition-colors">API Reference</Link></li>
-                                <li><Link to="/docs/frontend" className="hover:text-primary transition-colors">Frontend Logic</Link></li>
-                                <li><Link to="/docs/database" className="hover:text-primary transition-colors">Database Schema</Link></li>
+                                <li><Link to="/docs" className="hover:text-primary transition-colors">Documentation</Link></li>
                             </ul>
                         </div>
                         <div>
