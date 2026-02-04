@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "doppler run -- vite",
-    "build": "tsc -b && vite build && node prerender.js",
+    "build": "npx puppeteer browsers install chrome && tsc -b && vite build && node prerender.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
