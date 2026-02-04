@@ -43,8 +43,8 @@ async function prerender() {
             const url = `http://localhost:${PORT}${route}`;
             console.log(`📸 Prerendering: ${route}...`);
 
-            // Use networkidle2 (max 2 connections) which is safer for heavy SPAs
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            // Use domcontentloaded (fastest) + explicit selector wait
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
             // Ensure React has mounted by checking for the root div or a known element
             try {
