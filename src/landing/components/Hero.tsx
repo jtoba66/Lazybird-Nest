@@ -57,7 +57,7 @@ const Hero = () => {
                             className="max-w-xl mx-auto lg:mx-0 mb-16 relative z-10"
                         >
                             <p className="text-xl text-text-muted leading-relaxed font-display font-medium mb-8">
-                                Private cloud storage for your files
+                                For creators, teams, and anyone sharing sensitive files.
                             </p>
 
                             <div className="relative inline-block group cursor-default p-4">

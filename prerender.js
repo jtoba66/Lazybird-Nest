@@ -14,7 +14,9 @@ const ROUTES = [
     '/docs/architecture',
     '/docs/api',
     '/docs/frontend',
-    '/docs/database'
+    '/docs/database',
+    '/terms',
+    '/privacy'
 ];
 
 async function prerender() {

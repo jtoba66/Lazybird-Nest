@@ -1,8 +1,17 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { ArrowLeft, Scroll, LockKey, Gavel, Handshake } from '@phosphor-icons/react';
 
 export const TermsPage = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+
+    useEffect(() => {
+        if (location.pathname === '/privacy') {
+            const el = document.getElementById('privacy-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [location.pathname]);
 
     return (
         <div className="min-h-[100dvh] bg-background text-text-main p-4 sm:p-6 md:p-12 overflow-y-auto custom-scrollbar">
@@ -10,7 +19,7 @@ export const TermsPage = () => {
                 {/* Header */}
                 <div className="mb-6 sm:mb-8 flex items-center gap-4">
                     <button
-                        onClick={() => navigate(-1)}
+                        onClick={() => navigate("/")}
                         className="p-2 rounded-xl hover:bg-white/10 transition-colors text-text-muted hover:text-text-main"
                     >
                         <ArrowLeft size={24} weight="bold" />
@@ -62,7 +71,7 @@ export const TermsPage = () => {
                     </p>
 
                     {/* Section 2: Privacy & Data (From Landing + Nest Specifics) */}
-                    <div className="flex items-center gap-2 mt-12 mb-4 not-prose">
+                    <div id="privacy-section" className="flex items-center gap-2 mt-12 mb-4 not-prose scroll-mt-24">
                         <LockKey size={24} className="text-primary" weight="duotone" />
                         <h2 className="text-2xl font-bold text-text-main m-0">Part II: Privacy & Encryption</h2>
                     </div>

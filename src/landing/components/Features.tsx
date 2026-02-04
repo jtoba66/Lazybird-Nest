@@ -10,13 +10,13 @@ const Features = () => {
         },
         {
             icon: HardDrives,
-            title: "10GB+ File Support",
-            description: "Upload massive files with our chunking engine. Resumable uploads ensure you never lose progress.",
+            title: "Decentralized Storage",
+            description: "Your files are split into encrypted chunks and stored redundantly across a global network.",
         },
         {
             icon: Fingerprint,
-            title: "Metadata Encryption",
-            description: "We encrypt everything. Filenames, folder structures, and file types are invisible to the server.",
+            title: "Client-Side Encryption",
+            description: "AES-256-GCM (streaming) encryption. Keys derived via Argon2id. We never see your password or files.",
         },
         {
             icon: Lightning,
@@ -60,7 +60,7 @@ const Features = () => {
                     </h2>
                     <p className="text-text-muted text-xl leading-relaxed font-sans">
                         Enterprise grade security meets consumer grade usability.
-                        No complex keys to manage, just login and go.
+                        No complex keys to manage. If you lose your password, your data is lost forever because we cannot decrypt it for you.
                     </p>
                 </motion.div>
 

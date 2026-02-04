@@ -56,7 +56,9 @@ const App = () => {
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
                     <Route path="/s/:shareToken" element={<SharePage />} />
+                    <Route path="/s/:shareToken" element={<SharePage />} />
                     <Route path="/terms" element={<TermsPage />} />
+                    <Route path="/privacy" element={<TermsPage />} />
 
                     <Route
                       path="/recovery-setup"

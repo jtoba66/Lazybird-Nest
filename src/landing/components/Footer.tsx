@@ -53,8 +53,8 @@ const Footer = () => {
                         <div>
                             <h4 className="font-display font-bold mb-6 text-text-main uppercase text-sm tracking-wider">Legal</h4>
                             <ul className="space-y-4 text-text-muted text-sm font-medium font-sans">
-                                <li><a href="https://nest.lazybird.io/terms" className="hover:text-primary transition-colors">Privacy</a></li>
-                                <li><a href="https://nest.lazybird.io/terms" className="hover:text-primary transition-colors">Terms</a></li>
+                                <li><Link to="/privacy" className="hover:text-primary transition-colors">Privacy</Link></li>
+                                <li><Link to="/terms" className="hover:text-primary transition-colors">Terms</Link></li>
                             </ul>
                         </div>
                     </div>

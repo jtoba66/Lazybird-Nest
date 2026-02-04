@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { CaretDown } from '@phosphor-icons/react';
 
 const FAQItem = ({ question, answer }: { question: string; answer: string }) => {
@@ -22,21 +22,19 @@ const FAQItem = ({ question, answer }: { question: string; answer: string }) => 
                     <CaretDown size={24} weight="bold" />
                 </motion.div>
             </button>
-            <AnimatePresence initial={false}>
-                {isOpen && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] } as any}
-                        className="overflow-hidden"
-                    >
-                        <div className="pb-8 pr-12 text-base md:text-lg text-text-muted font-sans leading-relaxed">
-                            {answer}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <motion.div
+                initial={false}
+                animate={{
+                    height: isOpen ? "auto" : 0,
+                    opacity: isOpen ? 1 : 0
+                }}
+                transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] } as any}
+                className="overflow-hidden"
+            >
+                <div className="pb-8 pr-12 text-base md:text-lg text-text-muted font-sans leading-relaxed">
+                    {answer}
+                </div>
+            </motion.div>
         </div>
     );
 };
@@ -65,7 +63,7 @@ const FAQ = () => {
         },
         {
             question: "What if I forget my password?",
-            answer: "Nest is built so we don’t have access to your decryption keys on the server. That means if you lose your credentials, we will not be able to restore access to your encrypted data. See the Terms for details."
+            answer: "Nest is built so we don’t have access to your decryption keys on the server. That means if you lose your credentials (and haven't set up recovery), we will not be able to restore access to your encrypted data."
         }
     ];
 
