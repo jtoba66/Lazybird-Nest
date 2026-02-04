@@ -43,10 +43,18 @@ async function prerender() {
             const url = `http://localhost:${PORT}${route}`;
             console.log(`📸 Prerendering: ${route}...`);
 
-            await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+            // Use networkidle2 (max 2 connections) which is safer for heavy SPAs
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+
+            // Ensure React has mounted by checking for the root div or a known element
+            try {
+                await page.waitForSelector('#root', { timeout: 10000 });
+            } catch (e) {
+                console.warn(`⚠️ Selector timeout for ${route}, proceeding anyway...`);
+            }
 
             // Wait a bit extra for animations/react-helmet
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 3000));
 
             const content = await page.content();
 
