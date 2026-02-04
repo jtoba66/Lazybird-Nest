@@ -21,6 +21,12 @@ import { TrashPage } from './pages/TrashPage';
 import { TermsPage } from './pages/TermsPage';
 import { PricingPage } from './pages/PricingPage';
 import { LandingPage } from './pages/LandingPage';
+import { DocsLayout } from './landing/components/DocsLayout';
+import DocsIndex from './landing/pages/docs/DocsIndex';
+import ArchitectureDoc from './landing/pages/docs/ArchitectureDoc';
+import APIDoc from './landing/pages/docs/APIDoc';
+import FrontendDoc from './landing/pages/docs/FrontendDoc';
+import DatabaseDoc from './landing/pages/docs/DatabaseDoc';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -52,6 +58,15 @@ function App() {
                     />
 
                     <Route path="/" element={<LandingPage />} />
+
+                    {/* Documentation Routes */}
+                    <Route path="/docs" element={<DocsLayout />}>
+                      <Route index element={<DocsIndex />} />
+                      <Route path="architecture" element={<ArchitectureDoc />} />
+                      <Route path="api" element={<APIDoc />} />
+                      <Route path="frontend" element={<FrontendDoc />} />
+                      <Route path="database" element={<DatabaseDoc />} />
+                    </Route>
                     <Route
                       path="/dashboard"
                       element={

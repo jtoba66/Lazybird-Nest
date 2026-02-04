@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { List, X } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const Navbar = () => {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const { pathname } = useLocation();
 
     useEffect(() => {
         const handleScroll = () => {
@@ -36,12 +37,18 @@ const Navbar = () => {
                     {['Features', 'Architecture', 'FAQ', 'Pricing'].map((item) => (
                         <a
                             key={item}
-                            href={`#${item.toLowerCase()}`}
+                            href={pathname === '/' ? `#${item.toLowerCase()}` : `/#${item.toLowerCase()}`}
                             className="text-sm font-semibold text-text-muted hover:text-text-main transition-colors duration-300 font-display uppercase tracking-wide"
                         >
                             {item}
                         </a>
                     ))}
+                    <Link
+                        to="/docs"
+                        className="text-sm font-semibold text-text-muted hover:text-text-main transition-colors duration-300 font-display uppercase tracking-wide"
+                    >
+                        Documentation
+                    </Link>
                     <Link to="/login" className="bg-text-main hover:bg-slate-800 text-white px-7 py-3 rounded-full font-bold transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 font-display text-sm">
                         Launch App
                     </Link>
@@ -77,6 +84,13 @@ const Navbar = () => {
                                     {item}
                                 </a>
                             ))}
+                            <Link
+                                to="/docs"
+                                className="text-lg font-display font-bold text-text-main hover:text-primary"
+                                onClick={() => setIsMobileMenuOpen(false)}
+                            >
+                                Documentation
+                            </Link>
                             <Link to="/login" className="bg-text-main text-white px-5 py-4 rounded-xl font-bold transition-all text-center shadow-md">
                                 Launch App
                             </Link>
