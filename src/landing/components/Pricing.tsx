@@ -47,13 +47,15 @@ const PricingCard = ({
             ))}
         </ul>
 
-        <button className={`w-full py-4 rounded-2xl font-display font-bold text-lg transition-all flex items-center justify-center gap-2 group ${isRecommended
-            ? 'bg-text-main text-white hover:bg-black shadow-lg hover:shadow-xl hover:-translate-y-1'
-            : 'bg-white text-text-main border border-slate-200 hover:border-slate-300 shadow-premium'
-            }`}>
+        <a
+            href="https://nest.lazybird.io/signup"
+            className={`w-full py-4 rounded-2xl font-display font-bold text-lg transition-all flex items-center justify-center gap-2 group ${isRecommended
+                ? 'bg-text-main text-white hover:bg-black shadow-lg hover:shadow-xl hover:-translate-y-1'
+                : 'bg-white text-text-main border border-slate-200 hover:border-slate-300 shadow-premium'
+                }`}>
             {isRecommended ? 'Get Pro' : 'Get Started'}
             <ArrowRight size={20} weight="bold" className="group-hover:translate-x-1 transition-transform" />
-        </button>
+        </a>
     </motion.div>
 );
 
