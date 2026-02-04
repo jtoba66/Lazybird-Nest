@@ -60,7 +60,11 @@ export const FoldersPage = () => {
         const loadContent = async () => {
             if (!metadata) return;
 
-            setLoading(true);
+            // Only show full-screen loader on initial mount or connection
+            // Otherwise, do a "background refresh" to prevent flashing
+            if (displayFiles.length === 0 && displayFolders.length === 0) {
+                setLoading(true);
+            }
             try {
                 let targetId = selectedFolderId;
 
