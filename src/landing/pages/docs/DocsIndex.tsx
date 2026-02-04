@@ -40,11 +40,23 @@ const DocsIndex = () => {
         }
     ];
 
+    const jsonLd = [{
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "Nest Documentation Hub",
+        "description": "Technical documentation for Nest Zero-Knowledge Architecture, API, and Encryption Logic.",
+        "author": {
+            "@type": "Organization",
+            "name": "LazyBird Nest"
+        }
+    }];
+
     return (
         <div className="max-w-4xl text-text-main">
             <SEO
                 title="Documentation Hub"
                 description="Technical documentation for Nest Zero-Knowledge Architecture, API, and Encryption Logic."
+                jsonLd={jsonLd}
             />
             <motion.div
                 initial={{ opacity: 0, y: 20 }}

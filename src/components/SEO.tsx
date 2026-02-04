@@ -7,6 +7,7 @@ interface SEOProps {
     type?: string;
     name?: string;
     image?: string;
+    jsonLd?: Record<string, any>[];
 }
 
 const SEO = ({
@@ -15,7 +16,8 @@ const SEO = ({
     canonical,
     type = 'website',
     name = 'Nest',
-    image = '/og-image.png'
+    image = '/og-image.png',
+    jsonLd
 }: SEOProps) => {
     const siteTitle = 'Nest | Secure Cloud Storage & Private File Sharing';
     const siteDescription = 'LazyBird Nest is your secure, zero-knowledge cloud vault. Store and share your files with military-grade encryption. Only you hold the keys.';
@@ -39,6 +41,13 @@ const SEO = ({
             <meta name="twitter:title" content={title ? `${title} | Nest` : siteTitle} />
             <meta name="twitter:description" content={description || siteDescription} />
             <meta name="twitter:image" content={image} />
+
+            {/* Structured Data (JSON-LD) */}
+            {jsonLd && (
+                <script type="application/ld+json">
+                    {JSON.stringify(jsonLd)}
+                </script>
+            )}
         </Helmet>
     );
 };
