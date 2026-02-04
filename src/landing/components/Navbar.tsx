@@ -81,17 +81,23 @@ const Navbar = () => {
                                     className="text-lg font-display font-bold text-text-main hover:text-primary"
                                     onClick={(e) => {
                                         setIsMobileMenuOpen(false);
-                                        // If on homepage, standard anchor might be blocked by re-rendering menu
-                                        // So we manually scroll securely
+                                        // Yield to React state update before scrolling
                                         if (pathname === '/') {
                                             e.preventDefault();
-                                            const el = document.getElementById(item.toLowerCase());
-                                            if (el) {
-                                                const offset = 80; // Navbar height offset
-                                                const elementPosition = el.getBoundingClientRect().top;
-                                                const offsetPosition = elementPosition + window.pageYOffset - offset;
-                                                window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
-                                            }
+                                            setTimeout(() => {
+                                                const el = document.getElementById(item.toLowerCase());
+                                                if (el) {
+                                                    // Offset for fixed header (approx 80px)
+                                                    const headerOffset = 85;
+                                                    const elementPosition = el.getBoundingClientRect().top;
+                                                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+                                                    window.scrollTo({
+                                                        top: offsetPosition,
+                                                        behavior: "smooth"
+                                                    });
+                                                }
+                                            }, 150);
                                         }
                                     }}
                                 >
