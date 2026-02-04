@@ -71,7 +71,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                 {toasts.map(toast => (
                     <div
                         key={toast.id}
-                        className="bg-card border border-border rounded-xl shadow-xl p-4 flex items-start gap-3 animate-slide-in-right"
+                        className="bg-[rgba(223,235,246,0.9)] backdrop-blur-xl border border-white/60 rounded-xl shadow-xl p-4 flex items-start gap-3 animate-slide-in-right"
                     >
                         <ToastIcon type={toast.type} />
                         <p className="flex-1 text-sm text-text-main font-medium">
