@@ -51,8 +51,10 @@ async function prerender() {
             // Ensure React has mounted by checking for the root div or a known element
             try {
                 await page.waitForSelector('#root', { timeout: 10000 });
+                // NEW: Wait for potential lazy loaded chunks to fetch
+                await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => { });
             } catch (e) {
-                console.warn(`⚠️ Selector timeout for ${route}, proceeding anyway...`);
+                console.warn(`⚠️ Selector/Network timeout for ${route}, proceeding anyway...`);
             }
 
             // Wait a bit extra for animations/react-helmet
