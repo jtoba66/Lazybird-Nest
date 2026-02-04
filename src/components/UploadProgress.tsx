@@ -18,12 +18,24 @@ export const UploadProgress = () => {
     const [isMinimized, setIsMinimized] = useState(false);
     const constraintsRef = useRef(null);
 
+    // Auto-minimize watcher
+    const activeCount = uploads.filter(u => u.status === 'uploading' || u.status === 'queued').length;
+    const completedCount = uploads.filter(u => u.status === 'completed').length;
+    const failedCount = uploads.filter(u => u.status === 'failed').length;
+
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (activeCount === 0 && completedCount > 0 && failedCount === 0 && !isMinimized) {
+            // Auto minimize 1 second after completion
+            timer = setTimeout(() => {
+                setIsMinimized(true);
+            }, 1000);
+        }
+        return () => clearTimeout(timer);
+    }, [activeCount, completedCount, failedCount, isMinimized]);
+
     // Only show if there are uploads
     if (uploads.length === 0) return null;
-
-    const activeCount = uploads.filter(u => u.status === 'uploading' || u.status === 'queued').length;
-    const failedCount = uploads.filter(u => u.status === 'failed').length;
-    const completedCount = uploads.filter(u => u.status === 'completed').length;
 
     const clearAll = () => {
         uploads.forEach(u => removeUpload(u.id));
@@ -111,8 +123,8 @@ export const UploadProgress = () => {
                                                 )}
                                             </div>
 
-                                            {/* File Info */}
-                                            <div className="flex-1 min-w-0">
+                                            {/* File Info - Added pr-16 to prevent overlap with absolute buttons */}
+                                            <div className="flex-1 min-w-0 pr-16 md:pr-0">
                                                 <p className="text-sm font-semibold text-text-main truncate" title={upload.filename}>
                                                     {upload.filename}
                                                 </p>
