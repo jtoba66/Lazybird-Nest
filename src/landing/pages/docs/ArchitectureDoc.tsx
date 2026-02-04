@@ -1,8 +1,13 @@
 import { motion } from 'framer-motion';
+import SEO from '../../../components/SEO';
 
 const ArchitectureDoc = () => {
     return (
         <div className="max-w-4xl text-text-main">
+            <SEO
+                title="Zero-Knowledge Architecture"
+                description="Deep dive into Nest's client-side encryption, key management, and decentralized storage model."
+            />
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

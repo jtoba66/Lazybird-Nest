@@ -1,8 +1,13 @@
 import { motion } from 'framer-motion';
+import SEO from '../../../components/SEO';
 
 const FrontendDoc = () => {
     return (
         <div className="max-w-4xl text-text-main">
+            <SEO
+                title="Frontend Logic & Encryption"
+                description="How Nest handles client-side encryption, file chunking, and memory management in the browser."
+            />
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

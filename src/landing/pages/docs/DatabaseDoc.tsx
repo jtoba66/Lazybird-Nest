@@ -1,8 +1,13 @@
 import { motion } from 'framer-motion';
+import SEO from '../../../components/SEO';
 
 const DatabaseDoc = () => {
     return (
         <div className="max-w-4xl text-text-main">
+            <SEO
+                title="Database Schema"
+                description="Overview of Nest's database schema and how it handles zero-knowledge relational data."
+            />
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

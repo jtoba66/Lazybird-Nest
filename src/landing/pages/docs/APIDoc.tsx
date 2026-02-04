@@ -1,8 +1,13 @@
 import { motion } from 'framer-motion';
+import SEO from '../../../components/SEO';
 
 const APIDoc = () => {
     return (
         <div className="max-w-4xl text-text-main">
+            <SEO
+                title="API Reference"
+                description="Complete REST API reference for Nest. Auth, File Uploads, and Storage endpoints."
+            />
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

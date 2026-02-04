@@ -2,6 +2,8 @@ import { motion } from 'framer-motion';
 import { ShieldCheck, Globe, Browsers, Database } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 
+import SEO from '../../../components/SEO';
+
 const DocsIndex = () => {
     const categories = [
         {
@@ -40,6 +42,10 @@ const DocsIndex = () => {
 
     return (
         <div className="max-w-4xl text-text-main">
+            <SEO
+                title="Documentation Hub"
+                description="Technical documentation for Nest Zero-Knowledge Architecture, API, and Encryption Logic."
+            />
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
