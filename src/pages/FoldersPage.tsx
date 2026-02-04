@@ -271,12 +271,18 @@ export const FoldersPage = () => {
             const shareUrl = `${origin}/s/${token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
 
             // Step 7: Copy to clipboard
-            await navigator.clipboard.writeText(shareUrl);
-            showToast('Share link copied to clipboard!', 'success');
+            try {
+                await navigator.clipboard.writeText(shareUrl);
+                showToast('Share link copied to clipboard!', 'success');
+            } catch (clipboardError) {
+                console.warn('[SHARE] Clipboard write failed (likely browser restriction):', clipboardError);
+                // Fallback: The link WAS created, just not copied.
+                showToast('Link created! Find it in "Shared Links".', 'warning', 5000);
+            }
             triggerFileRefresh();
         } catch (error) {
-            console.error('Share failed:', error);
-            showToast('Failed to create/copy share link', 'error');
+            console.error('Share creation failed:', error);
+            showToast('Failed to create share link', 'error');
         }
     };
 
