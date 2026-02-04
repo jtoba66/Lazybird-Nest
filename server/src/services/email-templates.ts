@@ -451,11 +451,11 @@ export function paymentReceivedEmail(amount: string) {
  * Security Alert Email (New Login)
  */
 export function securityAlertEmail() {
-    const title = 'New Sign-In';
+    const title = 'New Sign In';
     const content = `
-        <h1 class="h1" style="text-align: center;">New sign-in to your account</h1>
+        <h1 class="h1" style="text-align: center;">New sign in to your account</h1>
         <p class="p" style="text-align: center;">
-            There was a new sign-in to your Nest account. If this was you, no action is needed.
+            There was a new sign in to your Nest account. If this was you, no action is needed.
         </p>
 
         <div style="background-color: #FEF2F2; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; border: 1px solid #FEE2E2;">
