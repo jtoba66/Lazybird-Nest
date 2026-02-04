@@ -16,7 +16,7 @@ const FAQItem = ({ question, answer }: { question: string; answer: string }) => 
                 </h3>
                 <motion.div
                     animate={{ rotate: isOpen ? 180 : 0 }}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    transition={{ duration: 0.3, ease: "easeInOut" } as any}
                     className="flex-shrink-0 text-text-muted group-hover:text-primary transition-colors"
                 >
                     <CaretDown size={24} weight="bold" />
@@ -28,7 +28,7 @@ const FAQItem = ({ question, answer }: { question: string; answer: string }) => 
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] } as any}
                         className="overflow-hidden"
                     >
                         <div className="pb-8 pr-12 text-base md:text-lg text-text-muted font-sans leading-relaxed">

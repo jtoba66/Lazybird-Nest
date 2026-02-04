@@ -74,7 +74,7 @@ const Hero = () => {
                                         scale: [1, 1.1, 0.95, 1.05, 1],
                                         rotate: [0, 5, -3, 2, 0]
                                     }}
-                                    transition={{ duration: 7, repeat: Infinity, ease: "linear" }}
+                                    transition={{ duration: 7, repeat: Infinity, ease: "linear" } as any}
                                     className="absolute inset-0 bg-gradient-to-br from-white/60 via-blue-100/40 to-secondary/30 backdrop-blur-2xl shadow-[0_20px_50px_rgba(141,169,196,0.3)] transition-transform duration-700 group-hover:scale-110"
                                 />
 
@@ -84,7 +84,7 @@ const Hero = () => {
                                         borderRadius: ["20% 80% 40% 60% / 50% 30% 70% 50%", "80% 20% 70% 30% / 30% 50% 50% 70%", "20% 80% 40% 60% / 50% 30% 70% 50%"],
                                         opacity: [0.3, 0.7, 0.3],
                                     }}
-                                    transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+                                    transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" } as any}
                                     className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/80 to-transparent blur-xl mix-blend-overlay"
                                 />
 
