@@ -15,7 +15,7 @@ const DatabaseDoc = () => {
                 <h1 className="text-4xl font-bold mb-8 text-text-main">Database & Schema</h1>
 
                 <p className="text-lg text-text-muted mb-12 leading-relaxed">
-                    Nest uses **PostgreSQL** with **Drizzle ORM** for its persistence layer. The schema is designed to balance relational data requirements with zero-knowledge privacy.
+                    Nest uses <strong className="font-bold">PostgreSQL</strong> with <strong className="font-bold">Drizzle ORM</strong> for its persistence layer. The schema is designed to balance relational data requirements with zero-knowledge privacy.
                 </p>
 
                 <section className="mb-12 font-sans">
@@ -49,7 +49,7 @@ const DatabaseDoc = () => {
                 <section className="mb-12">
                     <h2 className="text-2xl font-bold mb-4 text-text-main">The Graveyard</h2>
                     <p className="text-text-muted mb-6 leading-relaxed">
-                        To support secure deletion and system audits, Nest uses a separate "Graveyard" schema. Metadata for deleted files is moved here to preserve history without cluttering the active filesystem handles.
+                        To support secure deletion and system audits, Nest uses a separate "Graveyard" schema. Metadata for deleted files is moved here to preserve history without cluttering the active filesystem handles. Even in the graveyard, all metadata remains fully encrypted.
                     </p>
                 </section>
             </motion.div>

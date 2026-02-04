@@ -45,7 +45,7 @@ const FAQ = () => {
     const faqs = [
         {
             question: "What is zero‑knowledge?",
-            answer: "Zero‑knowledge is a design goal: your files are encrypted on your device and the service stores encrypted data, not readable content. In practice, that means we cannot view the content of your files."
+            answer: "Zero‑knowledge is a design goal your files are encrypted on your device and the service stores encrypted data, not readable content. In practice, that means we cannot view the content of your files."
         },
         {
             question: "Who is Nest for?",

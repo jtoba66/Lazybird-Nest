@@ -15,13 +15,13 @@ const ArchitectureDoc = () => {
                 <h1 className="text-4xl font-bold mb-8 text-text-main">Architecture & Security</h1>
 
                 <p className="text-lg text-text-muted mb-12 leading-relaxed">
-                    Nest is built on a **Zero-Knowledge (ZK)** security model. This means that the server is "blind" to your data—it facilitates storage and authentication without ever having the technical capability to decrypt your files.
+                    Nest is built on a <strong className="font-bold">Zero-Knowledge (ZK)</strong> security model. This means that the server is "blind" to your data. It facilitates storage and authentication without ever having the technical capability to decrypt your files.
                 </p>
 
                 <section className="mb-12">
                     <h2 className="text-2xl font-bold mb-4 text-text-main">The Zero-Knowledge Model</h2>
                     <p className="text-text-muted mb-6">
-                        In traditional cloud storage, the server manages your keys. In Nest, **you are the only one who holds the keys.**
+                        In traditional cloud storage, the server manages your keys. In Nest, <strong className="font-bold">you are the only one who holds the keys.</strong>
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {[
@@ -43,7 +43,7 @@ const ArchitectureDoc = () => {
                     </div>
                     <h3 className="text-xl font-bold mb-4 text-text-main">Root Derivation (Argon2id)</h3>
                     <p className="text-text-muted mb-6 font-sans">
-                        When you log in, your password is processed locally using the **Argon2id** memory-hard hashing function.
+                        When you log in, your password is processed locally using the <strong className="font-bold">Argon2id</strong> memory-hard hashing function.
                     </p>
                     <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 font-mono text-sm overflow-x-auto shadow-xl">
                         <pre className="text-emerald-400">

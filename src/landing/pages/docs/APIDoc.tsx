@@ -15,7 +15,7 @@ const APIDoc = () => {
                 <h1 className="text-4xl font-bold mb-8 text-text-main">API Reference</h1>
 
                 <p className="text-lg text-text-muted mb-12 leading-relaxed">
-                    The Nest API is a JSON REST interface designed for speed and security. All endpoints (except public sharing and salt retrieval) require a **Bearer JWT Token** in the `Authorization` header.
+                    The Nest API is a JSON REST interface designed for speed and security. All endpoints (except public sharing and salt retrieval) require a <strong className="font-bold">Bearer JWT Token</strong> in the `Authorization` header.
                 </p>
 
                 <section className="mb-12">

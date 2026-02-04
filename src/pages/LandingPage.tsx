@@ -40,7 +40,7 @@ export const LandingPage = () => {
                     "name": "What is zero‑knowledge?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "Zero‑knowledge is a design goal: your files are encrypted on your device and the service stores encrypted data, not readable content. In practice, that means we cannot view the content of your files."
+                        "text": "Zero‑knowledge is a design goal your files are encrypted on your device and the service stores encrypted data, not readable content. In practice, that means we cannot view the content of your files."
                     }
                 },
                 {
