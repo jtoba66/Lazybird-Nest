@@ -45,42 +45,43 @@ export const SignupPage = () => {
     };
 
     return (
-        <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 bg-[#0a0a0a] text-white">
-            <div className="absolute inset-0 overflow-hidden -z-10">
-                <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-primary/20 rounded-full blur-[120px] animate-pulse" />
-                <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-secondary/10 rounded-full blur-[120px] animate-pulse delay-700" />
+        <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+            {/* Background Gradients (Subtle) */}
+            <div className="absolute top-0 left-0 right-0 h-full overflow-hidden -z-10 pointer-events-none">
+                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[100px]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary/5 rounded-full blur-[100px]" />
             </div>
 
-            <div className="glass-panel max-w-lg w-full p-6 sm:p-10 animate-in fade-in zoom-in duration-500">
+            <div className="glass-panel max-w-lg w-full p-6 sm:p-10 animate-in fade-in zoom-in duration-500 border-white/60 shadow-xl">
                 <div className="mb-8 sm:mb-10 text-center relative">
                     <button
                         onClick={() => navigate('/')}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-lg hover:bg-white/5 text-text-muted hover:text-primary transition-all group"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-lg hover:bg-black/5 text-text-muted hover:text-primary transition-all group"
                     >
                         <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
                     </button>
 
-                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white drop-shadow-md">
+                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-text-main drop-shadow-sm">
                         Create your Nest
                     </h1>
-                    <p className="mt-2 text-blue-200/80 font-medium">Join the zero-knowledge revolution.</p>
+                    <p className="mt-2 text-text-muted font-medium">Join the zero-knowledge revolution.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
                     <div>
-                        <label className="block text-sm font-semibold text-slate-200 mb-2">
+                        <label className="block text-sm font-bold text-text-main mb-2">
                             Email Address
                         </label>
                         <div className="relative group">
                             <EnvelopeSimple
                                 size={20}
-                                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"
+                                className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors"
                             />
                             <input
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full glass-input pl-12"
+                                className="w-full glass-input pl-12 bg-white/50 focus:bg-white"
                                 placeholder="you@example.com"
                                 required
                             />
@@ -88,7 +89,7 @@ export const SignupPage = () => {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-semibold text-slate-200 mb-2">
+                        <label className="block text-sm font-bold text-text-main mb-2">
                             Password
                         </label>
                         <div className="relative group">
@@ -100,14 +101,14 @@ export const SignupPage = () => {
                                 type={showPassword ? 'text' : 'password'}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full glass-input pl-12 pr-12"
+                                className="w-full glass-input pl-12 pr-12 bg-white/50 focus:bg-white"
                                 placeholder="••••••••"
                                 required
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main transition-colors"
                             >
                                 {showPassword ? <EyeSlash size={20} /> : <Eye size={20} />}
                             </button>
@@ -115,7 +116,7 @@ export const SignupPage = () => {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-semibold text-slate-200 mb-2">
+                        <label className="block text-sm font-bold text-text-main mb-2">
                             Confirm Password
                         </label>
                         <div className="relative group">
@@ -127,7 +128,7 @@ export const SignupPage = () => {
                                 type={showPassword ? 'text' : 'password'}
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full glass-input pl-12"
+                                className="w-full glass-input pl-12 bg-white/50 focus:bg-white"
                                 placeholder="••••••••"
                                 required
                             />
@@ -145,22 +146,22 @@ export const SignupPage = () => {
                             type="checkbox"
                             id="terms"
                             required
-                            className="w-4 h-4 rounded border-text-muted/30 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0"
+                            className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0"
                         />
-                        <label htmlFor="terms" className="text-sm text-slate-300 select-none cursor-pointer">
-                            I agree to the <a href="/terms" target="_blank" className="text-primary hover:text-blue-300 font-medium transition-colors">Terms & Privacy Policy</a>
+                        <label htmlFor="terms" className="text-sm text-text-muted select-none cursor-pointer">
+                            I agree to the <a href="/terms" target="_blank" className="text-primary hover:text-accent-secondary font-bold transition-colors">Terms & Privacy Policy</a>
                         </label>
                     </div>
 
                     {/* Zero-Knowledge Disclaimer */}
-                    <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 space-y-2">
                         <div className="flex items-center gap-2 text-primary">
                             <ShieldCheck size={18} weight="fill" />
                             <span className="text-xs font-bold uppercase tracking-wider">Zero-Knowledge Security</span>
                         </div>
-                        <p className="text-[11px] leading-relaxed text-slate-300">
+                        <p className="text-[11px] leading-relaxed text-text-muted">
                             Nest uses end-to-end encryption. We do not store your password.
-                            <span className="text-white font-semibold"> If you lose your password, your data is permanently irrecoverable.</span>
+                            <span className="text-text-main font-bold"> If you lose your password, your data is permanently irrecoverable.</span>
                             There is no "Forgot Password" reset.
                         </p>
                     </div>
@@ -168,7 +169,7 @@ export const SignupPage = () => {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="glass-button w-full py-3 sm:py-3.5 text-base sm:text-lg font-semibold flex items-center justify-center gap-2"
+                        className="glass-button w-full py-3 sm:py-3.5 text-base sm:text-lg font-bold flex items-center justify-center gap-2 shadow-xl hover:shadow-2xl hover:-translate-y-0.5"
                     >
                         {loading ? (
                             <>
@@ -182,11 +183,11 @@ export const SignupPage = () => {
                 </form>
 
                 <div className="mt-6 sm:mt-8 text-center">
-                    <p className="text-slate-400 text-sm">
+                    <p className="text-text-muted text-sm">
                         Already have an account?{' '}
                         <button
                             onClick={() => navigate('/login')}
-                            className="text-white font-bold hover:text-primary transition-colors"
+                            className="text-text-main font-bold hover:text-primary transition-colors"
                         >
                             Sign in
                         </button>
