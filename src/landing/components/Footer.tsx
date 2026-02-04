@@ -1,4 +1,4 @@
-import { TwitterLogo, GithubLogo } from '@phosphor-icons/react';
+import { TwitterLogo } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
@@ -25,9 +25,6 @@ const Footer = () => {
                         <div className="flex gap-4 mt-2">
                             <a href="https://x.com/LazyBird_io" target="_blank" rel="noopener noreferrer" aria-label="Follow us on X (Twitter)" className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-text-muted hover:text-text-main transition-colors border border-slate-100">
                                 <TwitterLogo size={20} weight="fill" />
-                            </a>
-                            <a href="https://github.com/LazyBird-io" target="_blank" rel="noopener noreferrer" aria-label="View our source on GitHub" className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-text-muted hover:text-text-main transition-colors border border-slate-100">
-                                <GithubLogo size={20} weight="fill" />
                             </a>
                         </div>
                     </div>
