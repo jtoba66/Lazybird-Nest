@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://app.lazybird.io/sitemap.xml
+Sitemap: https://nest.lazybird.io/sitemap.xml
