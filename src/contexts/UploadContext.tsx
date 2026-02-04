@@ -244,21 +244,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // Store backend file ID so we can cancel if needed
                 setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, backendFileId: fileId } : u));
 
-                // 2. Step 2: Save Metadata to Vault FIRST
-                if (metadata) {
-                    console.log('[UPLOAD] Securing metadata in vault for file:', fileId, file.name);
-                    const updatedMetadata = JSON.parse(JSON.stringify(metadata));
-                    updatedMetadata.files[fileId.toString()] = {
-                        filename: file.name,
-                        mime_type: file.type || 'application/octet-stream',
-                        file_size: file.size,
-                        created_at: new Date().toISOString(),
-                        folder_id: rootFolderId.toString()
-                    };
-                    setMetadata(updatedMetadata);
-                    await saveMetadata(updatedMetadata);
-                    console.log('[UPLOAD] ✅ Metadata secured');
-                }
+                // 2. Step 2: Skip Metadata Save (Moved to end to prevent ghost files)
+                // We used to save here, but that caused issues if upload failed later.
 
                 // 3. Step 3: Upload the bits (Chunked)
                 // Smart Resume: Check Manifest
@@ -319,6 +306,22 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // Finish
                 await filesAPI.finishChunkedUpload(fileId);
 
+                // 4. Step 4: Save Metadata to Vault (After Success)
+                if (metadata) {
+                    console.log('[UPLOAD] Upload complete. Securing metadata in vault for file:', fileId, file.name);
+                    const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+                    updatedMetadata.files[fileId.toString()] = {
+                        filename: file.name,
+                        mime_type: file.type || 'application/octet-stream',
+                        file_size: file.size,
+                        created_at: new Date().toISOString(),
+                        folder_id: rootFolderId.toString()
+                    };
+                    setMetadata(updatedMetadata);
+                    await saveMetadata(updatedMetadata);
+                    console.log('[UPLOAD] ✅ Metadata secured');
+                }
+
                 completeUpload(uploadId);
                 refreshQuota();
                 triggerFileRefresh();
@@ -343,8 +346,14 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
                 const fileId = initRes.file_id;
 
-                // 2. Step 2: Save Metadata
+                // 2. Step 2: Skip Metadata Save (Moved to end)
+
+                // 3. Step 3: Upload Bits
+                await filesAPI.upload(fileId, encryptedBlob, (p) => updateProgress(uploadId, p));
+
+                // 4. Step 4: Save Metadata (After Success)
                 if (metadata) {
+                    console.log('[UPLOAD] Upload complete. Securing metadata in vault for file:', fileId, file.name);
                     const updatedMetadata = JSON.parse(JSON.stringify(metadata));
                     updatedMetadata.files[fileId.toString()] = {
                         filename: file.name,
@@ -356,9 +365,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                     setMetadata(updatedMetadata);
                     await saveMetadata(updatedMetadata);
                 }
-
-                // 3. Step 3: Upload Bits
-                await filesAPI.upload(fileId, encryptedBlob, (p) => updateProgress(uploadId, p));
 
                 completeUpload(uploadId);
                 refreshQuota();
