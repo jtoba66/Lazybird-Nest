@@ -42,6 +42,11 @@ jobs:
             # Pull latest code
             git pull origin main
 
+            # Ensure upload directory exists and has correct permissions for Node (1000:1000)
+            mkdir -p /opt/nest/uploads
+            chown -R 1000:1000 /opt/nest/uploads
+            chmod 775 /opt/nest/uploads
+
             # Export Doppler Token for the build/run
             export DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }}
 
