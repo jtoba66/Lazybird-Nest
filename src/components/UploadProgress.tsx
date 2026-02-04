@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useUpload } from '../contexts/UploadContext';
 import { CheckCircle, XCircle, ArrowClockwise, X, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
