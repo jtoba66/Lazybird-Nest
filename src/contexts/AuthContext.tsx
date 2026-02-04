@@ -101,10 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 } else if (token && !stored) {
                     // Token exists but no master key in storage - session is locked
                     console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
-                    if (storeKeyMissing) {
-                        console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
-                        handleSessionLocked();
-                    }
+                    handleSessionLocked();
                 }
                 setIsRestoring(false);
             };
