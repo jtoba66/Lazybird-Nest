@@ -61,36 +61,38 @@ export const LoginPage = () => {
     };
 
     return (
-        <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#0a0a0a] text-white">
-            {/* Background Orbs */}
-            <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-primary/20 rounded-full blur-3xl -z-10 animate-pulse-glow" />
-            <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-secondary/20 rounded-full blur-3xl -z-10 animate-pulse-glow delay-100" />
+        <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+            {/* Background Gradients (Subtle) */}
+            <div className="absolute top-0 left-0 right-0 h-full overflow-hidden -z-10 pointer-events-none">
+                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[100px]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary/5 rounded-full blur-[100px]" />
+            </div>
 
             <div className="w-full max-w-md animate-scale-in">
                 <div className="text-center mb-8">
                     <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                        <img src={logoImg} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
+                        <img src={logoImg} alt="Nest Logo" className="w-full h-full object-contain mix-blend-multiply scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
                     </div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 tracking-tight drop-shadow-md">Welcome Back</h1>
-                    <p className="text-slate-400 text-base sm:text-lg">Sign in to your Nest account</p>
+                    <h1 className="text-3xl sm:text-4xl font-bold text-text-main mb-3 tracking-tight drop-shadow-sm">Welcome Back</h1>
+                    <p className="text-text-muted text-base sm:text-lg">Sign in to your Nest account</p>
                 </div>
 
-                <div className="glass-panel p-6 sm:p-8 md:p-10">
+                <div className="glass-panel p-6 sm:p-8 md:p-10 border-white/60 shadow-xl">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
-                            <label className="block text-sm font-semibold text-slate-200 mb-2">
+                            <label className="block text-sm font-bold text-text-main mb-2">
                                 Email
                             </label>
                             <div className="relative group">
                                 <EnvelopeSimple
                                     size={20}
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"
+                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors"
                                 />
                                 <input
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full glass-input pl-12"
+                                    className="w-full glass-input pl-12 bg-white/50 focus:bg-white"
                                     placeholder="you@example.com"
                                     required
                                 />
@@ -98,32 +100,32 @@ export const LoginPage = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-semibold text-slate-200 mb-2">
+                            <label className="block text-sm font-bold text-text-main mb-2">
                                 Password
                             </label>
                             <div className="relative group">
                                 <LockKey
                                     size={20}
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"
+                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors"
                                 />
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full glass-input pl-12 pr-12"
+                                    className="w-full glass-input pl-12 pr-12 bg-white/50 focus:bg-white"
                                     placeholder="••••••••"
                                     required
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main transition-colors"
                                 >
                                     {showPassword ? <EyeSlash size={20} /> : <Eye size={20} />}
                                 </button>
                             </div>
                             <div className="mt-3 text-right">
-                                <Link to="/forgot-password" className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                                <Link to="/forgot-password" className="text-sm text-accent-secondary hover:text-primary font-bold transition-colors">
                                     Forgot password?
                                 </Link>
                             </div>
@@ -138,7 +140,7 @@ export const LoginPage = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="glass-button w-full py-3 sm:py-3.5 text-base sm:text-lg font-semibold flex items-center justify-center gap-2"
+                            className="glass-button w-full py-3 sm:py-3.5 text-base sm:text-lg font-bold flex items-center justify-center gap-2 shadow-xl hover:shadow-2xl hover:-translate-y-0.5"
                         >
                             {loading ? (
                                 <>
@@ -152,18 +154,18 @@ export const LoginPage = () => {
                     </form>
 
                     <div className="mt-6 sm:mt-8">
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-slate-400 text-sm text-center">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-text-muted text-sm text-center">
                             <span>
                                 Don't have an account?{' '}
                                 <button
                                     onClick={() => navigate('/signup')}
-                                    className="text-white font-bold hover:text-primary transition-colors"
+                                    className="text-text-main font-bold hover:text-primary transition-colors"
                                 >
                                     Sign up
                                 </button>
                             </span>
-                            <span className="text-slate-600 hidden sm:inline">|</span>
-                            <Link to="/terms" className="text-slate-400 hover:text-white transition-colors whitespace-nowrap">
+                            <span className="text-slate-300 hidden sm:inline">|</span>
+                            <Link to="/terms" className="text-text-muted hover:text-text-main transition-colors whitespace-nowrap">
                                 Terms & Privacy Policy
                             </Link>
                         </div>
