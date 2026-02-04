@@ -77,9 +77,23 @@ const Navbar = () => {
                             {['Features', 'Architecture', 'FAQ', 'Pricing'].map((item) => (
                                 <a
                                     key={item}
-                                    href={`#${item.toLowerCase()}`}
+                                    href={pathname === '/' ? `#${item.toLowerCase()}` : `/#${item.toLowerCase()}`}
                                     className="text-lg font-display font-bold text-text-main hover:text-primary"
-                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    onClick={(e) => {
+                                        setIsMobileMenuOpen(false);
+                                        // If on homepage, standard anchor might be blocked by re-rendering menu
+                                        // So we manually scroll securely
+                                        if (pathname === '/') {
+                                            e.preventDefault();
+                                            const el = document.getElementById(item.toLowerCase());
+                                            if (el) {
+                                                const offset = 80; // Navbar height offset
+                                                const elementPosition = el.getBoundingClientRect().top;
+                                                const offsetPosition = elementPosition + window.pageYOffset - offset;
+                                                window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+                                            }
+                                        }
+                                    }}
                                 >
                                     {item}
                                 </a>
