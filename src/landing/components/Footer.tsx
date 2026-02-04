@@ -61,10 +61,7 @@ const Footer = () => {
                 </div>
 
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-text-light text-sm pt-8 border-t border-slate-100 font-sans">
-                    <div>&copy; 2026 LazyBird Inc.</div>
-                    <div className="flex gap-6">
-                        <span>Designed in California</span>
-                    </div>
+                    <div>&copy; {new Date().getFullYear()} LazyBird Inc.</div>
                 </div>
             </div>
         </motion.footer>
