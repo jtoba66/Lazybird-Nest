@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import fs from 'fs';
 import { db } from '../db';
-import { users, userCrypto, folders, files, graveyard, graveyardChunks, fileChunks, analyticsEvents } from '../db/schema';
+import { users, userCrypto, folders, files, graveyard, graveyardChunks, fileChunks, analyticsEvents, userDevices } from '../db/schema';
 import { eq, and, gt, sql } from 'drizzle-orm';
 
 import { validate } from '../middleware/validate';
@@ -308,8 +308,38 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
 
         logger.info(`[AUTH-LOGIN] ✅ Success: ${user.id}`);
 
-        // Send security alert email (fire and forget)
-        sendSecurityAlertEmail(user.email).catch(err => logger.error('[AUTH-LOGIN] Failed to send security alert:', err));
+        // 6. Device Security Check (Smart Alerts)
+        const ip = req.ip || req.connection.remoteAddress || 'unknown';
+        const userAgent = req.headers['user-agent'] || 'unknown';
+        // Create a unique hash for this device/user combination
+        // Using crypto directly similar to other auth properties
+        const deviceString = `${user.id}:${ip}:${userAgent}`;
+        const deviceHash = crypto.createHash('sha256').update(deviceString).digest('hex');
+
+        // Check if device is known
+        const [knownDevice] = await db.select().from(userDevices)
+            .where(and(
+                eq(userDevices.userId, user.id),
+                eq(userDevices.device_hash, deviceHash)
+            )).limit(1);
+
+        if (knownDevice) {
+            // Known device: update last seen (Silent Login)
+            await db.update(userDevices)
+                .set({ last_seen_at: new Date() })
+                .where(eq(userDevices.id, knownDevice.id));
+        } else {
+            // New Device: Security Alert! 🚨
+            await db.insert(userDevices).values({
+                userId: user.id,
+                device_hash: deviceHash,
+                ip_address: ip as string,
+                user_agent: userAgent as string,
+            });
+
+            // Send security alert email (only for new devices)
+            sendSecurityAlertEmail(user.email).catch(err => logger.error('[AUTH-LOGIN] Failed to send security alert:', err));
+        }
 
         // Fetch keys for response (we already checked existence in step 3)
         // Re-using cryptoData from step 3 if available, or fetching if strictly needed

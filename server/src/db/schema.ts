@@ -57,6 +57,18 @@ export const userCrypto = pgTable('user_crypto', {
     updated_at: timestamp('updated_at').defaultNow(),
 });
 
+export const userDevices = pgTable('user_devices', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    device_hash: text('device_hash').notNull(),
+    ip_address: text('ip_address').notNull(),
+    user_agent: text('user_agent').notNull(),
+    last_seen_at: timestamp('last_seen_at').defaultNow(),
+    created_at: timestamp('created_at').defaultNow(),
+}, (table) => ({
+    unq: unique().on(table.userId, table.device_hash)
+}));
+
 export const folders = pgTable('folders', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
