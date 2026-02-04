@@ -62,7 +62,7 @@ const DocsIndex = () => {
                             transition={{ delay: i * 0.1 }}
                             className="group p-6 rounded-2xl bg-white border border-slate-200 hover:border-primary/30 transition-all cursor-pointer h-full flex flex-col shadow-sm"
                         >
-                            <div className={`w-12 h-12 rounded-xl \${cat.bg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                            <div className={`w-12 h-12 rounded-xl ${cat.bg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                                 <cat.icon size={24} className={cat.color} weight="fill" />
                             </div>
                             <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">
