@@ -57,16 +57,26 @@ const allowedOrigins = [
     'https://nest.lazybird.io',
     'https://lazybird.io',
     'https://www.lazybird.io',
-    'https://lazybird-nest.netlify.app' // Also allow Netlify subdomain just in case
+    'https://lazybird-nest.netlify.app'
 ];
+
 app.use(cors({
     origin: (origin, callback) => {
-        // allow requests with no origin (like mobile apps or curl requests)
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
         }
+
+        // Allow any subdomain of lazybird.io
+        if (origin.endsWith('.lazybird.io') || origin === 'https://lazybird.io') {
+            return callback(null, true);
+        }
+
+        // Log blocked origin for debugging
+        console.warn(`[CORS] Blocked request from origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
     },
     credentials: true
 }));
