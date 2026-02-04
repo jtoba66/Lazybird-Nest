@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
 import { UploadProvider } from './contexts/UploadContext';
 import { StorageProvider } from './contexts/StorageContext';
@@ -30,7 +31,15 @@ import DatabaseDoc from './landing/pages/docs/DatabaseDoc';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-function App() {
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+};
+
+const App = () => {
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -39,6 +48,7 @@ function App() {
             <UploadProvider>
               <ToastProvider>
                 <BrowserRouter>
+                  <ScrollToTop />
                   <Routes>
                     {/* Public Routes */}
                     <Route path="/login" element={<LoginPage />} />

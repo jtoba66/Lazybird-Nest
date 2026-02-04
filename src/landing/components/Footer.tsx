@@ -43,13 +43,10 @@ const Footer = () => {
                             <h4 className="font-display font-bold mb-6 text-text-main uppercase text-sm tracking-wider">Resources</h4>
                             <ul className="space-y-4 text-text-muted text-sm font-medium font-sans">
                                 <li><Link to="/docs" className="hover:text-primary transition-colors">Documentation</Link></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="font-display font-bold mb-6 text-text-main uppercase text-sm tracking-wider">Company</h4>
-                            <ul className="space-y-4 text-text-muted text-sm font-medium font-sans">
-                                <li><a href="#" className="hover:text-primary transition-colors">About</a></li>
-                                <li><a href="#" className="hover:text-primary transition-colors">Blog</a></li>
+                                <li className="flex items-center gap-2 opacity-40 cursor-not-allowed">
+                                    <span>Blog</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 font-bold uppercase tracking-tighter">Soon</span>
+                                </li>
                                 <li><a href="mailto:admin@lazybird.io" className="hover:text-primary transition-colors">Contact Us</a></li>
                             </ul>
                         </div>
