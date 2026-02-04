@@ -23,7 +23,6 @@ interface AuthContextType {
     setMasterKey: (key: Uint8Array | null) => void;
     metadata: MetadataBlob | null;
     setMetadata: (meta: MetadataBlob | null) => void;
-    setMetadata: (meta: MetadataBlob | null) => void;
     saveMetadata: (meta: MetadataBlob) => Promise<void>;
     isRestoring: boolean;
 }
@@ -103,10 +102,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
                     handleSessionLocked();
                 }
-                setIsRestoring(false);
-            };
-            restoreKeys();
-        }, [masterKey]);
+            }
+            setIsRestoring(false);
+        };
+        restoreKeys();
+    }, [masterKey]);
 
     // Handle locked session - show toast and redirect to login
     const handleSessionLocked = () => {
