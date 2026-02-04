@@ -55,6 +55,8 @@ app.use(helmet());
 const allowedOrigins = [
     ...(env.FRONTEND_URL || 'http://localhost:5173').split(','),
     'https://nest.lazybird.io',
+    'https://lazybird.io',
+    'https://www.lazybird.io',
     'https://lazybird-nest.netlify.app' // Also allow Netlify subdomain just in case
 ];
 app.use(cors({
