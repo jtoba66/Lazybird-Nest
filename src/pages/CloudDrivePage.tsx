@@ -5,6 +5,7 @@ import { CloudArrowUp, MagnifyingGlass, SortAscending } from '@phosphor-icons/re
 import { FileGrid } from '../components/FileGrid';
 import { FileTable } from '../components/FileTable';
 import { filesAPI } from '../api/files';
+import { ShareSuccessModal } from '../components/ShareSuccessModal';
 
 type SortOption = 'newest' | 'oldest' | 'name' | 'size';
 
@@ -15,6 +16,7 @@ export const CloudDrivePage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<SortOption>('newest');
     const [showUploadModal, setShowUploadModal] = useState(false);
+    const [shareModal, setShareModal] = useState<{ isOpen: boolean, link: string, name: string }>({ isOpen: false, link: '', name: '' });
 
     useEffect(() => {
         loadFiles();
@@ -66,8 +68,12 @@ export const CloudDrivePage = () => {
             }
         } catch (clipboardError) {
             console.warn('[SHARE] Clipboard write failed:', clipboardError);
-            // Fallback: The link WAS created (conceptually), just not copied.
-            showToast('Link created! Find it in "Shared Links".', 'warning', 5000);
+            // Fallback: Open Modal for manual copy
+            setShareModal({
+                isOpen: true,
+                link: shareUrl,
+                name: file.filename || 'File'
+            });
         }
     };
 
@@ -220,6 +226,13 @@ export const CloudDrivePage = () => {
 
     return (
         <div className="flex-1 p-2">
+            <ShareSuccessModal
+                isOpen={shareModal.isOpen}
+                onClose={() => setShareModal({ ...shareModal, isOpen: false })}
+                shareLink={shareModal.link}
+                filename={shareModal.name}
+            />
+
             {/* Header */}
             <div className="mb-6 flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-text-main">Cloud Drive</h1>

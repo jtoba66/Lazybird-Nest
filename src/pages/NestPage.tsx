@@ -8,6 +8,7 @@ import { useStorage } from '../contexts/StorageContext';
 import { useRefresh } from '../contexts/RefreshContext';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
+import { ShareSuccessModal } from '../components/ShareSuccessModal';
 
 interface FileItem {
     id: number;
@@ -28,6 +29,7 @@ export const NestPage = () => {
     const [loading, setLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [shareModal, setShareModal] = useState<{ isOpen: boolean; link: string; name: string }>({ isOpen: false, link: '', name: '' });
 
     const handleShare = async (file: FileItem) => {
         try {
@@ -82,8 +84,12 @@ export const NestPage = () => {
                 }
             } catch (clipboardError) {
                 console.warn('[SHARE] Clipboard write failed (likely browser restriction):', clipboardError);
-                // Fallback: The link WAS created, just not copied.
-                showToast('Link created! Find it in "Shared Links".', 'warning', 5000);
+                // Fallback: Open Modal for manual copy
+                setShareModal({
+                    isOpen: true,
+                    link: shareUrl,
+                    name: filename
+                });
             }
 
             // Reload to update UI if it was a new share
@@ -377,6 +383,13 @@ export const NestPage = () => {
             transition={{ duration: 0.4, ease: "easeOut" }}
             className="flex-1 flex flex-col h-full p-4 overflow-hidden"
         >
+            <ShareSuccessModal
+                isOpen={shareModal.isOpen}
+                onClose={() => setShareModal({ ...shareModal, isOpen: false })}
+                shareLink={shareModal.link}
+                filename={shareModal.name}
+            />
+
             <input
                 type="file"
                 ref={fileInputRef}

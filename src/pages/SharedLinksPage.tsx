@@ -18,6 +18,7 @@ import { filesAPI } from '../api/files';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { RevokeConfirmationModal } from '../components/RevokeConfirmationModal';
+import { ShareSuccessModal } from '../components/ShareSuccessModal';
 import api from '../lib/api';
 import { useQuotaCheck } from '../components/QuotaBanner';
 
@@ -44,6 +45,7 @@ export const SharedLinksPage = () => {
     const [revokeModal, setRevokeModal] = useState<{ isOpen: boolean; file: SharedFile | null }>({ isOpen: false, file: null });
     const [bulkRevokeModal, setBulkRevokeModal] = useState(false);
     const [isRevoking, setIsRevoking] = useState(false);
+    const [shareModal, setShareModal] = useState<{ isOpen: boolean, link: string, name: string }>({ isOpen: false, link: '', name: '' });
 
     const loadSharedFiles = async () => {
         try {
@@ -151,10 +153,12 @@ export const SharedLinksPage = () => {
                 }
             } catch (clipboardError) {
                 console.warn('[SHARE] Clipboard write failed:', clipboardError);
-                // Fallback for SharedLinksPage - since it's already generated, we just show it's there
-                showToast('Link copied! (If not, check your clipboard)', 'warning', 3000);
-                // Note: SharedLinksPage behaves slightly differently as the link ALREADY exists.
-                // Ideally we'd show a modal here to manually copy, but for now fallback warning is better than crash.
+                // Fallback: Open Modal for manual copy
+                setShareModal({
+                    isOpen: true,
+                    link: shareUrl,
+                    name: filename
+                });
             }
         } catch (error) {
             console.error('Failed to copy link:', error);
@@ -259,6 +263,13 @@ export const SharedLinksPage = () => {
             transition={{ duration: 0.4, ease: "easeOut" }}
             className="flex-1 p-4 custom-scrollbar overflow-auto h-full"
         >
+            <ShareSuccessModal
+                isOpen={shareModal.isOpen}
+                onClose={() => setShareModal({ ...shareModal, isOpen: false })}
+                shareLink={shareModal.link}
+                filename={shareModal.name}
+            />
+
             {/* Single File Revoke Confirmation Modal */}
             <RevokeConfirmationModal
                 isOpen={revokeModal.isOpen}

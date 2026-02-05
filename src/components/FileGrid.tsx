@@ -3,6 +3,7 @@ import { CloudArrowUp, FolderPlus, GridFour, Info, CaretUp, Check, Copy } from '
 import { filesAPI } from '../api/files';
 import { foldersAPI } from '../api/folders';
 import { CreateFolderModal } from '../components/CreateFolderModal';
+import { ShareSuccessModal } from '../components/ShareSuccessModal';
 import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey } from '../crypto/v2';
 import { useAuth } from '../contexts/AuthContext';
 import { useUpload } from '../contexts/UploadContext';
@@ -17,10 +18,12 @@ export const FileGrid = () => {
     const { triggerFileRefresh } = useRefresh();
 
     const [shareLink, setShareLink] = useState('');
+    const [uploadedFilename, setUploadedFilename] = useState('');
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [copied, setCopied] = useState(false);
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+    const [shareModal, setShareModal] = useState<{ isOpen: boolean, link: string, name: string }>({ isOpen: false, link: '', name: '' });
 
     const onDrop = useCallback(async (acceptedFiles: File[]) => {
         if (acceptedFiles.length === 0) return;
@@ -30,6 +33,7 @@ export const FileGrid = () => {
         setUploading(true);
         setUploadProgress(0);
         setShareLink('');
+        setUploadedFilename('');
 
         try {
             console.log('[v2-upload] Starting metadata-first upload:', file.name);
@@ -90,6 +94,7 @@ export const FileGrid = () => {
 
             const shareLink = `${window.location.origin}/s/${initRes.share_token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
             setShareLink(shareLink);
+            setUploadedFilename(file.name);
             triggerFileRefresh();
 
         } catch (error: any) {
@@ -121,9 +126,12 @@ export const FileGrid = () => {
             }
         } catch (error) {
             console.warn('[SHARE] Clipboard write failed:', error);
-            // Fallback for visual feedback since we don't have a toast specifically for "copying the link we just showed you"
-            // But since the link is visible in the input, the user can manually copy it if needed.
-            showToast('Link created! Tap text to copy manually.', 'warning', 4000);
+            // Fallback: Open Modal for manual copy
+            setShareModal({
+                isOpen: true,
+                link: shareLink,
+                name: uploadedFilename || 'Uploaded File'
+            });
         }
     };
 
@@ -172,6 +180,13 @@ export const FileGrid = () => {
     return (
         <div {...getRootProps()} className="flex-1 flex flex-col bg-background relative">
             <input {...getInputProps()} />
+
+            <ShareSuccessModal
+                isOpen={shareModal.isOpen}
+                onClose={() => setShareModal({ ...shareModal, isOpen: false })}
+                shareLink={shareModal.link}
+                filename={shareModal.name}
+            />
 
             <div onClick={(e) => e.stopPropagation()}>
                 <CreateFolderModal
