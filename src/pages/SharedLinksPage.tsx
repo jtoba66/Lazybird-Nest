@@ -359,9 +359,9 @@ export const SharedLinksPage = () => {
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
                                     onClick={revokeSelected}
-                                    className="glass-button px-3 py-1.5 flex items-center gap-2 text-sm text-error hover:bg-error/10"
+                                    className="px-3 py-1.5 flex items-center gap-2 text-sm bg-red-500/80 hover:bg-red-500 text-white rounded-lg transition-colors shadow-soft"
                                 >
-                                    <Trash size={16} weight="bold" />
+                                    <Trash size={16} weight="bold" className="text-white" />
                                     Revoke Selected
                                 </motion.button>
                                 <motion.button
