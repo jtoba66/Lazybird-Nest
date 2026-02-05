@@ -270,10 +270,15 @@ export const FoldersPage = () => {
             const token = shareToken.trim();
             const shareUrl = `${origin}/s/${token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
 
-            // Step 7: Copy to clipboard
+            // Step 7: Copy to clipboard (or fallback)
             try {
-                await navigator.clipboard.writeText(shareUrl);
-                showToast('Share link copied to clipboard!', 'success');
+                if (navigator.clipboard) {
+                    await navigator.clipboard.writeText(shareUrl);
+                    showToast('Share link copied to clipboard!', 'success');
+                } else {
+                    // Clipboard API not available (e.g. non-secure context or specific webview)
+                    throw new Error('Clipboard API unavailable');
+                }
             } catch (clipboardError) {
                 console.warn('[SHARE] Clipboard write failed (likely browser restriction):', clipboardError);
                 // Fallback: The link WAS created, just not copied.
