@@ -110,10 +110,21 @@ export const FileGrid = () => {
         noKeyboard: true
     });
 
-    const copyToClipboard = () => {
-        navigator.clipboard.writeText(shareLink);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    const copyToClipboard = async () => {
+        try {
+            if (navigator.clipboard) {
+                await navigator.clipboard.writeText(shareLink);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            } else {
+                throw new Error('Clipboard API unavailable');
+            }
+        } catch (error) {
+            console.warn('[SHARE] Clipboard write failed:', error);
+            // Fallback for visual feedback since we don't have a toast specifically for "copying the link we just showed you"
+            // But since the link is visible in the input, the user can manually copy it if needed.
+            showToast('Link created! Tap text to copy manually.', 'warning', 4000);
+        }
     };
 
     const handleUploadClick = () => {

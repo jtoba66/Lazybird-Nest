@@ -72,9 +72,19 @@ export const NestPage = () => {
             const token = shareToken.trim();
             const shareUrl = `${origin}/s/${token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
 
-            // Step 7: Copy to clipboard
-            await navigator.clipboard.writeText(shareUrl);
-            showToast('Share link copied to clipboard!', 'success');
+            // Step 7: Copy to clipboard (or fallback)
+            try {
+                if (navigator.clipboard) {
+                    await navigator.clipboard.writeText(shareUrl);
+                    showToast('Share link copied to clipboard!', 'success');
+                } else {
+                    throw new Error('Clipboard API unavailable');
+                }
+            } catch (clipboardError) {
+                console.warn('[SHARE] Clipboard write failed (likely browser restriction):', clipboardError);
+                // Fallback: The link WAS created, just not copied.
+                showToast('Link created! Find it in "Shared Links".', 'warning', 5000);
+            }
 
             // Reload to update UI if it was a new share
             if (!file.share_token) {
@@ -82,8 +92,8 @@ export const NestPage = () => {
             }
 
         } catch (error) {
-            console.error('Share failed:', error);
-            showToast('Failed to create/copy share link', 'error');
+            console.error('Share creation failed:', error);
+            showToast('Failed to create share link', 'error');
         }
     };
 

@@ -58,10 +58,16 @@ export const CloudDrivePage = () => {
         const shareUrl = `${window.location.origin}/download/${file.id}`;
 
         try {
-            await navigator.clipboard.writeText(shareUrl);
-            showToast('Share link copied to clipboard!', 'success');
-        } catch {
-            showToast('Failed to copy share link', 'error');
+            if (navigator.clipboard) {
+                await navigator.clipboard.writeText(shareUrl);
+                showToast('Share link copied to clipboard!', 'success');
+            } else {
+                throw new Error('Clipboard API unavailable');
+            }
+        } catch (clipboardError) {
+            console.warn('[SHARE] Clipboard write failed:', clipboardError);
+            // Fallback: The link WAS created (conceptually), just not copied.
+            showToast('Link created! Find it in "Shared Links".', 'warning', 5000);
         }
     };
 
