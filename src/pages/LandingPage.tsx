@@ -69,6 +69,7 @@ export const LandingPage = () => {
                 title="Secure Cloud Storage & Encrypted File Sharing"
                 description="The private cloud storage for creators, teams, and anyone sharing sensitive files. Zero knowledge, zero tracking, 100% privacy."
                 image="/og-image.png"
+                canonical="https://nest.lazybird.io/"
                 jsonLd={jsonLd}
             />
             <Navbar />

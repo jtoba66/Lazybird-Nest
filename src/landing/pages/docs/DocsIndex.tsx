@@ -56,6 +56,7 @@ const DocsIndex = () => {
             <SEO
                 title="Documentation Hub"
                 description="Technical documentation for Nest Zero-Knowledge Architecture, API, and Encryption Logic."
+                canonical="https://nest.lazybird.io/docs"
                 jsonLd={jsonLd}
             />
             <motion.div

@@ -7,6 +7,7 @@ const FrontendDoc = () => {
             <SEO
                 title="Frontend Logic & Encryption"
                 description="How Nest handles client-side encryption, file chunking, and memory management in the browser."
+                canonical="https://nest.lazybird.io/docs/frontend"
             />
             <motion.div
                 initial={{ opacity: 0 }}

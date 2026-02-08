@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { ArrowLeft, Scroll, LockKey, Gavel, Handshake } from '@phosphor-icons/react';
+import SEO from '../components/SEO';
 
 export const TermsPage = () => {
     const navigate = useNavigate();
@@ -13,8 +14,16 @@ export const TermsPage = () => {
         }
     }, [location.pathname]);
 
+    const isPrivacy = location.pathname === '/privacy';
+    const title = isPrivacy ? 'Privacy Policy' : 'Terms of Service';
+    const description = isPrivacy
+        ? 'Read our Privacy Policy. Zero-knowledge encryption means we cannot see your files.'
+        : 'Read our Terms of Service. Understand your rights and responsibilities when using Nest.';
+    const canonical = isPrivacy ? 'https://nest.lazybird.io/privacy' : 'https://nest.lazybird.io/terms';
+
     return (
         <div className="min-h-[100dvh] bg-background text-text-main p-4 sm:p-6 md:p-12 overflow-y-auto custom-scrollbar">
+            <SEO title={title} description={description} canonical={canonical} />
             <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {/* Header */}
                 <div className="mb-6 sm:mb-8 flex items-center gap-4">

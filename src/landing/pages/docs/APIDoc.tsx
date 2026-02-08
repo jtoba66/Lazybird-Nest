@@ -7,6 +7,7 @@ const APIDoc = () => {
             <SEO
                 title="API Reference"
                 description="Complete REST API reference for Nest. Auth, File Uploads, and Storage endpoints."
+                canonical="https://nest.lazybird.io/docs/api"
             />
             <motion.div
                 initial={{ opacity: 0 }}

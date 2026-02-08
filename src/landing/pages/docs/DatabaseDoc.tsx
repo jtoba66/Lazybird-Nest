@@ -7,6 +7,7 @@ const DatabaseDoc = () => {
             <SEO
                 title="Database Schema"
                 description="Overview of Nest's database schema and how it handles zero-knowledge relational data."
+                canonical="https://nest.lazybird.io/docs/database"
             />
             <motion.div
                 initial={{ opacity: 0 }}

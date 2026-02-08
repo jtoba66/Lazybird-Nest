@@ -7,6 +7,7 @@ const ArchitectureDoc = () => {
             <SEO
                 title="Zero-Knowledge Architecture"
                 description="Deep dive into Nest's client-side encryption, key management, and decentralized storage model."
+                canonical="https://nest.lazybird.io/docs/architecture"
             />
             <motion.div
                 initial={{ opacity: 0 }}
