@@ -59,6 +59,24 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
             await db.update(users).set({ stripe_customer_id: customerId }).where(eq(users.id, userId));
         }
 
+        // Dynamically determine return base URL from request headers if possible
+        let returnBaseUrl = FRONTEND_URL;
+        const origin = req.get('origin');
+        const referer = req.get('referer');
+
+        if (origin && (origin.includes('lazybird.io') || origin.includes('localhost'))) {
+            returnBaseUrl = origin;
+        } else if (referer && (referer.includes('lazybird.io') || referer.includes('localhost'))) {
+            try {
+                const url = new URL(referer);
+                returnBaseUrl = url.origin;
+            } catch (e) { /* ignore */ }
+        }
+
+        if (env.NODE_ENV === 'production' && returnBaseUrl.includes('localhost')) {
+            returnBaseUrl = 'https://nest.lazybird.io';
+        }
+
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
             mode: 'subscription',
@@ -68,8 +86,8 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
                 trial_period_days: 7,
                 metadata: { userId: String(userId) }
             },
-            success_url: `${FRONTEND_URL}/settings?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${FRONTEND_URL}/pricing?upgrade=canceled`,
+            success_url: `${returnBaseUrl}/settings?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${returnBaseUrl}/pricing?upgrade=canceled`,
             metadata: { userId: String(userId) }
         });
 
@@ -89,9 +107,34 @@ router.post('/create-portal-session', authenticateToken, async (req: AuthRequest
             return res.status(400).json({ error: 'No subscription found' });
         }
 
+        // Dynamically determine return base URL from request headers if possible
+        let returnBaseUrl = FRONTEND_URL;
+        const origin = req.get('origin');
+        const referer = req.get('referer');
+
+        if (origin && (origin.includes('lazybird.io') || origin.includes('localhost'))) {
+            returnBaseUrl = origin;
+            logger.info(`[BILLING] Using Origin for return_url: ${returnBaseUrl}`);
+        } else if (referer && (referer.includes('lazybird.io') || referer.includes('localhost'))) {
+            try {
+                // If referer is present, extract origin
+                const url = new URL(referer);
+                returnBaseUrl = url.origin;
+                logger.info(`[BILLING] Using Referer for return_url: ${returnBaseUrl}`);
+            } catch (e) {
+                /* ignore invalid referer */
+            }
+        }
+
+        // Final sanity check: if running in production but still pointing to localhost, force prod domain
+        if (env.NODE_ENV === 'production' && returnBaseUrl.includes('localhost')) {
+            returnBaseUrl = 'https://nest.lazybird.io';
+            logger.warn('[BILLING] Forced return_url to production domain due to localhost config');
+        }
+
         const session = await stripe.billingPortal.sessions.create({
             customer: user.stripe_customer_id,
-            return_url: `${FRONTEND_URL}/settings`
+            return_url: `${returnBaseUrl}/settings`
         });
 
         res.json({ url: session.url });
