@@ -7,9 +7,6 @@ import {
     Key,
     Warning,
     Crown,
-    CheckCircle,
-    Lock,
-    Shield,
     CreditCard,
     Info,
     Database
