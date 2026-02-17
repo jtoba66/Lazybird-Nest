@@ -22,7 +22,12 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
     typescript: true
 });
 
-const FRONTEND_URL = env.FRONTEND_URL.split(',')[0].trim();
+let FRONTEND_URL = env.FRONTEND_URL.split(',')[0].trim();
+
+if (env.NODE_ENV === 'production' && FRONTEND_URL.includes('localhost')) {
+    console.warn('[Billing] FRONTEND_URL is localhost in production. Defaulting to https://nest.lazybird.io');
+    FRONTEND_URL = 'https://nest.lazybird.io';
+}
 
 router.post('/create-checkout-session', authenticateToken, async (req: AuthRequest, res) => {
     try {
