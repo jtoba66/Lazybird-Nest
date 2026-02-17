@@ -14,7 +14,6 @@ import {
     Info,
     Database
 } from '@phosphor-icons/react';
-import JSZip from 'jszip';
 import { useAuth } from '../contexts/AuthContext';
 import { storageAPI } from '../api/storage';
 import { filesAPI } from '../api/files';
@@ -27,7 +26,7 @@ import { billingAPI } from '../api/billing';
 const FREE_TIER_QUOTA = 2 * 1024 * 1024 * 1024; // 2GB
 
 export const SettingsPage = () => {
-    const { user } = useAuth();
+    const { user, masterKey } = useAuth();
     const [quota, setQuota] = useState({ used: 0, quota: 2147483648, tier: 'free', percentage: 0 });
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -107,62 +106,12 @@ export const SettingsPage = () => {
     const handleExportData = async () => {
         if (exporting) return;
         setExporting(true);
-        showToast('Preparing your data export...', 'info');
+        showToast('Preparing your data export. This may take a while...', 'info');
 
         try {
-            const zip = new JSZip();
+            const { streamExport } = await import('../utils/StreamingExport');
             const { files } = await filesAPI.list();
 
-            const { decryptFile, decryptChunk, fromBase64 } = await import('../crypto/v2');
-
-            // 1. Process Files
-            for (const file of files) {
-                try {
-                    // Fetch download info
-                    const keyResponse = await fetch(`${API_BASE_URL}/files/download/${file.id}`, {
-                        headers: { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` },
-                    });
-
-                    if (!keyResponse.ok) continue;
-                    const fileInfo = await keyResponse.json();
-
-                    const fileKey = fromBase64(fileInfo.file_key);
-                    let decryptedBlob: Blob;
-
-                    if (fileInfo.is_chunked) {
-                        const { chunks } = await filesAPI.getManifest(file.id);
-                        const parts: Blob[] = [];
-                        for (const chunk of chunks) {
-                            const chunkUrl = chunk.is_gateway_verified
-                                ? `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`
-                                : `${API_BASE_URL}/files/chunks/raw/${chunk.id}`;
-                            const resp = await fetch(chunkUrl, {
-                                headers: chunk.is_gateway_verified ? {} : { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` }
-                            });
-                            const encryptedChunkBlob = await resp.blob();
-                            const decryptedPart = await decryptChunk(encryptedChunkBlob, fromBase64(chunk.nonce), fileKey);
-                            parts.push(decryptedPart);
-                        }
-                        decryptedBlob = new Blob(parts, { type: fileInfo.mime_type });
-                    } else {
-                        const downloadUrl = fileInfo.is_gateway_verified
-                            ? `https://gateway.lazybird.io/file/${fileInfo.jackal_fid || fileInfo.merkle_hash}`
-                            : `${API_BASE_URL}/files/raw/${file.id}`;
-                        const resp = await fetch(downloadUrl, {
-                            headers: fileInfo.is_gateway_verified ? {} : { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` }
-                        });
-                        const encryptedBlob = await resp.blob();
-                        const decryptedBytes = await decryptFile(encryptedBlob, fromBase64(fileInfo.file_key_nonce), fileKey);
-                        decryptedBlob = new Blob([decryptedBytes as any], { type: fileInfo.mime_type });
-                    }
-
-                    zip.file(file.filename, decryptedBlob);
-                } catch (e) {
-                    console.error(`Failed to export file: ${file.filename}`, e);
-                }
-            }
-
-            // 2. Add Account Metadata
             const accountInfo = {
                 email: user?.email,
                 joined_at: user?.created_at,
@@ -173,25 +122,38 @@ export const SettingsPage = () => {
                     tier: quota.tier
                 }
             };
-            zip.file('account_info.json', JSON.stringify(accountInfo, null, 2));
 
-            // 3. Generate ZIP
-            const content = await zip.generateAsync({ type: 'blob' });
-            const url = window.URL.createObjectURL(content);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `nest_export_${new Date().toISOString().split('T')[0]}.zip`;
-            link.click();
-            window.URL.revokeObjectURL(url);
+            // 3. User Master Key
+            if (!user || (!masterKey && !localStorage.getItem('nest_master_key'))) {
+                showToast('Encryption keys missing. Please re-login.', 'error');
+                return;
+            }
 
-            showToast('Export successful!', 'success');
-        } catch (error) {
+            // If context masterKey is null (e.g. reload), we might check if we can restore it?
+            // But usually this means user should re-login for security in ZK apps.
+            if (!masterKey) {
+                showToast('Security verification needed. Please reload.', 'error');
+                return;
+            }
+
+            await streamExport(
+                files,
+                { user: accountInfo, quota },
+                masterKey,
+                (progress, filename) => {
+                    console.log(`Export Progress: ${progress.toFixed(1)}% - ${filename}`);
+                }
+            );
+
+            showToast('Export started! Check your downloads.', 'success');
+        } catch (error: any) {
             console.error('Data export failed:', error);
-            showToast('Failed to export data', 'error');
+            showToast(error.message || 'Failed to export data', 'error');
         } finally {
             setExporting(false);
         }
     };
+
 
     return (
         <motion.div

@@ -2,6 +2,7 @@ import { ArrowRight } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { ComponentErrorBoundary } from '../../components/ComponentErrorBoundary';
 
 const Nest3D = lazy(() => import('./Nest3D'));
 
@@ -115,17 +116,27 @@ const Hero = () => {
                         transition={{ duration: 1.2, delay: 0.6, ease: [0.04, 0.62, 0.23, 0.98] as any }}
                         className="relative h-[28rem] md:h-[36rem] lg:h-[42rem] flex items-center justify-center w-full"
                     >
-                        <Suspense fallback={
-                            <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center">
+                        <ComponentErrorBoundary fallback={
+                            <div className="relative w-full h-full flex items-center justify-center">
                                 <img
                                     src="/nest-logo.png"
-                                    alt="Loading Nest..."
-                                    className="w-full h-full object-contain animate-pulse opacity-50"
+                                    alt="Nest Secure Storage"
+                                    className="w-64 h-64 object-contain opacity-80"
                                 />
                             </div>
                         }>
-                            <Nest3D />
-                        </Suspense>
+                            <Suspense fallback={
+                                <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center">
+                                    <img
+                                        src="/nest-logo.png"
+                                        alt="Loading Nest..."
+                                        className="w-full h-full object-contain animate-pulse opacity-50"
+                                    />
+                                </div>
+                            }>
+                                <Nest3D />
+                            </Suspense>
+                        </ComponentErrorBoundary>
                     </motion.div>
                 </div>
             </div>

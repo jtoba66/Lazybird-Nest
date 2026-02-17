@@ -308,15 +308,13 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
 
         logger.info(`[AUTH-LOGIN] ✅ Success: ${user.id}`);
 
-        // 6. Device Security Check (Smart Alerts)
+        // 6. Device Logging (Silent) & Security Alert (Throttled 24h)
         const ip = req.ip || req.connection.remoteAddress || 'unknown';
         const userAgent = req.headers['user-agent'] || 'unknown';
-        // Create a unique hash for this device/user combination
-        // Using crypto directly similar to other auth properties
         const deviceString = `${user.id}:${ip}:${userAgent}`;
         const deviceHash = crypto.createHash('sha256').update(deviceString).digest('hex');
 
-        // Check if device is known
+        // Log device for audit trail (Silent - does not trigger email)
         const [knownDevice] = await db.select().from(userDevices)
             .where(and(
                 eq(userDevices.userId, user.id),
@@ -324,20 +322,27 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
             )).limit(1);
 
         if (knownDevice) {
-            // Known device: update last seen (Silent Login)
             await db.update(userDevices)
                 .set({ last_seen_at: new Date() })
                 .where(eq(userDevices.id, knownDevice.id));
         } else {
-            // New Device: Security Alert! 🚨
             await db.insert(userDevices).values({
                 userId: user.id,
                 device_hash: deviceHash,
                 ip_address: ip as string,
                 user_agent: userAgent as string,
             });
+        }
 
-            // Send security alert email (only for new devices)
+        // SIMPLIFIED ALERT LOGIC: One email per 24 hours max
+        // If user hasn't logged in for > 24 hours, send a "New Login" alert.
+        // If they are active daily, we assume they know they are logging in.
+        const LAST_LOGIN_THRESHOLD = 24 * 60 * 60 * 1000; // 24 Hours
+        const lastSeen = user.last_accessed_at ? new Date(user.last_accessed_at).getTime() : 0;
+        const timeSinceLastLogin = Date.now() - lastSeen;
+
+        if (timeSinceLastLogin > LAST_LOGIN_THRESHOLD) {
+            logger.info(`[AUTH-LOGIN] Mailing security alert (Last login: ${timeSinceLastLogin / 1000}s ago)`);
             sendSecurityAlertEmail(user.email).catch(err => logger.error('[AUTH-LOGIN] Failed to send security alert:', err));
         }
 

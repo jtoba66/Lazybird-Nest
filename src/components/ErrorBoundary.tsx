@@ -21,6 +21,13 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        // Fix: Auto-reload on chunk load failures (common after redeploys or network blips)
+        if (error.message.includes('Loading chunk') || error.message.includes('Importing a module script failed')) {
+            console.warn('Chunk load failed, reloading...', error);
+            window.location.reload();
+            return;
+        }
+
         console.error('Uncaught error:', error, errorInfo);
         Sentry.captureException(error, { extra: errorInfo as any });
     }
