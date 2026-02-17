@@ -220,7 +220,7 @@ export const FoldersPage = () => {
             // Trigger file refresh to reload from server
             triggerFileRefresh();
 
-            showToast('Folder deleted successfully', 'success');
+            // showToast('Folder deleted successfully', 'success'); // Handled by FileTable
         } catch (error: any) {
             console.error('[FOLDERS] Delete failed:', error);
             showToast(error.response?.data?.error || 'Failed to delete folder', 'error');

@@ -35,7 +35,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 <QuotaBanner />
 
                 {/* Header */}
-                <div className="mb-2 pt-2 px-2 md:mb-4 md:pt-0 md:px-0">
+                <div className="mb-2 pt-2 px-2 md:mb-4 md:pt-0 md:px-0 relative z-20">
                     <Header onMenuClick={() => setSidebarOpen(true)} />
                 </div>
 

@@ -202,7 +202,7 @@ export const CloudDrivePage = () => {
     const handleDelete = async (fileId: number) => {
         try {
             await filesAPI.delete(fileId);
-            showToast('File deleted successfully', 'success');
+            // showToast('File deleted successfully', 'success'); // Handled by FileTable
             loadFiles(); // Reload list
         } catch (error) {
             console.error('Delete failed:', error);
