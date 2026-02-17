@@ -7,7 +7,9 @@ import API_BASE_URL from '../config/api';
 import type { MetadataBlob } from '../crypto/v2';
 
 // Use the default MITM to support browsers without Service Worker stream support
-// streamSaver.mitm = 'https://jimmywarting.github.io/StreamSaver.js/mitm.html?version=2.0.0';
+// Use the default MITM to support browsers without Service Worker stream support
+// This is critical for production environments (non-localhost) or if the SW fails to register.
+streamSaver.mitm = 'https://jimmywarting.github.io/StreamSaver.js/mitm.html?version=2.0.0';
 
 interface ExportMetadata {
     user: any;
