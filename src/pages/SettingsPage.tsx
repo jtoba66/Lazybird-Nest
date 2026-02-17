@@ -198,13 +198,27 @@ export const SettingsPage = () => {
                             <span>Account Encrypted</span>
                         </div>
 
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="w-full glass-button py-2.5 text-sm font-medium"
-                        >
-                            Edit Profile
-                        </motion.button>
+                        <div className="w-full space-y-3">
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => setShowPasswordModal(true)}
+                                className="w-full glass-button py-2.5 text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                                <Key size={16} weight="bold" />
+                                Change Password
+                            </motion.button>
+
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => window.location.href = '/recovery-setup'}
+                                className="w-full glass-button py-2.5 text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                                <Warning size={16} weight="bold" className="text-amber-500" />
+                                Recovery Kit
+                            </motion.button>
+                        </div>
                     </div>
 
                     {/* Storage Widget */}
@@ -243,11 +257,10 @@ export const SettingsPage = () => {
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => window.location.href = '/pricing'}
-                                    className="w-full bg-primary/10 border border-primary/50 text-white py-3 rounded-xl font-bold hover:bg-primary/20 hover:shadow-[0_0_20px_rgba(var(--primary-rgb),0.4)] transition-all flex items-center justify-center gap-2 group/btn relative overflow-hidden backdrop-blur-sm"
+                                    className="w-full glass-button py-2.5 text-sm font-bold flex items-center justify-center gap-2 text-primary"
                                 >
-                                    <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-1000"></div>
-                                    <Crown weight="fill" className="text-primary-300 group-hover/btn:text-white transition-colors" size={20} />
-                                    <span className="relative z-10 drop-shadow-sm">Upgrade to Pro</span>
+                                    <Crown weight="fill" className="text-primary" size={20} />
+                                    Upgrade to Pro
                                 </motion.button>
                             )}
 
@@ -257,7 +270,6 @@ export const SettingsPage = () => {
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={async () => {
-                                        // Check if over free tier quota before redirecting
                                         if (quota.used > FREE_TIER_QUOTA) {
                                             setShowCancelWarning(true);
                                             return;
@@ -266,211 +278,119 @@ export const SettingsPage = () => {
                                         const { url } = await billingAPI.createPortalSession();
                                         window.location.href = url;
                                     }}
-                                    className="w-full mt-3 bg-white text-black py-3 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center gap-2 group/btn relative overflow-hidden shadow-lg"
+                                    className="w-full glass-button py-2.5 text-sm font-bold flex items-center justify-center gap-2"
                                 >
-                                    <CreditCard weight="duotone" className="text-black" size={20} />
-                                    <span>Manage Billing</span>
+                                    <CreditCard weight="duotone" size={20} />
+                                    Manage Billing
                                 </motion.button>
                             )}
                         </div>
                     </div>
+                </div>
 
-                    {/* Danger Zone Group (Left Column - Matches Height) */}
-                    <div className="flex-1 flex flex-col gap-4 min-h-0">
-                        <h3 className="text-xl font-bold text-error flex items-center gap-2 px-1 shrink-0">
+                {/* Right Column: Data & Danger Zone */}
+                <div className="lg:col-span-7 flex flex-col gap-6">
+
+                    {/* Data Privacy Section */}
+                    <div className="glass-panel p-8">
+                        <h3 className="text-xl font-bold text-text-main mb-6 flex items-center gap-2">
+                            <Info weight="duotone" className="text-blue-400" size={28} />
+                            Privacy & Data
+                        </h3>
+
+                        <div className="space-y-6">
+                            {/* Actions Group */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Export Data */}
+                                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex flex-col justify-between h-full">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-2 text-primary font-bold">
+                                            <Database size={20} weight="fill" />
+                                            <span>Export Data</span>
+                                        </div>
+                                        <p className="text-xs text-text-muted mb-4">
+                                            Download all your files and metadata in a decrypted ZIP bundle.
+                                        </p>
+                                    </div>
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        disabled={exporting}
+                                        onClick={handleExportData}
+                                        className="w-full bg-primary text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:shadow-glow transition-all disabled:opacity-50"
+                                    >
+                                        {exporting ? 'Preparing zip...' : 'Export All Data (ZIP)'}
+                                    </motion.button>
+                                </div>
+
+                                {/* Transparency Report Link */}
+                                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-between h-full">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-2 text-text-main font-bold">
+                                            <ShieldCheck size={20} weight="fill" className="text-blue-400" />
+                                            <span>Transparency</span>
+                                        </div>
+                                        <p className="text-xs text-text-muted mb-4">
+                                            View our SAR report detailing exactly what data we store.
+                                        </p>
+                                    </div>
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => window.open('/transparency', '_blank')}
+                                        className="w-full glass-button py-2.5 text-xs font-bold"
+                                    >
+                                        View Transparency Report
+                                    </motion.button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Danger Zone */}
+                    <div className="glass-panel p-8 border-error/20 bg-error/5 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+
+                        <h3 className="text-xl font-bold text-error flex items-center gap-2 mb-6 relative z-10">
                             <Warning weight="fill" size={24} />
                             Danger Zone
                         </h3>
 
-                        {/* Clear Local Cache - Stretched */}
-                        <div className="flex-1 flex flex-col justify-between border border-error/20 bg-error/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-error/10 transition-colors"></div>
-                            <div className="relative z-10 mb-2">
-                                <h4 className="font-bold text-text-main mb-2">Clear Local Cache</h4>
-                                <p className="text-sm text-text-muted leading-relaxed">
-                                    Removes all local encryption keys and session data.
-                                </p>
-                            </div>
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={clearCache}
-                                className="w-full py-2.5 bg-error/10 border border-error/30 text-error rounded-xl text-sm font-bold hover:bg-error hover:text-white transition-all relative z-10 mt-auto"
-                            >
-                                Clear Cache
-                            </motion.button>
-                        </div>
-
-                        {/* Permanent Deletion - Stretched */}
-                        <div className="flex-1 flex flex-col justify-between border border-error/20 bg-error/5 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-error/10 transition-colors"></div>
-                            <div className="relative z-10 mb-2">
-                                <h4 className="font-bold text-text-main mb-2">Delete Account</h4>
-                                <p className="text-sm text-text-muted leading-relaxed">
-                                    Permanently delete your account and scrub your identity.
-                                </p>
-                            </div>
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => setShowDeleteModal(true)}
-                                className="w-full py-2.5 bg-error text-white rounded-xl text-sm font-bold hover:shadow-[0_0_20px_rgba(var(--error-rgb),0.4)] transition-all relative z-10 mt-auto"
-                            >
-                                Delete Account
-                            </motion.button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Column: Security & Privacy */}
-                <div className="lg:col-span-7 space-y-6">
-
-                    {/* Security Center */}
-                    <div className="glass-panel p-8 flex flex-col">
-                        <h3 className="text-xl font-bold text-text-main mb-6 flex items-center gap-2">
-                            <ShieldCheck weight="duotone" className="text-blue-400" size={28} />
-                            Security Center
-                        </h3>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-all duration-300 group cursor-default">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl group-hover:bg-blue-500/20 transition-colors">
-                                        <Lock size={24} weight="fill" />
-                                    </div>
-                                    <CheckCircle size={20} className="text-blue-500/60" weight="fill" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+                            {/* Clear Cache */}
+                            <div className="flex flex-col justify-between bg-error/5 rounded-2xl p-5 border border-error/10">
+                                <div className="mb-4">
+                                    <h4 className="font-bold text-text-main mb-1">Clear Local Cache</h4>
+                                    <p className="text-xs text-text-muted">
+                                        Removes keys and session data from this device.
+                                    </p>
                                 </div>
-                                <h4 className="font-bold text-text-main mb-1">Zero-Knowledge</h4>
-                                <p className="text-xs text-text-muted leading-relaxed">
-                                    Your keys, your data. Server cannot decrypt your files.
-                                </p>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={clearCache}
+                                    className="w-full py-2.5 bg-error/10 text-error border border-error/20 rounded-xl text-sm font-bold hover:bg-error hover:text-white transition-colors"
+                                >
+                                    Clear Cache
+                                </motion.button>
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-all duration-300 group cursor-default">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl group-hover:bg-blue-500/20 transition-colors">
-                                        <Shield size={24} weight="fill" />
-                                    </div>
-                                    <CheckCircle size={20} className="text-blue-500/60" weight="fill" />
+                            {/* Delete Account */}
+                            <div className="flex flex-col justify-between bg-error/5 rounded-2xl p-5 border border-error/10">
+                                <div className="mb-4">
+                                    <h4 className="font-bold text-text-main mb-1">Delete Account</h4>
+                                    <p className="text-xs text-text-muted">
+                                        Permanently erases all data and identity.
+                                    </p>
                                 </div>
-                                <h4 className="font-bold text-text-main mb-1">XChaCha20-Poly1305</h4>
-                                <p className="text-xs text-text-muted leading-relaxed">
-                                    Military-grade authenticated encryption standard.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3">Actions</h4>
-
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => window.location.href = '/recovery-setup'}
-                                className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 sm:p-4 flex items-center justify-between group transition-all"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform">
-                                        <Warning size={20} weight="bold" />
-                                    </div>
-                                    <div className="text-left">
-                                        <div className="font-bold text-text-main">Download Recovery Kit</div>
-                                        <div className="text-xs text-text-muted">Backup your master encryption key</div>
-                                    </div>
-                                </div>
-                                <div className="text-text-muted group-hover:translate-x-1 transition-transform">→</div>
-                            </motion.button>
-
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => setShowPasswordModal(true)}
-                                className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 sm:p-4 flex items-center justify-between group transition-all"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                                        <Key size={20} weight="bold" />
-                                    </div>
-                                    <div className="text-left">
-                                        <div className="font-bold text-text-main">Change Password</div>
-                                        <div className="text-xs text-text-muted">Update your main encryption key</div>
-                                    </div>
-                                </div>
-                                <div className="text-text-muted group-hover:translate-x-1 transition-transform">→</div>
-                            </motion.button>
-                        </div>
-                    </div>
-
-                    {/* Privacy & Portability Section */}
-                    <div className="glass-panel p-8">
-                        <h3 className="text-xl font-bold text-text-main mb-6 flex items-center gap-2">
-                            <Info weight="duotone" className="text-blue-400" size={28} />
-                            Privacy & Transparency
-                        </h3>
-
-                        <div className="space-y-6">
-                            {/* SAR Report */}
-                            <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-                                <div className="px-5 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
-                                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Transparency Report (SAR)</span>
-                                    <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">ZK VERIFIED</span>
-                                </div>
-                                <div className="p-0">
-                                    <table className="w-full text-left text-xs border-collapse">
-                                        <thead>
-                                            <tr className="border-b border-white/5 bg-white/[0.02]">
-                                                <th className="px-5 py-3 font-bold text-text-muted">Data Category</th>
-                                                <th className="px-5 py-3 font-bold text-text-muted">Visibility to Nest</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-white/5">
-                                            <tr>
-                                                <td className="px-5 py-3 text-text-main font-medium">Account Email</td>
-                                                <td className="px-5 py-3 text-slate-500 font-medium uppercase tracking-tight">Plain Text</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="px-5 py-3 text-text-main font-medium">Billing & Quota</td>
-                                                <td className="px-5 py-3 text-slate-500 font-medium uppercase tracking-tight">Plain Text</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="px-5 py-3 text-text-main font-medium">File & Folder Names</td>
-                                                <td className="px-5 py-3 text-slate-700 font-medium uppercase tracking-tight">Encrypted</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="px-5 py-3 text-text-main font-medium">File Content (Blobs)</td>
-                                                <td className="px-5 py-3 text-slate-700 font-medium uppercase tracking-tight">Encrypted</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="px-5 py-3 text-text-main font-medium">Vault Keys</td>
-                                                <td className="px-5 py-3 text-slate-700 font-medium uppercase tracking-tight">Encrypted</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            {/* Data Portability */}
-                            <div className="space-y-4">
-                                <div className="flex items-start gap-4 p-4 bg-primary/5 border border-primary/20 rounded-2xl">
-                                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                                        <Database size={20} weight="fill" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-text-main text-sm">Right to Portability</h4>
-                                        <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                                            You can download all your stored files and account metadata in a single, unencrypted bundle. Decryption happens locally in your browser.
-                                        </p>
-                                        <motion.button
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            disabled={exporting}
-                                            onClick={handleExportData}
-                                            className="mt-4 flex items-center gap-2 bg-primary text-white text-xs font-bold px-4 py-2 rounded-lg hover:shadow-glow transition-all disabled:opacity-50"
-                                        >
-                                            {exporting ? 'Preparing zip...' : 'Export All Data (ZIP)'}
-                                        </motion.button>
-                                    </div>
-                                </div>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => setShowDeleteModal(true)}
+                                    className="w-full py-2.5 bg-error text-white rounded-xl text-sm font-bold hover:shadow-[0_0_15px_rgba(var(--error-rgb),0.5)] transition-all"
+                                >
+                                    Delete Account
+                                </motion.button>
                             </div>
                         </div>
                     </div>
