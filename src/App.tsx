@@ -24,7 +24,7 @@ const TrashPage = lazy(() => import('./pages/TrashPage').then(module => ({ defau
 const TermsPage = lazy(() => import('./pages/TermsPage').then(module => ({ default: module.TermsPage })));
 const PricingPage = lazy(() => import('./pages/PricingPage').then(module => ({ default: module.PricingPage })));
 const LandingPage = lazy(() => import('./pages/LandingPage').then(module => ({ default: module.LandingPage })));
-const SettingsDesignLab = lazy(() => import('./pages/SettingsDesignLab').then(module => ({ default: module.SettingsDesignLab })));
+
 
 // Lazy load Docs
 const DocsLayout = lazy(() => import('./landing/components/DocsLayout').then(module => ({ default: module.DocsLayout })));
@@ -146,16 +146,7 @@ const App = () => {
                           </ProtectedRoute>
                         }
                       />
-                      <Route
-                        path="/settings-lab"
-                        element={
-                          <ProtectedRoute>
-                            <DashboardLayout>
-                              <SettingsDesignLab />
-                            </DashboardLayout>
-                          </ProtectedRoute>
-                        }
-                      />
+
                       <Route
                         path="/admin"
                         element={
