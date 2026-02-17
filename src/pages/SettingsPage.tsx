@@ -26,7 +26,7 @@ import { billingAPI } from '../api/billing';
 const FREE_TIER_QUOTA = 2 * 1024 * 1024 * 1024; // 2GB
 
 export const SettingsPage = () => {
-    const { user, masterKey } = useAuth();
+    const { user, masterKey, metadata } = useAuth();
     const [quota, setQuota] = useState({ used: 0, quota: 2147483648, tier: 'free', percentage: 0 });
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -140,6 +140,7 @@ export const SettingsPage = () => {
                 files,
                 { user: accountInfo, quota },
                 masterKey,
+                metadata,
                 (progress, filename) => {
                     console.log(`Export Progress: ${progress.toFixed(1)}% - ${filename}`);
                 }

@@ -4,6 +4,8 @@ import * as fflate from 'fflate';
 import { filesAPI, type File } from '../api/files';
 import API_BASE_URL from '../config/api';
 
+import type { MetadataBlob } from '../crypto/v2';
+
 // Use the default MITM to support browsers without Service Worker stream support
 // streamSaver.mitm = 'https://jimmywarting.github.io/StreamSaver.js/mitm.html?version=2.0.0';
 
@@ -16,6 +18,7 @@ export const streamExport = async (
     files: File[],
     metadata: ExportMetadata,
     masterKey: Uint8Array | null,
+    cryptoMetadata: MetadataBlob | null,
     onProgress: (progress: number, currentFile: string) => void
 ) => {
     if (!masterKey) {
@@ -61,7 +64,10 @@ export const streamExport = async (
         const folderKeyCache: Record<string, Uint8Array> = {};
 
         for (const file of files) {
-            onProgress(totalBytes > 0 ? (completedBytes / totalBytes) * 100 : 0, file.filename);
+            // Restore filename from metadata if available
+            const realFilename = cryptoMetadata?.files[file.id]?.filename || file.filename;
+
+            onProgress(totalBytes > 0 ? (completedBytes / totalBytes) * 100 : 0, realFilename);
 
             try {
                 // Fetch download info (keys + locations)
@@ -72,7 +78,7 @@ export const streamExport = async (
                 if (!keyResponse.ok) {
                     console.warn(`[StreamingExport] Failed to get keys for ${file.id} (Status: ${keyResponse.status}), skipping.`);
                     // Write error file to zip so user knows something went wrong
-                    const errFile = new fflate.ZipPassThrough(`${file.filename}.export_error.txt`);
+                    const errFile = new fflate.ZipPassThrough(`${realFilename}.export_error.txt`);
                     zip.add(errFile);
                     errFile.push(new TextEncoder().encode(`Failed to retrieve file metadata from server. Status: ${keyResponse.status}`), true);
                     continue;
@@ -138,7 +144,7 @@ export const streamExport = async (
                     const reader = response.body?.getReader();
                     if (!reader) throw new Error("No response body");
 
-                    const zipFile = new fflate.ZipPassThrough(file.filename);
+                    const zipFile = new fflate.ZipPassThrough(realFilename);
                     zip.add(zipFile);
 
                     // Sodium's secretstream (chunked/stream) vs simple monolithic decryption.
@@ -238,7 +244,7 @@ export const streamExport = async (
                 } else {
                     // CHUNKED FILE
                     const { chunks } = await filesAPI.getManifest(file.id);
-                    const zipFile = new fflate.ZipPassThrough(file.filename);
+                    const zipFile = new fflate.ZipPassThrough(realFilename);
                     zip.add(zipFile);
 
                     for (let i = 0; i < chunks.length; i++) {
