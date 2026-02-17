@@ -42,16 +42,19 @@ export async function cleanupStaleUploads() {
                     }
                 }
 
-                // 2. Delete chunk records (cascade will handle this, but explicit is better)
-                await db.delete(fileChunks).where(eq(fileChunks.fileId, file.id));
+                // 2. Perform DB operations Transactionally
+                await db.transaction(async (tx) => {
+                    // Delete chunk records
+                    await tx.delete(fileChunks).where(eq(fileChunks.fileId, file.id));
 
-                // 3. Delete file record
-                await db.delete(files).where(eq(files.id, file.id));
+                    // Delete file record
+                    await tx.delete(files).where(eq(files.id, file.id));
 
-                // 4. Refund quota to user
-                await db.update(users)
-                    .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
-                    .where(eq(users.id, file.userId));
+                    // Refund quota to user
+                    await tx.update(users)
+                        .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
+                        .where(eq(users.id, file.userId));
+                });
 
                 logger.info(`[CRON] Cleaned stale upload file_id=${file.id}, refunded ${file.file_size} bytes to user ${file.userId}`);
             } catch (error: any) {

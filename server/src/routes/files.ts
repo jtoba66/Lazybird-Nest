@@ -605,23 +605,13 @@ router.delete('/:id/permanent', authenticateToken, async (req: AuthRequest, res)
 
             // Delete from DB (Cascade should handle chunks, but we manually clean up physical files)
             await tx.delete(files).where(eq(files.id, fileId));
+
+            // Update Quota (INSIDE TRANSACTION)
+            // Fix #35: Prevent ghost usage by updating quota atomically with deletion
+            await tx.update(users)
+                .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
+                .where(eq(users.id, userId));
         });
-
-        // Cleanup Physical Files (outside transaction - filesystem operations)
-        if (file.encrypted_file_path && fs.existsSync(file.encrypted_file_path)) {
-            fs.unlinkSync(file.encrypted_file_path);
-        }
-
-        // Cleanup Chunks (if any local)
-        const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
-        for (const chunk of chunks) {
-            if (chunk.local_path && fs.existsSync(chunk.local_path)) {
-                fs.unlinkSync(chunk.local_path);
-            }
-        }
-
-        // Update Quota
-        await db.update(users).set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` }).where(eq(users.id, userId));
 
         res.json({ success: true });
     } catch (error: any) {

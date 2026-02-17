@@ -150,9 +150,9 @@ export const SettingsPage = () => {
     };
 
     return (
-        <div className="flex-1 min-h-screen font-sans antialiased text-[#0F172A] pb-20">
+        <div className="flex-1 min-h-full font-sans antialiased text-[#0F172A] pb-20 relative">
             {/* Background Pattern */}
-            <div className="fixed inset-0 z-0 pointer-events-none" style={{
+            <div className="absolute inset-0 z-0 pointer-events-none" style={{
                 background: COLORS.bg,
                 backgroundImage: `radial-gradient(circle at 10% 20%, rgba(170, 199, 216, 0.2) 0%, transparent 40%),
                                   radial-gradient(circle at 90% 80%, rgba(118, 138, 150, 0.15) 0%, transparent 40%)`,

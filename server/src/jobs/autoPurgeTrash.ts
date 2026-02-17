@@ -63,6 +63,11 @@ export async function autoPurgeTrash() {
 
                     // Delete file from DB
                     await tx.delete(files).where(eq(files.id, file.id));
+
+                    // Update quota (decrement INSIDE transaction)
+                    await tx.update(users)
+                        .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
+                        .where(eq(users.id, file.userId));
                 });
 
                 // Cleanup physical files (outside transaction)
@@ -77,11 +82,6 @@ export async function autoPurgeTrash() {
                         fs.unlinkSync(chunk.local_path);
                     }
                 }
-
-                // Update quota (decrement now that it's permanently deleted)
-                await db.update(users)
-                    .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
-                    .where(eq(users.id, file.userId));
 
                 // Log analytics event for storage purge
                 await db.insert(analyticsEvents).values({
