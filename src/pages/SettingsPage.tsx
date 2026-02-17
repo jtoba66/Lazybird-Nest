@@ -30,6 +30,7 @@ export const SettingsPage = () => {
     const [showCancelWarning, setShowCancelWarning] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [triggerCrash, setTriggerCrash] = useState(false);
+    const [showTransparencyModal, setShowTransparencyModal] = useState(false);
     const { showToast } = useToast();
 
     if (triggerCrash) {
@@ -189,11 +190,7 @@ export const SettingsPage = () => {
                             </div>
                         </div>
 
-                        <h2 className="text-xl sm:text-2xl font-bold text-text-main mb-1">{user?.email || 'User'}</h2>
-                        <div className="flex items-center gap-2 text-sm text-text-muted mb-6">
-                            <ShieldCheck className="text-blue-400" weight="fill" />
-                            <span>Account Encrypted</span>
-                        </div>
+                        <h2 className="text-xl sm:text-2xl font-bold text-text-main mb-6">{user?.email || 'User'}</h2>
 
                         <div className="w-full space-y-3">
                             <motion.button
@@ -229,7 +226,7 @@ export const SettingsPage = () => {
                                 Storage
                             </h3>
                             <span className="text-xs font-bold bg-primary/20 text-primary px-2 py-1 rounded-md uppercase">
-                                {quota.percentage?.toFixed(1)}% Used
+                                {quota.used > 0 && (quota.percentage || 0) < 0.1 ? '< 0.1' : (quota.percentage || 0).toFixed(1)}% Used
                             </span>
                         </div>
 
@@ -254,9 +251,9 @@ export const SettingsPage = () => {
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => window.location.href = '/pricing'}
-                                    className="w-full glass-button py-2.5 text-sm font-bold flex items-center justify-center gap-2 text-primary"
+                                    className="w-full glass-button py-2.5 text-sm font-bold flex items-center justify-center gap-2 text-white"
                                 >
-                                    <Crown weight="fill" className="text-primary" size={20} />
+                                    <Crown weight="fill" className="text-white" size={20} />
                                     Upgrade to Pro
                                 </motion.button>
                             )}
@@ -321,7 +318,7 @@ export const SettingsPage = () => {
                                 </div>
 
                                 {/* Transparency Report Link */}
-                                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-between h-full">
+                                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex flex-col justify-between h-full">
                                     <div>
                                         <div className="flex items-center gap-2 mb-2 text-text-main font-bold">
                                             <ShieldCheck size={20} weight="fill" className="text-blue-400" />
@@ -334,7 +331,7 @@ export const SettingsPage = () => {
                                     <motion.button
                                         whileHover={{ scale: 1.02 }}
                                         whileTap={{ scale: 0.98 }}
-                                        onClick={() => window.open('/transparency', '_blank')}
+                                        onClick={() => setShowTransparencyModal(true)}
                                         className="w-full glass-button py-2.5 text-xs font-bold"
                                     >
                                         View Transparency Report
@@ -384,7 +381,7 @@ export const SettingsPage = () => {
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => setShowDeleteModal(true)}
-                                    className="w-full py-2.5 bg-error text-white rounded-xl text-sm font-bold hover:shadow-[0_0_15px_rgba(var(--error-rgb),0.5)] transition-all"
+                                    className="w-full py-2.5 bg-error/10 border border-error/30 text-error rounded-xl text-sm font-bold hover:bg-error hover:text-white transition-all relative z-10 mt-auto"
                                 >
                                     Delete Account
                                 </motion.button>
@@ -424,6 +421,12 @@ export const SettingsPage = () => {
                 onClose={() => setShowDeleteModal(false)}
             />
 
+            {/* Transparency Report Modal */}
+            <TransparencyModal
+                isOpen={showTransparencyModal}
+                onClose={() => setShowTransparencyModal(false)}
+            />
+
             {/* Cancel Warning Modal (Over-Quota) */}
             <CancelWarningModal
                 isOpen={showCancelWarning}
@@ -441,12 +444,121 @@ export const SettingsPage = () => {
     );
 };
 
-interface AccountDeletionModalProps {
+interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
-const AccountDeletionModal = ({ isOpen, onClose }: AccountDeletionModalProps) => {
+const TransparencyModal = ({ isOpen, onClose }: ModalProps) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="w-full max-w-2xl bg-[#0f1115]/90 backdrop-blur-md rounded-3xl border border-white/10 shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh]"
+            >
+                {/* Header */}
+                <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
+                            <ShieldCheck size={24} weight="duotone" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-text-main">Transparency Report</h2>
+                            <p className="text-xs text-text-muted">Subject Access Request (SAR) Verification</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-white/5 rounded-full text-text-muted hover:text-text-main transition-colors"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="p-0 overflow-y-auto custom-scrollbar">
+                    <div className="px-6 py-4 bg-blue-500/5 border-b border-white/5">
+                        <div className="flex items-start gap-3">
+                            <Info size={20} className="text-blue-400 mt-0.5 shrink-0" weight="fill" />
+                            <p className="text-sm text-text-muted leading-relaxed">
+                                This report details exactly what data is visible to our servers versus what is encrypted client-side.
+                                We operate on a <strong>Zero-Knowledge</strong> architecture, meaning we cannot access your files even if compelled by law.
+                            </p>
+                        </div>
+                    </div>
+
+                    <table className="w-full text-left text-sm border-collapse">
+                        <thead>
+                            <tr className="border-b border-white/5 bg-white/[0.02]">
+                                <th className="px-6 py-4 font-bold text-text-muted w-1/2">Data Category</th>
+                                <th className="px-6 py-4 font-bold text-text-muted w-1/2">Visibility to Nest</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            <tr className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-6 py-4 text-text-main font-medium">Account Email</td>
+                                <td className="px-6 py-4 text-orange-400 font-bold uppercase text-xs tracking-wider flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                                    Plain Text
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-6 py-4 text-text-main font-medium">Billing & Quota</td>
+                                <td className="px-6 py-4 text-orange-400 font-bold uppercase text-xs tracking-wider flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                                    Plain Text
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-6 py-4 text-text-main font-medium">File & Folder Names</td>
+                                <td className="px-6 py-4 text-emerald-400 font-bold uppercase text-xs tracking-wider flex items-center gap-2">
+                                    <ShieldCheck size={14} weight="fill" />
+                                    Encrypted
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-6 py-4 text-text-main font-medium">File Content (Blobs)</td>
+                                <td className="px-6 py-4 text-emerald-400 font-bold uppercase text-xs tracking-wider flex items-center gap-2">
+                                    <ShieldCheck size={14} weight="fill" />
+                                    Encrypted
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-6 py-4 text-text-main font-medium">Vault Keys</td>
+                                <td className="px-6 py-4 text-emerald-400 font-bold uppercase text-xs tracking-wider flex items-center gap-2">
+                                    <ShieldCheck size={14} weight="fill" />
+                                    Encrypted
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end shrink-0">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-text-main font-bold rounded-xl transition-all text-sm"
+                    >
+                        Close Report
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+const AccountDeletionModal = ({ isOpen, onClose }: ModalProps) => {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
