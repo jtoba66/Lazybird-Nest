@@ -6,6 +6,7 @@ import { FileGrid } from '../components/FileGrid';
 import { FileTable } from '../components/FileTable';
 import { filesAPI } from '../api/files';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
+import { PageLoader } from '../components/PageLoader';
 
 type SortOption = 'newest' | 'oldest' | 'name' | 'size';
 
@@ -281,9 +282,7 @@ export const CloudDrivePage = () => {
 
             {/* File List */}
             {loading ? (
-                <div className="glass-panel p-6 sm:p-12 text-center">
-                    <p className="text-text-muted">Loading files...</p>
-                </div>
+                <PageLoader />
             ) : (
                 <FileTable
                     items={sortedFiles.map(file => ({

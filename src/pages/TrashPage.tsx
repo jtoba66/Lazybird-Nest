@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useRefresh } from '../contexts/RefreshContext';
 import { useStorage } from '../contexts/StorageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { PageLoader } from '../components/PageLoader';
 
 export const TrashPage = () => {
     const [trashFiles, setTrashFiles] = useState<File[]>([]);
@@ -147,67 +148,68 @@ export const TrashPage = () => {
                 </div>
             </div>
 
-            {loading ? (
-                <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-4">
-                    <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                    <p className="text-text-muted font-medium">Scanning trash...</p>
-                </div>
-            ) : trashFiles.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 sm:py-32 glass-panel rounded-3xl border-dashed">
-                    <div className="w-20 h-20 rounded-full bg-background flex items-center justify-center text-text-muted/30 mb-6">
-                        <Trash size={48} />
-                    </div>
-                    <h3 className="text-xl font-bold text-text-main">Trash is empty</h3>
-                    <p className="text-text-muted mt-2">Any files you delete will appear here for 24 hours.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {trashFiles.map((file) => (
-                        <div key={file.id} className="glass-panel p-4 group hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
 
-                            <div className="flex items-start justify-between mb-4">
-                                <div className="p-3 bg-primary/10 rounded-2xl text-primary group-hover:scale-110 transition-transform duration-300">
-                                    <Clock size={24} weight="bold" />
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => handleRestore(file.id)}
-                                        className="p-2 hover:bg-primary/10 rounded-xl text-text-muted hover:text-primary transition-all flex items-center gap-2 group/btn"
-                                        title="Restore"
-                                    >
-                                        <ArrowUUpLeft size={20} />
-                                    </button>
-                                    <button
-                                        onClick={() => setFileToDelete(file)}
-                                        className="p-2 hover:bg-red-500/10 rounded-xl text-text-muted hover:text-red-500 transition-all flex items-center gap-2 group/btn"
-                                        title="Delete Permanently"
-                                    >
-                                        <Trash size={20} />
-                                    </button>
-                                </div>
-                            </div>
 
-                            <div className="space-y-1">
-                                <h3 className="font-bold text-text-main truncate max-w-[200px] md:max-w-none break-all" title={file.filename}>
-                                    {metadata?.files[file.id.toString()]?.filename || file.filename || (file as any).original_filename || (file as any).name || `File #${file.id}`}
-                                </h3>
-                                <div className="flex items-center gap-2 text-xs text-text-muted font-medium">
-                                    <span>{formatBytes(file.file_size)}</span>
-                                    <span>•</span>
-                                    <span>Deleted {new Date((file as any).deleted_at).toLocaleDateString()}</span>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 pt-4 border-t border-text-muted/5">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-text-muted/40">
-                                    Permanent purge in &lt; 24h
-                                </span>
-                            </div>
+            {
+                loading ? (
+                    <PageLoader />
+                ) : trashFiles.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 sm:py-32 glass-panel rounded-3xl border-dashed">
+                        <div className="w-20 h-20 rounded-full bg-background flex items-center justify-center text-text-muted/30 mb-6">
+                            <Trash size={48} />
                         </div>
-                    ))}
-                </div>
-            )}
-        </div>
+                        <h3 className="text-xl font-bold text-text-main">Trash is empty</h3>
+                        <p className="text-text-muted mt-2">Any files you delete will appear here for 24 hours.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {trashFiles.map((file) => (
+                            <div key={file.id} className="glass-panel p-4 group hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
+
+                                <div className="flex items-start justify-between mb-4">
+                                    <div className="p-3 bg-primary/10 rounded-2xl text-primary group-hover:scale-110 transition-transform duration-300">
+                                        <Clock size={24} weight="bold" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => handleRestore(file.id)}
+                                            className="p-2 hover:bg-primary/10 rounded-xl text-text-muted hover:text-primary transition-all flex items-center gap-2 group/btn"
+                                            title="Restore"
+                                        >
+                                            <ArrowUUpLeft size={20} />
+                                        </button>
+                                        <button
+                                            onClick={() => setFileToDelete(file)}
+                                            className="p-2 hover:bg-red-500/10 rounded-xl text-text-muted hover:text-red-500 transition-all flex items-center gap-2 group/btn"
+                                            title="Delete Permanently"
+                                        >
+                                            <Trash size={20} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <h3 className="font-bold text-text-main truncate max-w-[200px] md:max-w-none break-all" title={file.filename}>
+                                        {metadata?.files[file.id.toString()]?.filename || file.filename || (file as any).original_filename || (file as any).name || `File #${file.id}`}
+                                    </h3>
+                                    <div className="flex items-center gap-2 text-xs text-text-muted font-medium">
+                                        <span>{formatBytes(file.file_size)}</span>
+                                        <span>•</span>
+                                        <span>Deleted {new Date((file as any).deleted_at).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 pt-4 border-t border-text-muted/5">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted/40">
+                                        Permanent purge in &lt; 24h
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )
+            }
+        </div >
     );
 };
 

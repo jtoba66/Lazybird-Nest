@@ -9,6 +9,7 @@ import { useRefresh } from '../contexts/RefreshContext';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
+import { PageLoader } from '../components/PageLoader';
 
 interface FileItem {
     id: number;
@@ -407,16 +408,7 @@ export const NestPage = () => {
                 {/* Content List */}
                 <div className="flex-1 glass-panel overflow-hidden p-0 relative">
                     {loading ? (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/10 backdrop-blur-sm">
-                            <div className="flex flex-col items-center gap-3">
-                                <motion.div
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                                    className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full"
-                                />
-                                <p className="text-text-muted font-medium">Loading files...</p>
-                            </div>
-                        </div>
+                        <PageLoader />
                     ) : files.length === 0 ? (
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}

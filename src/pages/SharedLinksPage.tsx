@@ -21,6 +21,7 @@ import { RevokeConfirmationModal } from '../components/RevokeConfirmationModal';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
 import api from '../lib/api';
 import { useQuotaCheck } from '../components/QuotaBanner';
+import { PageLoader } from '../components/PageLoader';
 
 interface SharedFile {
     id: number;
@@ -294,14 +295,7 @@ export const SharedLinksPage = () => {
             </div>
 
             {loading ? (
-                <div className="glass-panel p-8 sm:p-16 text-center">
-                    <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-4"
-                    />
-                    <p className="text-text-muted">Loading shared files...</p>
-                </div>
+                <PageLoader />
             ) : sharedFiles.length === 0 ? (
                 <div className="glass-panel p-8 sm:p-16 text-center group">
                     <motion.div

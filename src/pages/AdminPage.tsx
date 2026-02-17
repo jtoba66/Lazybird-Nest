@@ -5,6 +5,7 @@ import { Shield, Users, HardDrives, Database, ArrowsClockwise, Trash, CloudCheck
 import { useToast } from '../contexts/ToastContext';
 import API_BASE_URL from '../config/api';
 import { ChunksInspectorModal } from '../components/admin/ChunksInspectorModal';
+import { PageLoader } from '../components/PageLoader';
 
 interface SystemMetrics {
     memory: {
@@ -335,11 +336,7 @@ export default function AdminPage() {
     }
 
     if (loading) {
-        return (
-            <div className="min-h-[100dvh] bg-background flex items-center justify-center">
-                <div className="text-text-muted">Loading admin panel...</div>
-            </div>
-        );
+        return <PageLoader />;
     }
 
     return (
