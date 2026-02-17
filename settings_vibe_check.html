@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nest – Settings (SaaS Prototype)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        bg: '#F0F4F8',
+                        primary: '#5D7285',
+                        secondary: '#8DA9C4',
+                        accent: '#768A96',
+                        'text-main': '#0F172A',
+                        'text-sub': '#475569',
+                        'text-faint': '#94A3B8',
+                        bdr: '#CBD5E1',
+                        'bdr-light': '#E2E8F0',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: #F0F4F8;
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(170, 199, 216, 0.2) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(118, 138, 150, 0.15) 0%, transparent 40%);
+            background-attachment: fixed;
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 99px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            color: #64748B;
+            font-weight: 500;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.5);
+            color: #334155;
+        }
+
+        .nav-item.active {
+            background: rgba(255, 255, 255, 0.6);
+            color: #5D7285;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(203, 213, 225, 0.4);
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 0;
+        }
+
+        .row+.row {
+            border-top: 1px solid rgba(203, 213, 225, 0.25);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.4375rem 0.875rem;
+            border-radius: 0.5rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+        .btn-fill {
+            background: #5D7285;
+            color: #fff;
+            border: none;
+            box-shadow: 0 1px 3px rgba(93, 114, 133, 0.25);
+        }
+
+        .btn-fill:hover {
+            background: #4a5e6d;
+        }
+
+        .btn-outline {
+            background: rgba(255, 255, 255, 0.6);
+            color: #334155;
+            border: 1px solid rgba(203, 213, 225, 0.5);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #94A3B8;
+        }
+
+        .btn-ghost {
+            background: none;
+            border: none;
+            color: #5D7285;
+        }
+
+        .btn-ghost:hover {
+            color: #4a5e6d;
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.06);
+            color: #DC2626;
+            border: 1px solid rgba(239, 68, 68, 0.15);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.12);
+        }
+
+        .section-label {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #5D7285;
+            opacity: 0.7;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+
+<body class="font-sans antialiased text-text-main flex min-h-screen">
+
+    <!-- ─── SIDEBAR ─── -->
+    <aside class="w-60 border-r border-bdr/40 bg-white/30 backdrop-blur-md flex flex-col fixed h-full z-50">
+
+        <!-- Logo -->
+        <div class="px-5 pt-7 pb-8 flex items-center gap-2.5">
+            <div class="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
+                <i class="ph-bold ph-bird text-white text-sm"></i>
+            </div>
+            <span class="font-display text-lg font-bold tracking-tight">Nest</span>
+        </div>
+
+        <!-- Nav -->
+        <nav class="flex-1 px-3 space-y-0.5">
+            <div class="nav-item"><i class="ph ph-house-simple text-base"></i> Overview</div>
+            <div class="nav-item"><i class="ph ph-folder text-base"></i> Files</div>
+            <div class="nav-item"><i class="ph ph-share-network text-base"></i> Shared</div>
+            <div class="nav-item"><i class="ph ph-trash text-base"></i> Trash</div>
+            <div class="nav-item active"><i class="ph-fill ph-gear-six text-base"></i> Settings</div>
+        </nav>
+
+        <!-- Storage chip -->
+        <div class="px-4 pb-6">
+            <div class="bg-white/40 backdrop-blur-sm rounded-lg p-3.5 border border-white/40 text-xs shadow-sm">
+                <div class="flex justify-between mb-1.5 font-semibold">
+                    <span class="text-text-sub">Pro</span>
+                    <span class="text-primary">7.5 MB / 100 GB</span>
+                </div>
+                <div class="h-1 bg-white/50 rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full" style="width:1%"></div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ─── MAIN ─── -->
+    <main class="flex-1 ml-60 overflow-y-auto min-h-screen">
+        <div class="max-w-[680px] mx-auto px-8 py-14">
+
+            <!-- Page Title -->
+            <div class="mb-10">
+                <h1 class="text-2xl font-extrabold tracking-tight mb-1">Settings</h1>
+                <p class="text-text-sub text-sm">Manage your account, security and data.</p>
+            </div>
+
+            <!-- ─── PROFILE ─── -->
+            <div class="section-label">Profile</div>
+            <div class="card p-6 mb-10">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                            J</div>
+                        <div>
+                            <p class="font-semibold text-sm">josephtoba29@gmail.com</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ─── SECURITY ─── -->
+            <div class="section-label">Security</div>
+            <div class="card mb-10">
+                <div class="row px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><i
+                                class="ph ph-lock-simple text-base"></i></div>
+                        <div>
+                            <p class="text-sm font-semibold">Password</p>
+                            <p class="text-xs text-text-faint">Change your account password</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-fill text-xs">Change</button>
+                </div>
+                <div class="row px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600">
+                            <i class="ph ph-shield-warning text-base"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold">Recovery Kit</p>
+                            <p class="text-xs text-text-faint">Download your emergency backup key</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-fill text-xs">Download</button>
+                </div>
+            </div>
+
+            <!-- ─── PLAN & STORAGE ─── -->
+            <div class="section-label">Plan & Storage</div>
+            <div class="card p-6 mb-10">
+                <div class="flex items-end justify-between mb-5">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">PRO</span>
+                            <span class="text-xs text-text-faint">·</span>
+                            <span class="text-xs text-text-faint">100 GB plan</span>
+                        </div>
+                        <p class="text-2xl font-extrabold tracking-tight">7.55 <span
+                                class="text-base font-semibold text-text-faint">MB used</span></p>
+                    </div>
+                    <span class="text-xs font-semibold text-text-faint">&lt; 0.1%</span>
+                </div>
+                <!-- Bar -->
+                <div class="h-2 bg-primary/10 rounded-full overflow-hidden mb-6">
+                    <div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full" style="width:2%"></div>
+                </div>
+                <div class="flex justify-end">
+                    <button class="btn btn-fill text-xs"><i class="ph ph-credit-card text-sm"></i> Manage
+                        Billing</button>
+                </div>
+            </div>
+
+            <!-- ─── DATA & PRIVACY ─── -->
+            <div class="section-label">Data & Privacy</div>
+            <div class="card mb-10">
+                <div class="row px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><i
+                                class="ph-fill ph-download-simple text-base"></i></div>
+                        <div>
+                            <p class="text-sm font-semibold">Export Data</p>
+                            <p class="text-xs text-text-faint">Download all files &amp; metadata as a ZIP</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-fill text-xs">Export</button>
+                </div>
+                <div class="row px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><i
+                                class="ph-fill ph-eye text-base"></i></div>
+                        <div>
+                            <p class="text-sm font-semibold">Transparency Report</p>
+                            <p class="text-xs text-text-faint">See exactly what Nest can and can&rsquo;t see</p>
+                        </div>
+                    </div>
+                    <button onclick="document.getElementById('transparency-modal').classList.remove('hidden')"
+                        class="btn btn-fill text-xs">View Report</button>
+                </div>
+            </div>
+
+            <!-- ─── DANGER ZONE ─── -->
+            <div class="section-label" style="color:#ef4444">Danger Zone</div>
+            <div class="card border-red-200/40 mb-14 overflow-hidden">
+                <div class="row px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-400"><i
+                                class="ph ph-broom text-base"></i></div>
+                        <div>
+                            <p class="text-sm font-semibold">Clear Cache</p>
+                            <p class="text-xs text-text-faint">Wipe local keys &amp; sign out of this device</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-fill text-xs"
+                        style="background:#ef4444; box-shadow:0 1px 3px rgba(239,68,68,0.3)">Clear Cache</button>
+                </div>
+                <div class="row px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-400"><i
+                                class="ph ph-trash text-base"></i></div>
+                        <div>
+                            <p class="text-sm font-semibold">Delete Account</p>
+                            <p class="text-xs text-text-faint">Permanently erase all vault data &amp; identity</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-fill text-xs"
+                        style="background:#ef4444; box-shadow:0 1px 3px rgba(239,68,68,0.3)">Delete Account</button>
+                </div>
+            </div>
+        </div>
+
+        </div>
+    </main>
+
+    <!-- ─── TRANSPARENCY REPORT MODAL ─── -->
+    <div id="transparency-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <!-- Backdrop -->
+        <div onclick="document.getElementById('transparency-modal').classList.add('hidden')"
+            class="absolute inset-0 bg-black/30 backdrop-blur-sm"></div>
+
+        <!-- Modal -->
+        <div class="relative z-10 w-full max-w-lg bg-white rounded-xl border border-bdr shadow-xl overflow-hidden">
+            <!-- Header -->
+            <div class="p-6 pb-4 flex items-center justify-between border-b border-bdr-light">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <i class="ph-fill ph-shield-check text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-text-main">Transparency Report</h2>
+                        <p class="text-[11px] text-text-faint">Subject Access Request (SAR) Verification</p>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('transparency-modal').classList.add('hidden')"
+                    class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-text-faint hover:text-text-main transition-colors">
+                    <i class="ph ph-x text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Info Banner -->
+            <div class="mx-6 mt-5 p-3.5 bg-primary/5 border border-primary/10 rounded-lg flex items-start gap-2.5">
+                <i class="ph-fill ph-info text-primary text-base mt-0.5 shrink-0"></i>
+                <p class="text-xs text-text-sub leading-relaxed">
+                    This report details exactly what data is visible to our servers versus what is encrypted
+                    client-side.
+                    We operate on a <strong class="text-text-main">Zero-Knowledge</strong> architecture, meaning we
+                    cannot access your files even if compelled by law.
+                </p>
+            </div>
+
+            <!-- Table -->
+            <div class="px-6 pt-5 pb-2">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-bdr-light">
+                            <th class="pb-3 text-xs font-bold text-text-faint uppercase tracking-wider">Data Category
+                            </th>
+                            <th class="pb-3 text-xs font-bold text-text-faint uppercase tracking-wider text-right">
+                                Visibility to Nest</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b border-bdr-light/50">
+                            <td class="py-3 text-sm font-medium text-text-main">Account Email</td>
+                            <td class="py-3 text-right">
+                                <span
+                                    class="inline-flex items-center gap-1.5 text-xs font-bold text-text-sub bg-slate-100 px-2.5 py-1 rounded-full">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-text-faint"></span> Plain Text
+                                </span>
+                            </td>
+                        </tr>
+                        <tr class="border-b border-bdr-light/50">
+                            <td class="py-3 text-sm font-medium text-text-main">Billing & Quota</td>
+                            <td class="py-3 text-right">
+                                <span
+                                    class="inline-flex items-center gap-1.5 text-xs font-bold text-text-sub bg-slate-100 px-2.5 py-1 rounded-full">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-text-faint"></span> Plain Text
+                                </span>
+                            </td>
+                        </tr>
+                        <tr class="border-b border-bdr-light/50">
+                            <td class="py-3 text-sm font-medium text-text-main">File & Folder Names</td>
+                            <td class="py-3 text-right">
+                                <span
+                                    class="inline-flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                                    <i class="ph-fill ph-shield-check text-xs"></i> Encrypted
+                                </span>
+                            </td>
+                        </tr>
+                        <tr class="border-b border-bdr-light/50">
+                            <td class="py-3 text-sm font-medium text-text-main">File Content (Blobs)</td>
+                            <td class="py-3 text-right">
+                                <span
+                                    class="inline-flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                                    <i class="ph-fill ph-shield-check text-xs"></i> Encrypted
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 text-sm font-medium text-text-main">Vault Keys</td>
+                            <td class="py-3 text-right">
+                                <span
+                                    class="inline-flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                                    <i class="ph-fill ph-shield-check text-xs"></i> Encrypted
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer -->
+            <div class="p-5 border-t border-bdr-light flex justify-end">
+                <button onclick="document.getElementById('transparency-modal').classList.add('hidden')"
+                    class="btn btn-fill text-xs">Close Report</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
