@@ -695,59 +695,6 @@ router.delete('/:id/cancel', authenticateToken, async (req: AuthRequest, res) =>
 // PUBLIC SHARE ACCESS
 // ============================================================================
 
-// Fix #9: Rate limit share link access
-router.get('/share/:shareToken', shareLimiter, async (req, res) => {
-    const { shareToken } = req.params;
-    try {
-        const [file] = await db.select().from(files).where(eq(files.share_token, shareToken)).limit(1);
-
-        // Fix #7: Log failed share attempts for forensics
-        if (!file) {
-            logger.warn(`[SHARE-ATTEMPT] Invalid token attempt: ${shareToken.substring(0, 8)}... from IP: ${req.ip}`);
-            return res.status(404).json({ error: 'Share link not found' });
-        }
-
-        // Fix H4: Validate file still exists (not permanently deleted)
-        if (file.deleted_at) {
-            logger.warn(`[SHARE-ATTEMPT] Attempted access to deleted file: ${file.id} via token ${shareToken.substring(0, 8)}`);
-            return res.status(410).json({ error: 'This file is no longer available' });
-        }
-
-        const chunks = file.is_chunked ? await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index) : undefined;
-
-        // Fix M1: Log share download analytics
-        await db.insert(analyticsEvents).values({
-            type: 'share_download',
-            bytes: file.file_size,
-            timestamp: new Date(),
-            meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
-        });
-
-        res.json({
-            success: true,
-            file_id: file.id,
-            file_size: file.file_size,
-            jackal_fid: file.jackal_fid,
-            merkle_hash: file.merkle_hash,
-            created_at: file.created_at,
-            is_gateway_verified: !!file.is_gateway_verified,
-            is_chunked: !!file.is_chunked,
-            chunks: chunks?.map(c => ({
-                index: c.chunk_index,
-                size: c.size,
-                nonce: bufferToBase64(c.nonce),
-                jackal_merkle: c.jackal_merkle,
-                status: (c.local_path && fs.existsSync(c.local_path)) ? 'local' : (c.jackal_merkle ? 'cloud' : 'pending')
-            }))
-        });
-
-        await db.update(files).set({ last_accessed_at: new Date() }).where(eq(files.id, file.id));
-    } catch (error) {
-        logger.error('[SHARE-GET] ❌ Failed:', error);
-        res.status(500).json({ error: 'Failed to access share link' });
-    }
-});
-
 
 // Fix: Add missing endpoint for raw shared file downloads
 router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
@@ -811,6 +758,60 @@ router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
     } catch (error: any) {
         logger.error('[SHARE-RAW] Failed:', error);
         if (!res.headersSent) res.status(500).json({ error: 'Download failed' });
+    }
+});
+
+
+// Fix #9: Rate limit share link access
+router.get('/share/:shareToken', shareLimiter, async (req, res) => {
+    const { shareToken } = req.params;
+    try {
+        const [file] = await db.select().from(files).where(eq(files.share_token, shareToken)).limit(1);
+
+        // Fix #7: Log failed share attempts for forensics
+        if (!file) {
+            logger.warn(`[SHARE-ATTEMPT] Invalid token attempt: ${shareToken.substring(0, 8)}... from IP: ${req.ip}`);
+            return res.status(404).json({ error: 'Share link not found' });
+        }
+
+        // Fix H4: Validate file still exists (not permanently deleted)
+        if (file.deleted_at) {
+            logger.warn(`[SHARE-ATTEMPT] Attempted access to deleted file: ${file.id} via token ${shareToken.substring(0, 8)}`);
+            return res.status(410).json({ error: 'This file is no longer available' });
+        }
+
+        const chunks = file.is_chunked ? await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index) : undefined;
+
+        // Fix M1: Log share download analytics
+        await db.insert(analyticsEvents).values({
+            type: 'share_download',
+            bytes: file.file_size,
+            timestamp: new Date(),
+            meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
+        });
+
+        res.json({
+            success: true,
+            file_id: file.id,
+            file_size: file.file_size,
+            jackal_fid: file.jackal_fid,
+            merkle_hash: file.merkle_hash,
+            created_at: file.created_at,
+            is_gateway_verified: !!file.is_gateway_verified,
+            is_chunked: !!file.is_chunked,
+            chunks: chunks?.map(c => ({
+                index: c.chunk_index,
+                size: c.size,
+                nonce: bufferToBase64(c.nonce),
+                jackal_merkle: c.jackal_merkle,
+                status: (c.local_path && fs.existsSync(c.local_path)) ? 'local' : (c.jackal_merkle ? 'cloud' : 'pending')
+            }))
+        });
+
+        await db.update(files).set({ last_accessed_at: new Date() }).where(eq(files.id, file.id));
+    } catch (error) {
+        logger.error('[SHARE-GET] ❌ Failed:', error);
+        res.status(500).json({ error: 'Failed to access share link' });
     }
 });
 
