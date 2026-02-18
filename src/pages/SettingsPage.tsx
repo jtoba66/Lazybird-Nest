@@ -254,12 +254,24 @@ export const SettingsPage = () => {
                     <div className="flex justify-end">
                         <button
                             onClick={async () => {
-                                if (quota.used > FREE_TIER_QUOTA && quota.tier === 'free') {
+                                // If free tier (regardless of quota), "Manage Billing" means "Upgrade" -> Go to Pricing
+                                if (quota.tier === 'free') {
                                     window.location.href = '/pricing';
-                                } else {
+                                    return;
+                                }
+
+                                try {
                                     const { billingAPI } = await import('../api/billing');
                                     const { url } = await billingAPI.createPortalSession();
                                     window.location.href = url;
+                                } catch (error: any) {
+                                    console.error('Billing portal error:', error);
+                                    // Fallback to pricing if portal fails (e.g. no stripe customer id yet)
+                                    if (error.response?.status === 400) {
+                                        window.location.href = '/pricing';
+                                    } else {
+                                        showToast(error.response?.data?.error || 'Failed to redirect to billing portal', 'error');
+                                    }
                                 }
                             }}
                             className="btn btn-fill text-xs flex items-center gap-1.5"
