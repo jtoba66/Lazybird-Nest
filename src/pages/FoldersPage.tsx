@@ -324,12 +324,11 @@ export const FoldersPage = () => {
             const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
             const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
 
-            // NEW: Use StreamingDownloader for Large Files (>500MB) if supported
-            const isLargeFile = file.file_size > 500 * 1024 * 1024;
-            const hasNativeFS = 'showSaveFilePicker' in window;
+            // NEW: Use StreamingDownloader for chunked files (universal via StreamSaver.js)
+            const isLargeFile = file.file_size > 128 * 1024 * 1024;
             const token = localStorage.getItem('nest_token');
 
-            if (isLargeFile && hasNativeFS && token) {
+            if (isLargeFile && token && downloadInfo.data.chunks?.length > 0) {
                 if (toastId) updateToast(toastId, 'Starting streaming download...', 'info');
 
                 // Map chunks to DownloadChunk format
@@ -343,9 +342,6 @@ export const FoldersPage = () => {
 
                 const { StreamingDownloader } = await import('../utils/StreamingDownloader');
 
-                // Notify user to select file location (since Native FS picker halts JS execution)
-                if (toastId) updateToast(toastId, 'Please select where to save the file...', 'info');
-
                 let lastUpdate = 0;
                 await StreamingDownloader.download({
                     fileKey,
@@ -357,7 +353,7 @@ export const FoldersPage = () => {
                         // Log first few updates to debug
                         if (p < 5 || p > 95 || Math.floor(p) % 10 === 0) console.log(`[UI-DL] Progress: ${p.toFixed(2)}%`);
 
-                        // Throttle updates to every 5% or 500ms to allow React to render
+                        // Throttle updates to every 200ms to allow React to render
                         const now = Date.now();
                         if (now - lastUpdate > 200 || p === 100) {
                             if (toastId) updateToast(toastId, `Downloading... ${p.toFixed(0)}%`, 'info');
@@ -374,11 +370,7 @@ export const FoldersPage = () => {
                 return;
             }
 
-            // FALLBACK: Legacy Blob Download
-            if (isLargeFile && !hasNativeFS) {
-                console.warn('Large file download requiring memory blob (Native FS not supported)');
-                if (toastId) updateToast(toastId, 'Warning: Large file, may consume high memory...', 'warning');
-            }
+            // FALLBACK: Legacy Blob Download (for monolithic/small files)
 
             // 3. Fetch Raw Encrypted Content
             const contentResponse = await api.get(`/files/raw/${file.id}`, {

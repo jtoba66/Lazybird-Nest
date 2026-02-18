@@ -122,19 +122,21 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         );
     };
 
+    // Race Condition Fix: Track what's actually being processed to preventing double-firing
+    const processingRef = useRef<Set<string>>(new Set());
+
     // Queue Processor
     useEffect(() => {
         const processQueue = async () => {
             if (!masterKey) return; // Wait for master key before processing queue
             if (activeUploads >= MAX_CONCURRENT_UPLOADS) return;
 
-            const nextUpload = uploads.find(u => u.status === 'queued');
+            // Fix Race Condition: Filter out items already marked as processing
+            const nextUpload = uploads.find(u => u.status === 'queued' && !processingRef.current.has(u.id));
 
             if (nextUpload) {
-                // Double check if we are already processing this ID (race condition in strict mode)
-                // But setActiveUploads + Effect dependency should handle it.
-                // We'll mark it as 'uploading' immediately inside performUpload or here.
-
+                // Lock immediately
+                processingRef.current.add(nextUpload.id);
                 performUpload(nextUpload.id);
             }
         };
@@ -144,7 +146,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     const performUpload = async (uploadId: string) => {
         // Guard: Check if actually queued (to avoid double processing)
         const currentStatus = uploads.find(u => u.id === uploadId)?.status;
-        if (currentStatus !== 'queued') return;
+        if (currentStatus !== 'queued') {
+            processingRef.current.delete(uploadId);
+            return;
+        }
 
         setActiveUploads(prev => prev + 1);
         updateProgress(uploadId, 0); // Mark as uploading
@@ -153,6 +158,23 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         if (!file) {
             failUpload(uploadId, "File object lost (refresh?)");
             setActiveUploads(prev => prev - 1);
+            processingRef.current.delete(uploadId);
+            return;
+        }
+
+        // Fix: Detect GarageBand Packages (.band)
+        if (file.name.endsWith('.band')) {
+            failUpload(uploadId, "GarageBand projects must be zipped (.zip) before uploading.");
+            setActiveUploads(prev => prev - 1);
+            processingRef.current.delete(uploadId);
+            return;
+        }
+
+        // Fix: Zero Byte Files
+        if (file.size === 0) {
+            failUpload(uploadId, "Cannot upload empty folder or 0-byte file.");
+            setActiveUploads(prev => prev - 1);
+            processingRef.current.delete(uploadId);
             return;
         }
 
@@ -217,8 +239,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             const fileKeyEnv = encryptFileKey(fileKey, folderKey);
 
             // 2. Determine Strategy
-            const CHUNK_THRESHOLD = 500 * 1024 * 1024; // 500MB
-            const CHUNK_SIZE = 512 * 1024 * 1024;      // 512MB (Jackal Blobs)
+            const CHUNK_THRESHOLD = 128 * 1024 * 1024; // 128MB (Mobile-safe)
+            const CHUNK_SIZE = 128 * 1024 * 1024;      // 128MB
 
             if (file.size >= CHUNK_THRESHOLD) {
                 // === CHUNKED UPLOAD ===
@@ -375,14 +397,19 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             console.error("Upload error:", error);
             let errorMessage = error.message || "Upload failed";
 
+            // Fix: User-friendly error mapping
+            if (error.response?.status === 400 || errorMessage.includes('400')) {
+                errorMessage = "Upload invalid (Folder or Empty File?)";
+            }
             // Check for 413 Payload Too Large (Quota or File Size limit)
-            if (error.response?.status === 413 || error.message?.includes('413')) {
+            else if (error.response?.status === 413 || errorMessage.includes('413')) {
                 errorMessage = "File too large for current plan";
             }
 
             failUpload(uploadId, errorMessage);
         } finally {
             setActiveUploads(prev => prev - 1);
+            processingRef.current.delete(uploadId);
         }
     };
 

@@ -917,7 +917,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             logger.info(`[UPLOAD-INIT] New upload with sessionId: ${sessionId.substring(0, 8)}...`);
         }
 
-        const isChunked = file_size > 500 * 1024 * 1024; // Auto-select based on size or explicit flag
+        const isChunked = file_size > 128 * 1024 * 1024; // 128MB threshold (mobile-safe)
 
         const [newFile] = await db.insert(files).values({
             userId,

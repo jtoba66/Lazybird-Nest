@@ -106,7 +106,6 @@ export const NestPage = () => {
 
     const handleDownload = async (file: FileItem) => {
         let toastId: string | null = null;
-        let fileHandle: any = null;
 
         try {
             if (!masterKey) {
@@ -114,34 +113,9 @@ export const NestPage = () => {
                 return;
             }
 
-            // PRE-EMPTIVE: If using Native FS for large files, we MUST trigger the picker NOW
-            // to satisfy the "recent user gesture" browser security requirement.
-            const isLargeFile = file.file_size > 500 * 1024 * 1024;
-            const hasNativeFS = 'showSaveFilePicker' in window;
+            // Check if file is chunked (will use StreamingDownloader)
+            const isLargeFile = file.file_size > 128 * 1024 * 1024;
             const token = localStorage.getItem('nest_token');
-
-            // Fix M8: Warn about browser compatibility for large files
-            if (isLargeFile && !hasNativeFS) {
-                const proceed = confirm(
-                    `Large file detected (${(file.file_size / (1024 * 1024 * 1024)).toFixed(2)} GB).\n\n` +
-                    `Your browser doesn't support streaming downloads, which may use significant memory.\n\n` +
-                    `For best results, use Chrome or Edge. Continue anyway?`
-                );
-                if (!proceed) return;
-            }
-
-            if (isLargeFile && hasNativeFS && token) {
-                try {
-                    // @ts-ignore
-                    fileHandle = await window.showSaveFilePicker({
-                        suggestedName: file.filename,
-                    });
-                } catch (e: any) {
-                    console.warn('[Download] Picker cancelled or failed:', e.name);
-                    if (e.name === 'AbortError') return; // Silent cancel
-                    throw e;
-                }
-            }
 
             // Start Feedback
             toastId = showToast('Preparing download...', 'info', Infinity);
@@ -164,7 +138,8 @@ export const NestPage = () => {
             // 2. Fetch File Content
             if (toastId) updateToast(toastId, 'Downloading encrypted data...', 'info');
 
-            if (fileHandle) {
+            // Use StreamingDownloader for chunked files (universal browser support via StreamSaver.js)
+            if (isLargeFile && token && downloadInfo.data.chunks?.length > 0) {
                 if (toastId) updateToast(toastId, 'Starting streaming download...', 'info');
 
                 // Map chunks to DownloadChunk format
@@ -184,7 +159,6 @@ export const NestPage = () => {
                     chunks: downloadChunks,
                     fileId: file.id,
                     authToken: token!,
-                    existingHandle: fileHandle,
                     onProgress: (p) => {
                         if (toastId) updateToast(toastId, `Downloading... ${p.toFixed(0)}%`, 'info');
                     }
@@ -195,11 +169,7 @@ export const NestPage = () => {
                 return;
             }
 
-            // FALLBACK: Legacy Blob Download (Memory Intensive)
-            if (isLargeFile && !hasNativeFS) {
-                console.warn('Large file download requiring memory blob (Native FS not supported)');
-                if (toastId) updateToast(toastId, 'Warning: Large file, may consume high memory...', 'warning');
-            }
+            // FALLBACK: Legacy Blob Download (for monolithic/small files)
 
             const contentResponse = await api.get(`/files/raw/${file.id}`, {
                 responseType: 'blob',

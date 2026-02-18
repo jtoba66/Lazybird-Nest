@@ -1,5 +1,6 @@
 import API_BASE_URL from '../config/api';
 import { createDecryptionStream, fromBase64 } from '../crypto/v2';
+import streamSaver from 'streamsaver';
 
 export interface DownloadChunk {
     index: number;
@@ -18,47 +19,47 @@ export interface DownloadOptions {
     shareToken?: string;
     fileId?: number;
     authToken?: string;
-    existingHandle?: any; // FileSystemFileHandle
 }
 
 /**
- * StreamingDownloader (V3)
- * Orchestrates memory-efficient downloads of large files by:
- * 1. Using Native File System API to write directly to disk.
- * 2. Downloading chunks individually (Hybrid: Local vs Cloud).
- * 3. Decrypting as data flows through (Zero-Memory).
+ * Detect if the user is on iOS (Safari, Chrome iOS, etc.)
+ */
+function isIOS(): boolean {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * StreamingDownloader (V3 - Universal)
+ * Uses StreamSaver.js for universal browser support:
+ * - Chrome/Edge: Service Worker MITM streaming (zero memory)
+ * - Safari/Firefox: Automatic Blob fallback (in-memory, up to ~500MB on mobile)
  */
 export class StreamingDownloader {
     static async download(options: DownloadOptions): Promise<void> {
-        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress, existingHandle } = options;
+        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress } = options;
         const totalSize = chunks.reduce((acc, c) => acc + c.size, 0);
         let bytesDownloaded = 0;
 
-        // 1. Get File Handle (Native File System API)
-        let writable: FileSystemWritableFileStream | null = null;
-        const hasNativeFS = 'showSaveFilePicker' in window;
-
-        if (hasNativeFS) {
-            try {
-                let handle = existingHandle;
-                if (!handle) {
-                    console.log('[Downloader] No pre-acquired handle provided, requesting one...');
-                    // @ts-ignore
-                    handle = await window.showSaveFilePicker({
-                        suggestedName: filename,
-                    });
-                }
-                writable = await handle.createWritable();
-            } catch (e) {
-                console.error('[Downloader] Native FS Picker cancelled or failed:', e);
-                // User might have cancelled, so we just return (or throw if you want UI feedback)
-                throw new Error('Download cancelled (Permission Required)');
-            }
-        } else {
-            console.warn('[Downloader] Native File System API not supported. Large files may crash browser.');
-            // Fallback to legacy Blob accumulation? Or just throw for >2GB?
-            // For now, we proceed but writable remains null, triggering the fallback logic below.
+        // Pre-flight: Warn iOS users about large files
+        if (isIOS() && totalSize > 500 * 1024 * 1024) {
+            const proceed = confirm(
+                `This file is ${(totalSize / (1024 * 1024 * 1024)).toFixed(2)} GB.\n\n` +
+                `iOS browsers have limited memory for large downloads. ` +
+                `This may fail on your device.\n\n` +
+                `For large files, please use Chrome on Android or desktop.\n\n` +
+                `Try anyway?`
+            );
+            if (!proceed) throw new Error('Download cancelled by user');
         }
+
+        // Create universal writable stream via StreamSaver.js
+        // Chrome/Edge: SW MITM streaming (zero memory)
+        // Safari: Blob fallback (accumulates in RAM, saves on close)
+        const writeStream = streamSaver.createWriteStream(filename, {
+            size: totalSize
+        });
+        const writer = writeStream.getWriter();
 
         // 2. Sequential Chunk Download & Decrypt
         try {
@@ -126,9 +127,6 @@ export class StreamingDownloader {
                 if (!response!.body) throw new Error(`Chunk ${chunk.index} body is empty`);
 
                 // Create Decryption Stream for this chunk
-                // Note: Each chunk in our V3 system has its own SecretStream HEADER (nonce)
-                // For Server-proxied chunks, the nonce might be in the header 'X-Chunk-Nonce' or embedded
-                // Use the one from the manifest (chunk.nonce) as source of truth
                 console.log(`[Downloader] Creating decryption stream for Chunk ${chunk.index} (Nonce: ${chunk.nonce.substring(0, 10)}...)`);
                 const decryptionStream = createDecryptionStream(fileKey, fromBase64(chunk.nonce));
 
@@ -139,28 +137,18 @@ export class StreamingDownloader {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    if (writable) {
-                        await (writable as any).write(value);
-                    } else {
-                        // FALLBACK: Memory accumulation (not ideal but works for Safari/FF for now)
-                        // In a real V3, we'd use a Service Worker "pseudo-download" here.
-                        // For this task, we assume Native FS is the primary target.
-                        throw new Error('Streaming download requires Chrome/Edge (Native File System API)');
-                    }
+                    await writer.write(value);
 
                     bytesDownloaded += value.length;
                     if (onProgress) onProgress((bytesDownloaded / totalSize) * 100);
                 }
             }
 
-            if (writable) {
-                await writable.close();
-            }
-
+            await writer.close();
             console.log(`[Downloader] ✅ Download complete: ${filename}`);
 
         } catch (error) {
-            if (writable) await writable.abort();
+            await writer.abort();
             console.error('[Downloader] ❌ Stream failure:', error);
             throw error;
         }
