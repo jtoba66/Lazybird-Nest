@@ -124,20 +124,54 @@ export const SharePage = () => {
         try {
             if (!fileInfo.is_chunked) {
                 // Fallback for non-chunked files (legacy)
-                let downloadUrl = fileInfo.is_gateway_verified
-                    ? `https://gateway.lazybird.io/file/${fileInfo.merkle_hash}`
-                    : `${API_BASE_URL}/files/share/raw/${shareToken}`;
+                let blob: Blob | null = null;
 
-                const res = await fetch(downloadUrl);
-                if (!res.ok) throw new Error('Failed to download encrypted file');
-                const encryptedBlob = await res.blob();
+                // Smart Fallback Strategy:
+                // 1. Try Direct Gateway (Fastest, No Server Load)
+                // 2. Fallback to Server Proxy (Reliable, Auto-Hydration)
+
+                if (fileInfo.is_gateway_verified) {
+                    try {
+                        console.log('[SharePage] 🚀 Attempting Direct Gateway Download...');
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for gateway
+
+                        const res = await fetch(`https://gateway.lazybird.io/file/${fileInfo.merkle_hash}`, {
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+
+                        if (res.ok) {
+                            blob = await res.blob();
+                            console.log('[SharePage] ✅ Gateway Download Successful');
+                        } else {
+                            throw new Error(`Gateway returned ${res.status}`);
+                        }
+                    } catch (e) {
+                        console.warn('[SharePage] ⚠️ Gateway failed, falling back to Server Proxy:', e);
+                    }
+                }
+
+                // If Gateway failed or wasn't an option, try Server Proxy
+                if (!blob) {
+                    console.log('[SharePage] 🔄 Attempting Server Proxy Download...');
+                    const res = await fetch(`${API_BASE_URL}/files/share/raw/${shareToken}`);
+                    if (!res.ok) {
+                        const errText = await res.text();
+                        throw new Error(`Download failed: ${errText || res.statusText}`);
+                    }
+                    blob = await res.blob();
+                    console.log('[SharePage] ✅ Server Proxy Download Successful');
+                }
 
                 // For monolithic files, we still use the old decrypt (rare in V3, but kept for compat)
                 const { decryptFile } = await import('../crypto/v2');
-                const decryptedBytes = await decryptFile(encryptedBlob, null, fileKey);
+                // Note: Monolithic files have the nonce embedded or handled by decryptFile logic usually
+                // In V2/V3 transition, we pass null as nonce for monolithic
+                const decryptedBytes = await decryptFile(blob!, null, fileKey);
 
-                const blob = new Blob([decryptedBytes as any], { type: mimeType });
-                const url = window.URL.createObjectURL(blob);
+                const fileBlob = new Blob([decryptedBytes as any], { type: mimeType });
+                const url = window.URL.createObjectURL(fileBlob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;

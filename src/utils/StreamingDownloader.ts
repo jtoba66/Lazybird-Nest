@@ -68,7 +68,11 @@ export class StreamingDownloader {
                 let chunkUrl = '';
                 const headers: HeadersInit = {};
 
+                // Fallback Strategy
+                let tryGateway = false;
+
                 if (chunk.status === 'local') {
+                    // Force Server Path
                     if (shareToken) {
                         chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
                     } else if (fileId && authToken) {
@@ -78,26 +82,57 @@ export class StreamingDownloader {
                         throw new Error('Missing auth config for local download');
                     }
                 } else if (chunk.status === 'cloud' && chunk.jackal_merkle) {
+                    tryGateway = true;
                     chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
                 } else {
                     throw new Error(`Chunk ${chunk.index} is not ready yet (Status: ${chunk.status})`);
                 }
 
-                const response = await fetch(chunkUrl, { headers });
+                let response;
 
-                console.log(`[Downloader] Chunk ${chunk.index} Fetch Status: ${response.status}`);
-                console.log(`[Downloader] Type: ${response.headers.get('content-type')}`);
-                console.log(`[Downloader] Length: ${response.headers.get('content-length')}`);
+                if (tryGateway) {
+                    try {
+                        console.log(`[Downloader] 🚀 Attempting Direct Gateway for Chunk ${chunk.index}...`);
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-                if (!response.ok) throw new Error(`Failed to fetch chunk ${chunk.index}`);
-                if (!response.body) throw new Error(`Chunk ${chunk.index} body is empty`);
+                        response = await fetch(chunkUrl, { headers, signal: controller.signal });
+                        clearTimeout(timeoutId);
+
+                        if (!response.ok) throw new Error(`Gateway returned ${response.status}`);
+                        console.log(`[Downloader] ✅ Gateway Success for Chunk ${chunk.index}`);
+
+                    } catch (e) {
+                        console.warn(`[Downloader] ⚠️ Gateway failed for Chunk ${chunk.index}, falling back to Server Proxy:`, e);
+                        // Fallback to Server
+                        if (shareToken) {
+                            chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                        } else if (fileId && authToken) {
+                            chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
+                            headers['Authorization'] = `Bearer ${authToken}`;
+                        }
+                        response = await fetch(chunkUrl, { headers });
+                    }
+                } else {
+                    // Direct Server (Local or forced)
+                    response = await fetch(chunkUrl, { headers });
+                }
+
+                console.log(`[Downloader] Chunk ${chunk.index} Fetch Status: ${response!.status}`);
+                console.log(`[Downloader] Type: ${response!.headers.get('content-type')}`);
+                console.log(`[Downloader] Length: ${response!.headers.get('content-length')}`);
+
+                if (!response!.ok) throw new Error(`Failed to fetch chunk ${chunk.index}`);
+                if (!response!.body) throw new Error(`Chunk ${chunk.index} body is empty`);
 
                 // Create Decryption Stream for this chunk
                 // Note: Each chunk in our V3 system has its own SecretStream HEADER (nonce)
+                // For Server-proxied chunks, the nonce might be in the header 'X-Chunk-Nonce' or embedded
+                // Use the one from the manifest (chunk.nonce) as source of truth
                 console.log(`[Downloader] Creating decryption stream for Chunk ${chunk.index} (Nonce: ${chunk.nonce.substring(0, 10)}...)`);
                 const decryptionStream = createDecryptionStream(fileKey, fromBase64(chunk.nonce));
 
-                const decryptedStream = response.body.pipeThrough(decryptionStream);
+                const decryptedStream = response!.body.pipeThrough(decryptionStream);
                 const reader = decryptedStream.getReader();
 
                 while (true) {

@@ -814,6 +814,7 @@ router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
     }
 });
 
+
 router.get('/share/:shareToken/chunk/:index', async (req, res) => {
     const { shareToken, index } = req.params;
     try {
@@ -821,14 +822,43 @@ router.get('/share/:shareToken/chunk/:index', async (req, res) => {
         if (!file) return res.status(404).json({ error: 'Share link not found' });
 
         const [chunk] = await db.select().from(fileChunks).where(and(eq(fileChunks.fileId, file.id), eq(fileChunks.chunk_index, parseInt(index)))).limit(1);
-        if (!chunk || !chunk.local_path || !fs.existsSync(chunk.local_path)) {
-            return res.status(404).json({ error: 'Chunk not available on server' });
+
+        if (!chunk) return res.status(404).json({ error: 'Chunk not found' });
+
+        let chunkPath = chunk.local_path;
+        let isTemp = false;
+
+        // Auto-hydration for Shared Chunks (Fix #59)
+        if (!chunkPath || !fs.existsSync(chunkPath)) {
+            if (chunk.jackal_merkle && chunk.jackal_merkle !== 'pending') {
+                const { downloadFileFromJackal } = await import('../jackal');
+                const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_share_${chunk.id}_${Date.now()}`);
+                const success = await downloadFileFromJackal(chunk.jackal_merkle, `chunk_${chunk.chunk_index}`, tempPath);
+                if (success) {
+                    chunkPath = tempPath;
+                    isTemp = true;
+                }
+            }
         }
 
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Length', chunk.size);
-        fs.createReadStream(chunk.local_path).pipe(res);
+        if (chunkPath && fs.existsSync(chunkPath)) {
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Length', chunk.size); // Use DB size as hydration might differ slightly on disk if not closed properly
+
+            const stream = fs.createReadStream(chunkPath);
+            stream.pipe(res);
+
+            stream.on('end', () => {
+                if (isTemp) fs.unlink(chunkPath!, () => { });
+            });
+            stream.on('error', () => {
+                if (isTemp) fs.unlink(chunkPath!, () => { });
+            });
+        } else {
+            return res.status(404).json({ error: 'Chunk unavailable (missing locally and on cloud)' });
+        }
     } catch (error) {
+        logger.error('[SHARE-CHUNK] Failed:', error);
         res.status(500).json({ error: 'Chunk access failed' });
     }
 });
