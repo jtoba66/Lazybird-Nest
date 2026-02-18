@@ -354,12 +354,25 @@ router.get('/list', authenticateToken, validate(listFilesSchema), async (req: Au
             chunk_count: files.chunk_count
         }).from(files).where(and(...conditions));
 
+
         const fileList = await query.orderBy(desc(files.created_at));
+
+        // Get current metadata version for sync
+        const [cryptoData] = await db.select({ v: userCrypto.metadata_version })
+            .from(userCrypto)
+            .where(eq(userCrypto.userId, userId))
+            .limit(1);
+
+        if (cryptoData) {
+            res.setHeader('X-Metadata-Version', cryptoData.v.toString());
+            res.setHeader('Access-Control-Expose-Headers', 'X-Metadata-Version');
+        }
 
         // Map to include a sanitized/extracted filename
         const mappedFiles = fileList.map(file => ({ ...file, filename: 'Encrypted File' }));
 
         res.json({ files: mappedFiles });
+
     } catch (error) {
         logger.error('[FILE-LIST] ❌ Failed:', error);
         res.status(500).json({ error: 'Failed to list files' });
@@ -732,6 +745,72 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
     } catch (error) {
         logger.error('[SHARE-GET] ❌ Failed:', error);
         res.status(500).json({ error: 'Failed to access share link' });
+    }
+});
+
+
+// Fix: Add missing endpoint for raw shared file downloads
+router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
+    const { shareToken } = req.params;
+
+    try {
+        const [file] = await db.select().from(files).where(eq(files.share_token, shareToken)).limit(1);
+
+        if (!file) {
+            logger.warn(`[SHARE-RAW] Invalid token: ${shareToken.substring(0, 8)}`);
+            return res.status(404).json({ error: 'Share link not found' });
+        }
+
+        if (file.deleted_at) {
+            return res.status(410).json({ error: 'File is no longer available' });
+        }
+
+        // Log analytics
+        await db.insert(analyticsEvents).values({
+            type: 'share_download_raw',
+            bytes: file.file_size,
+            timestamp: new Date(),
+            meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
+        });
+
+        const filePath = file.encrypted_file_path;
+
+        // Auto-hydration logic (same as authenticated /raw)
+        if (!filePath || !fs.existsSync(filePath)) {
+            if (file.jackal_fid && file.jackal_fid !== 'pending') {
+                const { downloadFileFromJackal } = await import('../jackal');
+                const tempPath = path.join(__dirname, `../../uploads/temp_share_${file.id}_${Date.now()}`);
+
+                const handle = file.jackal_filename || `shared_${file.id}`;
+                const success = await downloadFileFromJackal(file.jackal_fid, handle, tempPath);
+
+                if (success && fs.existsSync(tempPath)) {
+                    const stream = fs.createReadStream(tempPath);
+                    res.setHeader('Content-Type', 'application/octet-stream');
+                    res.setHeader('Content-Length', file.file_size);
+
+                    await new Promise<void>(resolve => {
+                        stream.pipe(res);
+                        stream.on('end', () => resolve());
+                        stream.on('error', () => resolve());
+                    });
+
+                    fs.unlink(tempPath, () => { }); // Cleanup
+                    return;
+                }
+            }
+            return res.status(404).json({ error: 'File content unavailable' });
+        }
+
+        // Serve local file
+        const stream = fs.createReadStream(filePath);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Length', file.file_size);
+        stream.pipe(res);
+
+    } catch (error: any) {
+        logger.error('[SHARE-RAW] Failed:', error);
+        if (!res.headersSent) res.status(500).json({ error: 'Download failed' });
     }
 });
 

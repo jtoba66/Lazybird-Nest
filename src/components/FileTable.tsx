@@ -63,6 +63,43 @@ function formatDate(dateString: string): string {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+
+function formatFileType(mimeType: string, filename: string): string {
+    // 1. Map known long MIME types to concise names
+    const mimeMap: Record<string, string> = {
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+        'application/msword': 'DOC',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+        'application/vnd.ms-excel': 'XLS',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+        'application/vnd.ms-powerpoint': 'PPT',
+        'application/pdf': 'PDF',
+        'application/zip': 'ZIP',
+        'application/x-zip-compressed': 'ZIP',
+        'application/json': 'JSON',
+        'text/plain': 'TXT',
+        'text/markdown': 'MD',
+    };
+
+    if (mimeType && mimeMap[mimeType]) {
+        return mimeMap[mimeType];
+    }
+
+    // 2. If it's a generic application type or the subtype is very long, try the file extension
+    const subtype = mimeType?.split('/')[1] || '';
+
+    if (subtype.length > 8 || subtype.includes('vnd.') || subtype.includes('x-')) {
+        const ext = filename.split('.').pop();
+        if (ext && ext !== filename) {
+            return ext.toUpperCase();
+        }
+    }
+
+    // 3. Fallback to subtype, but truncate if still absurdly long
+    const cleanSubtype = subtype.toUpperCase();
+    return cleanSubtype.length > 12 ? cleanSubtype.substring(0, 12) + '...' : cleanSubtype;
+}
+
 export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
     // ... hooks ...
     const { showToast } = useToast();
@@ -266,7 +303,7 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                                             </td>
                                             <td className="px-4 py-2 hidden md:table-cell">
                                                 <div className="inline-flex px-1.5 py-0.5 rounded-md bg-white/20 border border-white/20 text-[10px] font-medium text-text-muted">
-                                                    {isFolder ? 'FOLDER' : (item.mimeType?.split('/')[1]?.toUpperCase() || 'FILE')}
+                                                    {isFolder ? 'FOLDER' : formatFileType(item.mimeType || '', item.name)}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2 hidden md:table-cell">

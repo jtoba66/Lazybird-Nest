@@ -28,7 +28,7 @@ export const FoldersPage = () => {
     const location = useLocation();
     const { fileListVersion, triggerFileRefresh } = useRefresh();
     const { refreshQuota } = useStorage();
-    const { metadata, saveMetadata, masterKey } = useAuth();
+    const { metadata, saveMetadata, masterKey, checkMetadataVersion } = useAuth();
 
     // URL State Management
     const searchParams = new URLSearchParams(location.search);
@@ -82,11 +82,18 @@ export const FoldersPage = () => {
                     }
                 }
 
+
                 // 2. Fetch Server Data (using resolved targetId)
                 const [filesRes, foldersRes] = await Promise.all([
                     filesAPI.list(targetId),
                     foldersAPI.list(targetId)
                 ]);
+
+                // Check for stale metadata
+                if (filesRes.metadataVersion) {
+                    checkMetadataVersion(filesRes.metadataVersion);
+                }
+
 
                 // 3. Self-Heal metadata
                 let changesMade = false;
@@ -148,8 +155,10 @@ export const FoldersPage = () => {
             }
         };
 
+
         loadContent();
-    }, [selectedFolderId, fileListVersion, metadata?.v]);
+    }, [selectedFolderId, fileListVersion, metadata]); // Fix: Re-run when metadata ref updates
+
 
     // Auto-dive logic is now consolidated into loadContent for consistency.
 

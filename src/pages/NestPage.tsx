@@ -25,7 +25,7 @@ export const NestPage = () => {
     const { addUpload } = useUpload();
     const { refreshQuota } = useStorage();
     const { fileListVersion } = useRefresh();
-    const { masterKey, metadata, saveMetadata } = useAuth();
+    const { masterKey, metadata, saveMetadata, checkMetadataVersion } = useAuth();
     const [files, setFiles] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -354,8 +354,15 @@ export const NestPage = () => {
     const loadFiles = async () => {
         setLoading(true);
         try {
+
             const filesRes = await filesAPI.list();
+
+            if (filesRes.metadataVersion) {
+                checkMetadataVersion(filesRes.metadataVersion);
+            }
+
             // Merge metadata (filenames) with server data (stats)
+
             const mergedFiles = (filesRes.files || []).map((svrFile: any) => {
                 const meta = metadata?.files[svrFile.id.toString()];
                 return {

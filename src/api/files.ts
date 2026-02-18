@@ -30,6 +30,11 @@ export interface DownloadInfo {
     chunkCount: number;
 }
 
+export interface FilesResponse {
+    files: File[];
+    metadataVersion?: number;
+}
+
 export const filesAPI = {
     async upload(
         fileId: number,
@@ -113,13 +118,21 @@ export const filesAPI = {
         return data;
     },
 
-    async list(folderId?: number | null): Promise<{ files: File[] }> {
+    async list(folderId?: number | null): Promise<FilesResponse> {
         const params: any = {};
         if (folderId !== undefined) {
             params.folderId = folderId === null ? 'null' : folderId;
         }
-        const { data } = await api.get('/files/list', { params });
-        return data;
+        const response = await api.get('/files/list', { params });
+
+        const metadataVersion = response.headers['x-metadata-version']
+            ? parseInt(response.headers['x-metadata-version'])
+            : undefined;
+
+        return {
+            files: response.data.files,
+            metadataVersion
+        };
     },
 
     async delete(fileId: number): Promise<{ success: boolean; reclaimedBytes: number }> {
@@ -165,5 +178,5 @@ export const filesAPI = {
     async deleteForever(fileId: number): Promise<{ success: boolean; message: string }> {
         const { data } = await api.delete(`/files/${fileId}/permanent`);
         return data;
-    }
+    },
 };

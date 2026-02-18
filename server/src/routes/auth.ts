@@ -404,6 +404,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
 // METADATA SYNC
 // ============================================================================
 
+
 router.get('/metadata', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -416,16 +417,18 @@ router.get('/metadata', async (req, res) => {
 
         const [cryptoData] = await db.select({
             metadata_blob: userCrypto.metadata_blob,
-            metadata_nonce: userCrypto.metadata_nonce
+            metadata_nonce: userCrypto.metadata_nonce,
+            metadata_version: userCrypto.metadata_version
         }).from(userCrypto).where(eq(userCrypto.userId, decoded.userId)).limit(1);
 
         if (!cryptoData) {
-            return res.json({ encryptedMetadata: null, encryptedMetadataNonce: null });
+            return res.json({ encryptedMetadata: null, encryptedMetadataNonce: null, metadataVersion: 0 });
         }
 
         res.json({
             encryptedMetadata: bufferToBase64(cryptoData.metadata_blob),
-            encryptedMetadataNonce: bufferToBase64(cryptoData.metadata_nonce)
+            encryptedMetadataNonce: bufferToBase64(cryptoData.metadata_nonce),
+            metadataVersion: cryptoData.metadata_version
         });
     } catch (e) {
         logger.error('[AUTH-METADATA-GET] ❌ Failed:', e);
@@ -454,6 +457,7 @@ router.post('/metadata', async (req, res) => {
             .set({
                 metadata_blob: base64ToBuffer(encryptedMetadata),
                 metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
+                metadata_version: sql`${userCrypto.metadata_version} + 1`,
                 updated_at: new Date()
             })
             .where(eq(userCrypto.userId, decoded.userId));
@@ -464,6 +468,7 @@ router.post('/metadata', async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 });
+
 
 // ============================================================================
 // UTILS

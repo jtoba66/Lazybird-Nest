@@ -24,8 +24,12 @@ interface AuthContextType {
     metadata: MetadataBlob | null;
     setMetadata: (meta: MetadataBlob | null) => void;
     saveMetadata: (meta: MetadataBlob) => Promise<void>;
+
     isRestoring: boolean;
+    metadataVersion: number;
+    checkMetadataVersion: (serverVersion: number) => void;
 }
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -63,8 +67,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return null;
     });
+
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
+    const [metadataVersion, setMetadataVersion] = useState<number>(0);
     const [isRestoring, setIsRestoring] = useState(true);
+    const [isRefreshingMetadata, setIsRefreshingMetadata] = useState(false);
+
+    // Helper to refresh metadata silently
+    const refreshMetadata = async () => {
+        if (!masterKey || isRefreshingMetadata) return;
+
+        try {
+            setIsRefreshingMetadata(true);
+            console.log('[AUTH] 🔄 Syncing metadata from server...');
+
+            const { authAPI } = await import('../api/auth');
+            const response = await authAPI.getMetadata();
+
+            if (response && response.encryptedMetadata && response.encryptedMetadataNonce) {
+                const { decryptMetadataBlob, fromBase64 } = await import('../crypto/v2');
+                const meta = decryptMetadataBlob(
+                    fromBase64(response.encryptedMetadata),
+                    fromBase64(response.encryptedMetadataNonce),
+                    masterKey
+                );
+                setMetadata(meta);
+
+                if (response.metadata_version) {
+                    setMetadataVersion(response.metadata_version);
+                }
+                console.log(`[AUTH] ✅ Metadata synced (v${response.metadata_version})`);
+
+
+                // Trigger file list refresh UI update
+                const event = new CustomEvent('metadata-updated');
+                window.dispatchEvent(event);
+            }
+        } catch (e) {
+            console.error('[AUTH] Metadata sync failed:', e);
+        } finally {
+            setIsRefreshingMetadata(false);
+        }
+    };
+
+    // Public method to check if we are stale
+    const checkMetadataVersion = (serverVersion: number) => {
+        if (serverVersion > metadataVersion) {
+            console.log(`[AUTH] Stale metadata detected (Local: ${metadataVersion}, Server: ${serverVersion}). Refreshing...`);
+            refreshMetadata(); // Fire and forget
+        }
+    };
 
     // Fix #14: Check master key expiry (90 days)
     useEffect(() => {
@@ -394,8 +446,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     encryptedMetadataNonce: toBase64(encrypted.nonce),
                     metadata_version: currentVersion // Send current version for backend check
                 });
+
                 setMetadata(newMetadata);
+                setMetadataVersion(v => v + 1);
                 console.log('[AUTH] Metadata saved successfully');
+
             } catch (error: any) {
                 // Fix C1: Handle version conflict
                 if (error.response?.status === 409) {
@@ -429,11 +484,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
+
     const logout = () => {
         setToken(null);
         setUser(null);
         setMasterKey(null);
         setMetadata(null);
+        setMetadataVersion(0);
         localStorage.removeItem('nest_token');
         localStorage.removeItem('nest_email');
         localStorage.removeItem('nest_role');
@@ -462,13 +519,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 metadata,
                 setMetadata,
                 saveMetadata,
-                isRestoring
+                isRestoring,
+                metadataVersion,
+                checkMetadataVersion
             }}
         >
             {children}
         </AuthContext.Provider>
     );
 }
+
 
 export function useAuth() {
     const context = useContext(AuthContext);
