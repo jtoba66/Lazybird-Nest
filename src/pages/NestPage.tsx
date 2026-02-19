@@ -296,6 +296,26 @@ export const NestPage = () => {
         }
     };
 
+    const handleRename = async (fileId: number, newName: string) => {
+        if (!metadata || !masterKey) {
+            showToast('Authentication required to rename files', 'error');
+            return;
+        }
+        try {
+            const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+            if (updatedMetadata.files[fileId.toString()]) {
+                updatedMetadata.files[fileId.toString()].filename = newName;
+            } else {
+                updatedMetadata.files[fileId.toString()] = { filename: newName };
+            }
+            await saveMetadata(updatedMetadata);
+            showToast('File renamed', 'success');
+        } catch (error) {
+            console.error('Rename failed:', error);
+            showToast('Failed to rename file', 'error');
+        }
+    };
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             const file = e.target.files[0];
@@ -424,6 +444,7 @@ export const NestPage = () => {
                                     folderId: null,
                                     onDownload: () => handleDownload(file),
                                     onShare: () => handleShare(file),
+                                    onRename: (newName: string) => handleRename(file.id, newName),
                                     onMove: async (targetFolderId: number | null) => handleMove(file.id, targetFolderId),
                                     onDelete: () => handleDelete(file.id),
                                 }))}

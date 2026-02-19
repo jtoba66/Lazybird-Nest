@@ -251,7 +251,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // Init (Quota Check & DB Record)
                 // 1. Step 1: Initialize record on server (Get ID)
                 const initResult = await filesAPI.initUpload({
-                    filename: file.name,
+                    filename: 'encrypted', // ZK: Server never sees real filename
                     file_size: file.size,
                     mimeType: file.type || 'application/octet-stream',
                     folderId: rootFolderId,
@@ -362,7 +362,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
                 // 1. Step 1: Initialize
                 const initRes = await filesAPI.initUpload({
-                    filename: file.name,
+                    filename: 'encrypted', // ZK: Server never sees real filename
                     file_size: file.size,
                     mimeType: file.type || 'application/octet-stream',
                     folderId: rootFolderId,

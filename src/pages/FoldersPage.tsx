@@ -429,6 +429,26 @@ export const FoldersPage = () => {
         }
     };
 
+    const handleRename = async (fileId: number, newName: string) => {
+        if (!metadata || !masterKey) {
+            showToast('Authentication required to rename files', 'error');
+            return;
+        }
+        try {
+            const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+            if (updatedMetadata.files[fileId.toString()]) {
+                updatedMetadata.files[fileId.toString()].filename = newName;
+            } else {
+                updatedMetadata.files[fileId.toString()] = { filename: newName };
+            }
+            await saveMetadata(updatedMetadata);
+            showToast('File renamed', 'success');
+        } catch (error) {
+            console.error('Rename failed:', error);
+            showToast('Failed to rename file', 'error');
+        }
+    };
+
     const handleMove = async (fileId: number, targetFolderId: number | null) => {
         if (!metadata || !masterKey) {
             showToast('Authentication required to move files', 'error');
@@ -639,6 +659,7 @@ export const FoldersPage = () => {
                                         folderId: selectedFolderId,
                                         onDownload: () => handleDownload(file),
                                         onShare: () => handleShare(file),
+                                        onRename: (newName: string) => handleRename(file.id, newName),
                                         onMove: async (targetFolderId: number | null) => handleMove(file.id, targetFolderId),
                                         onDelete: () => handleDeleteFile(file.id),
                                     }))

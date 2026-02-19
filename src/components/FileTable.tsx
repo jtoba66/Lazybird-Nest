@@ -16,7 +16,8 @@ import {
     ShareNetwork,
     DownloadSimple,
     DotsThreeVertical,
-    Lock
+    Lock,
+    PencilSimple
 } from '@phosphor-icons/react';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { MoveFileModal } from './MoveFileModal';
@@ -36,6 +37,7 @@ export interface UnifiedItem {
     onNavigate?: () => void; // For folders
     onDownload?: () => void;
     onShare?: () => void;
+    onRename?: (newName: string) => Promise<void>;
     onMove?: (folderId: number | null) => Promise<void>;
     onDelete?: () => Promise<void>;
 }
@@ -116,6 +118,8 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isMoving, setIsMoving] = useState(false);
     const [activeMenuKey, setActiveMenuKey] = useState<string | null>(null);
+    const [renamingKey, setRenamingKey] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState('');
 
     const [menuPos, setMenuPos] = useState<{ top: number; right: number; origin: string } | null>(null);
 
@@ -222,6 +226,19 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                                 Share {isOverQuota && <Lock size={12} className="ml-auto text-error" />}
                             </button>
                         )}
+                        {activeItem.type === 'file' && activeItem.onRename && (
+                            <button
+                                onClick={() => {
+                                    setRenamingKey(getItemKey(activeItem));
+                                    setRenameValue(activeItem.name);
+                                    setActiveMenuKey(null);
+                                }}
+                                className="flex items-center gap-3 px-3 py-2.5 hover:bg-primary/10 rounded-lg text-text-main text-xs font-semibold text-left transition-colors"
+                            >
+                                <PencilSimple size={16} className="text-primary" weight="bold" />
+                                Rename
+                            </button>
+                        )}
                         {activeItem.type === 'file' && activeItem.onMove && (
                             <button
                                 onClick={() => { handleMoveClick(activeItem); setActiveMenuKey(null); }}
@@ -289,14 +306,41 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                                                         <Icon size={18} className="hidden sm:block" weight={isFolder ? "fill" : "duotone"} />
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
-                                                        <span className={`text-sm font-medium min-w-0 w-full break-words [overflow-wrap:anywhere] whitespace-normal leading-snug sm:truncate transition-colors ${isFolder ? 'text-text-main group-hover:text-primary' : 'text-text-main group-hover:text-primary'}`}>
-                                                            {item.name}
-                                                        </span>
-                                                        {isFolder && (item as any).subfolder_count !== undefined && (
-                                                            <span className="text-[10px] text-text-muted">
-                                                                {(item as any).file_count || 0} {(item as any).file_count === 1 ? 'file' : 'files'}
-                                                                {(item as any).subfolder_count > 0 && `, ${(item as any).subfolder_count} ${(item as any).subfolder_count === 1 ? 'folder' : 'folders'}`}
-                                                            </span>
+                                                        {renamingKey === getItemKey(item) ? (
+                                                            <input
+                                                                autoFocus
+                                                                type="text"
+                                                                value={renameValue}
+                                                                onChange={(e) => setRenameValue(e.target.value)}
+                                                                onKeyDown={async (e) => {
+                                                                    if (e.key === 'Enter' && renameValue.trim() && item.onRename) {
+                                                                        await item.onRename(renameValue.trim());
+                                                                        setRenamingKey(null);
+                                                                    } else if (e.key === 'Escape') {
+                                                                        setRenamingKey(null);
+                                                                    }
+                                                                }}
+                                                                onBlur={async () => {
+                                                                    if (renameValue.trim() && renameValue.trim() !== item.name && item.onRename) {
+                                                                        await item.onRename(renameValue.trim());
+                                                                    }
+                                                                    setRenamingKey(null);
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="text-sm font-medium text-text-main bg-white/60 border border-primary/40 rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-primary/30 w-full"
+                                                            />
+                                                        ) : (
+                                                            <>
+                                                                <span className={`text-sm font-medium min-w-0 w-full break-words [overflow-wrap:anywhere] whitespace-normal leading-snug sm:truncate transition-colors ${isFolder ? 'text-text-main group-hover:text-primary' : 'text-text-main group-hover:text-primary'}`}>
+                                                                    {item.name}
+                                                                </span>
+                                                                {isFolder && (item as any).subfolder_count !== undefined && (
+                                                                    <span className="text-[10px] text-text-muted">
+                                                                        {(item as any).file_count || 0} {(item as any).file_count === 1 ? 'file' : 'files'}
+                                                                        {(item as any).subfolder_count > 0 && `, ${(item as any).subfolder_count} ${(item as any).subfolder_count === 1 ? 'folder' : 'folders'}`}
+                                                                    </span>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 </div>
@@ -377,6 +421,21 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                                                             title={isOverQuota ? "Quota Exceeded - Sharing Disabled" : "Share"}
                                                         >
                                                             {isOverQuota ? <Lock size={16} weight="bold" className="text-error" /> : <ShareNetwork size={16} weight="bold" />}
+                                                        </motion.button>
+                                                    )}
+                                                    {item.type === 'file' && item.onRename && (
+                                                        <motion.button
+                                                            whileHover={{ scale: 1.1 }}
+                                                            whileTap={{ scale: 0.9 }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setRenamingKey(getItemKey(item));
+                                                                setRenameValue(item.name);
+                                                            }}
+                                                            className="p-1.5 hover:bg-white/50 rounded-md text-primary transition-colors flex items-center gap-1"
+                                                            title="Rename"
+                                                        >
+                                                            <PencilSimple size={16} weight="bold" />
                                                         </motion.button>
                                                     )}
                                                     {item.type === 'file' && item.onMove && (
