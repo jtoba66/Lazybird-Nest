@@ -156,12 +156,14 @@ export const FoldersPage = () => {
         };
 
 
-        // Debounce: collapse burst state changes (post-upload metadata save, event, version update)
-        // into a single loadContent call. All triggers fire within ~10ms of each other.
-        const timer = setTimeout(() => { loadContent(); }, 150);
-        return () => clearTimeout(timer);
-    }, [selectedFolderId, fileListVersion, metadata]);
+        loadContent();
+    }, [selectedFolderId, fileListVersion]);
 
+    // Fire exactly once when metadata first becomes available (login / session restore)
+    const metadataReady = metadata !== null;
+    useEffect(() => {
+        if (metadataReady) triggerFileRefresh();
+    }, [metadataReady]);
 
     // Auto-dive logic is now consolidated into loadContent for consistency.
 

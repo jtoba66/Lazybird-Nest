@@ -384,10 +384,14 @@ export const NestPage = () => {
     };
 
     useEffect(() => {
-        // Debounce: collapse burst triggers (post-upload metadata, event, version update) into one call
-        const timer = setTimeout(() => { loadFiles(); }, 150);
-        return () => clearTimeout(timer);
-    }, [fileListVersion, metadata]);
+        loadFiles();
+    }, [fileListVersion]);
+
+    // Fire exactly once when metadata first becomes available (login / session restore)
+    const metadataReady = metadata !== null;
+    useEffect(() => {
+        if (metadataReady) loadFiles();
+    }, [metadataReady]);
 
     return (
         <motion.div
