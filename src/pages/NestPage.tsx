@@ -414,7 +414,7 @@ export const NestPage = () => {
                 onChange={handleFileChange}
             />
 
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
                 {/* Header */}
                 <div className="mb-4 glass-panel p-3 rounded-xl">
                     <h1 className="text-xl font-bold text-text-main">Nest</h1>
@@ -422,7 +422,7 @@ export const NestPage = () => {
                 </div>
 
                 {/* Content List */}
-                <div className="flex-1 glass-panel overflow-hidden p-0 relative">
+                <div className="flex-1 glass-panel overflow-hidden min-h-0 p-0 relative">
                     {loading ? (
                         <PageLoader />
                     ) : files.length === 0 ? (
