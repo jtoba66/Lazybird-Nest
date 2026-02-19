@@ -299,13 +299,18 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
                     while (retryCount < maxRetries && !success) {
                         try {
-                            // Upload Chunk
+                            // Upload Chunk (with intra-chunk progress)
                             const result = await filesAPI.uploadChunk(
                                 fileId,
                                 i,
                                 encryptedChunk,
                                 chunkNonceBase64,
-                                encryptedChunk.size
+                                encryptedChunk.size,
+                                (chunkPercent) => {
+                                    // Smooth progress: completed chunks + current chunk fraction
+                                    const totalPercent = ((i * 100) + chunkPercent) / totalChunks;
+                                    updateProgress(uploadId, totalPercent);
+                                }
                             );
 
                             if (!result.success) throw new Error(`Chunk ${i} failed`);
@@ -321,7 +326,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                         }
                     }
 
-                    // Update UI
+                    // Ensure clean chunk boundary
                     updateProgress(uploadId, ((i + 1) / totalChunks) * 100);
                 }
 

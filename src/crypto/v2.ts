@@ -396,6 +396,9 @@ export async function encryptChunk(
         const end = Math.min(offset + CHUNK_SIZE, chunkBlob.size);
         const isLast = end >= chunkBlob.size;
 
+        // Yield to browser event loop between sub-blocks (prevents UI freeze)
+        if (subChunkIndex > 0) await new Promise(r => setTimeout(r, 0));
+
         // Slice safely
         const slice = chunkBlob.slice(offset, end);
         const chunkData = new Uint8Array(await slice.arrayBuffer());
