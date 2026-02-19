@@ -150,7 +150,7 @@ export const SettingsPage = () => {
     };
 
     return (
-        <div className="flex-1 min-h-full font-sans antialiased text-[#0F172A] pb-20 relative">
+        <div className="flex-1 h-full overflow-y-auto custom-scrollbar font-sans antialiased text-[#0F172A] pb-20 relative">
             {/* Background Pattern */}
             <div className="absolute inset-0 z-0 pointer-events-none" style={{
                 background: COLORS.bg,

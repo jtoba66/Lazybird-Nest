@@ -40,7 +40,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 </div>
 
                 {/* Main Page Content */}
-                <main className="flex-1 relative overflow-y-auto flex flex-col custom-scrollbar px-2 md:px-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-2">
+                <main className="flex-1 relative overflow-hidden flex flex-col px-2 md:px-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-2">
                     {children}
                 </main>
             </div>

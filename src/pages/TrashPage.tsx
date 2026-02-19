@@ -76,7 +76,7 @@ export const TrashPage = () => {
     };
 
     return (
-        <div className="p-4 sm:p-6 md:p-8 animate-in fade-in duration-500 relative">
+        <div className="h-full overflow-y-auto custom-scrollbar p-4 sm:p-6 md:p-8 animate-in fade-in duration-500 relative">
             {/* Delete Confirmation Modal */}
             <Modal
                 isOpen={!!fileToDelete}
