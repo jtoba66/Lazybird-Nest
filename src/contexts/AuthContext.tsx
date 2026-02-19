@@ -71,16 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
     const [metadataVersion, setMetadataVersion] = useState<number>(0);
     const metadataVersionRef = useRef<number>(0); // Ref to avoid stale closure in checkMetadataVersion
+    const isRefreshingRef = useRef(false); // Ref guard to prevent concurrent refreshes
     const [isRestoring, setIsRestoring] = useState(true);
-    const [isRefreshingMetadata, setIsRefreshingMetadata] = useState(false);
 
     // Helper to refresh metadata silently
     const refreshMetadata = async () => {
-        if (!masterKey || isRefreshingMetadata) return;
+        if (!masterKey || isRefreshingRef.current) return;
 
         try {
-            setIsRefreshingMetadata(true);
-            console.log('[AUTH] 🔄 Syncing metadata from server...');
+            isRefreshingRef.current = true;
+            console.log('[AUTH] \u{1F504} Syncing metadata from server...');
 
             const { authAPI } = await import('../api/auth');
             const response = await authAPI.getMetadata();
@@ -92,14 +92,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     fromBase64(response.encryptedMetadataNonce),
                     masterKey
                 );
-                setMetadata(meta);
 
+                // CRITICAL: Update version ref BEFORE setMetadata
+                // so that when setMetadata triggers loadContent -> checkMetadataVersion,
+                // the ref already has the new version and won't re-trigger
                 if (response.metadata_version) {
-                    setMetadataVersion(response.metadata_version);
                     metadataVersionRef.current = response.metadata_version;
+                    setMetadataVersion(response.metadata_version);
                 }
-                console.log(`[AUTH] ✅ Metadata synced (v${response.metadata_version})`);
+                console.log(`[AUTH] \u2705 Metadata synced (v${response.metadata_version})`);
 
+                setMetadata(meta);
 
                 // Trigger file list refresh UI update
                 const event = new CustomEvent('metadata-updated');
@@ -108,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
             console.error('[AUTH] Metadata sync failed:', e);
         } finally {
-            setIsRefreshingMetadata(false);
+            isRefreshingRef.current = false;
         }
     };
 
@@ -456,7 +459,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 });
 
                 setMetadata(newMetadata);
-                setMetadataVersion(v => v + 1);
+                setMetadataVersion(v => {
+                    const newV = v + 1;
+                    metadataVersionRef.current = newV;
+                    return newV;
+                });
                 console.log('[AUTH] Metadata saved successfully');
 
             } catch (error: any) {

@@ -422,7 +422,7 @@ router.get('/metadata', async (req, res) => {
         }).from(userCrypto).where(eq(userCrypto.userId, decoded.userId)).limit(1);
 
         if (!cryptoData) {
-            return res.json({ encryptedMetadata: null, encryptedMetadataNonce: null, metadataVersion: 0 });
+            return res.json({ encryptedMetadata: null, encryptedMetadataNonce: null, metadata_version: 0 });
         }
 
         res.json({
