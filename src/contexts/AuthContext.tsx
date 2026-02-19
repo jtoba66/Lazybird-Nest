@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { authAPI } from '../api/auth';
 import type { LoginCredentials, SignupCredentials } from '../api/auth';
@@ -70,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
     const [metadataVersion, setMetadataVersion] = useState<number>(0);
+    const metadataVersionRef = useRef<number>(0); // Ref to avoid stale closure in checkMetadataVersion
     const [isRestoring, setIsRestoring] = useState(true);
     const [isRefreshingMetadata, setIsRefreshingMetadata] = useState(false);
 
@@ -95,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 if (response.metadata_version) {
                     setMetadataVersion(response.metadata_version);
+                    metadataVersionRef.current = response.metadata_version;
                 }
                 console.log(`[AUTH] ✅ Metadata synced (v${response.metadata_version})`);
 
@@ -111,9 +113,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     // Public method to check if we are stale
+    // Uses ref instead of state to avoid stale closure issues during async refresh
     const checkMetadataVersion = (serverVersion: number) => {
-        if (serverVersion > metadataVersion) {
-            console.log(`[AUTH] Stale metadata detected (Local: ${metadataVersion}, Server: ${serverVersion}). Refreshing...`);
+        if (serverVersion > metadataVersionRef.current) {
+            console.log(`[AUTH] Stale metadata detected (Local: ${metadataVersionRef.current}, Server: ${serverVersion}). Refreshing...`);
             refreshMetadata(); // Fire and forget
         }
     };
@@ -243,7 +246,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             masterKey
                         );
                         setMetadata(meta);
-                        console.log('[AUTH] Metadata restored successfully');
+                        // Set version on restore so checkMetadataVersion starts correctly
+                        if (response.metadata_version) {
+                            setMetadataVersion(response.metadata_version);
+                            metadataVersionRef.current = response.metadata_version;
+                        }
+                        console.log(`[AUTH] Metadata restored successfully (v${response.metadata_version})`);
                     } else {
                         console.log('[AUTH] No metadata found on server, initializing empty vault');
                         setMetadata({ v: 2, folders: {}, files: {} });
