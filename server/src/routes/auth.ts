@@ -428,7 +428,7 @@ router.get('/metadata', async (req, res) => {
         res.json({
             encryptedMetadata: bufferToBase64(cryptoData.metadata_blob),
             encryptedMetadataNonce: bufferToBase64(cryptoData.metadata_nonce),
-            metadataVersion: cryptoData.metadata_version
+            metadata_version: cryptoData.metadata_version
         });
     } catch (e) {
         logger.error('[AUTH-METADATA-GET] ❌ Failed:', e);
