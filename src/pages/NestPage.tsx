@@ -303,12 +303,25 @@ export const NestPage = () => {
         }
         try {
             const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+            let finalName = newName;
+
+            // Fix: Auto-append extension if user removed it (common mistake)
+            // Fix: Auto-append extension if user removed it
+            const oldName = updatedMetadata.files[fileId.toString()]?.filename || '';
+            if (oldName.includes('.')) {
+                const oldExt = '.' + oldName.split('.').pop();
+                if (oldExt && !newName.includes('.')) {
+                    finalName = newName + oldExt;
+                }
+            }
+
             if (updatedMetadata.files[fileId.toString()]) {
-                updatedMetadata.files[fileId.toString()].filename = newName;
+                updatedMetadata.files[fileId.toString()].filename = finalName;
             } else {
-                updatedMetadata.files[fileId.toString()] = { filename: newName };
+                updatedMetadata.files[fileId.toString()] = { filename: finalName };
             }
             await saveMetadata(updatedMetadata);
+            triggerFileRefresh(); // Trigger refresh for other components
             showToast('File renamed', 'success');
         } catch (error) {
             console.error('Rename failed:', error);
