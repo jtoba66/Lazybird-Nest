@@ -1,3 +1,4 @@
+// Fix: chunked download 404 - detect is_chunked corruption via jackal_fid
 import express from 'express';
 import multer from 'multer';
 import crypto from 'crypto';
