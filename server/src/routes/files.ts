@@ -477,7 +477,9 @@ router.get('/download/:fileId', authenticateToken, async (req: AuthRequest, res)
         }
         if (!folder) return res.status(500).json({ error: 'Folder context not found' });
 
-        const chunks = file.is_chunked ? await db.select({
+        // Fix: Detect chunked files even if is_chunked flag is wrong
+        const isActuallyChunked = file.is_chunked || file.jackal_fid === 'chunked-complete';
+        const chunks = isActuallyChunked ? await db.select({
             index: fileChunks.chunk_index,
             size: fileChunks.size,
             nonce: fileChunks.nonce,
@@ -600,8 +602,8 @@ router.delete('/:id/permanent', authenticateToken, async (req: AuthRequest, res)
                     deletion_reason: 'user_permanent_delete'
                 }).returning({ id: graveyard.id });
 
-                // Archive chunks if any
-                if (file.is_chunked) {
+                // Fix: Detect chunked files even if is_chunked flag is wrong
+                if (file.is_chunked || file.jackal_fid === 'chunked-complete') {
                     const chunks = await tx.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
                     if (chunks.length > 0) {
                         await tx.insert(graveyardChunks).values(
@@ -780,7 +782,9 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
             return res.status(410).json({ error: 'This file is no longer available' });
         }
 
-        const chunks = file.is_chunked ? await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index) : undefined;
+        // Fix: Detect chunked files even if is_chunked flag is wrong
+        const isActuallyChunked = file.is_chunked || file.jackal_fid === 'chunked-complete';
+        const chunks = isActuallyChunked ? await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index) : undefined;
 
         // Fix M1: Log share download analytics
         await db.insert(analyticsEvents).values({
@@ -798,7 +802,7 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
             merkle_hash: file.merkle_hash,
             created_at: file.created_at,
             is_gateway_verified: !!file.is_gateway_verified,
-            is_chunked: !!file.is_chunked,
+            is_chunked: !!isActuallyChunked,
             chunks: chunks?.map(c => ({
                 index: c.chunk_index,
                 size: c.size,
@@ -1049,9 +1053,11 @@ router.post('/:id/finish', authenticateToken, async (req: AuthRequest, res) => {
         // Calculate actual chunk count
         const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
 
+        // Fix: Also set is_chunked=1 to prevent download 404s
         await db.update(files).set({
             jackal_fid: 'chunked-complete',
-            chunk_count: chunks.length
+            chunk_count: chunks.length,
+            is_chunked: 1
         }).where(and(eq(files.id, fileId), eq(files.userId, userId)));
 
         res.json({ success: true, chunk_count: chunks.length });
@@ -1166,11 +1172,13 @@ router.get('/raw/:fileId', authenticateToken, async (req: AuthRequest, res) => {
             return res.status(404).json({ error: 'File not found' });
         }
 
-        logger.info(`[DEBUG-RAW] Found File: is_chunked=${file.is_chunked}, path=${file.encrypted_file_path}`);
+        logger.info(`[DEBUG-RAW] Found File: is_chunked=${file.is_chunked}, path=${file.encrypted_file_path}, fid=${file.jackal_fid}`);
 
         res.setHeader('Content-Type', 'application/octet-stream');
 
-        if (file.is_chunked) {
+        // Fix: Detect chunked files even if is_chunked flag is wrong
+        const isActuallyChunked = file.is_chunked || file.jackal_fid === 'chunked-complete';
+        if (isActuallyChunked) {
             const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index);
             for (const chunk of chunks) {
                 let chunkPath = chunk.local_path;
