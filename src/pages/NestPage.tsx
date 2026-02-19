@@ -321,7 +321,7 @@ export const NestPage = () => {
                 updatedMetadata.files[fileId.toString()] = { filename: finalName };
             }
             await saveMetadata(updatedMetadata);
-            triggerFileRefresh(); // Trigger refresh for other components
+            loadFiles(); // Trigger refresh for other components
             showToast('File renamed', 'success');
         } catch (error) {
             console.error('Rename failed:', error);
