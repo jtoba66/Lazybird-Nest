@@ -120,6 +120,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkMetadataVersion = (serverVersion: number) => {
         if (serverVersion > metadataVersionRef.current) {
             console.log(`[AUTH] Stale metadata detected (Local: ${metadataVersionRef.current}, Server: ${serverVersion}). Refreshing...`);
+            // CRITICAL: Update ref IMMEDIATELY to serverVersion BEFORE refreshing.
+            // This ensures that when refreshMetadata → setMetadata → loadContent fires,
+            // the next checkMetadataVersion(serverVersion) call sees ref === serverVersion
+            // and returns false, preventing the loop — even if getMetadata() doesn't
+            // return metadata_version in its response.
+            metadataVersionRef.current = serverVersion;
             refreshMetadata(); // Fire and forget
         }
     };
