@@ -156,8 +156,11 @@ export const FoldersPage = () => {
         };
 
 
-        loadContent();
-    }, [selectedFolderId, fileListVersion, metadata]); // Fix: Re-run when metadata ref updates
+        // Debounce: collapse burst state changes (post-upload metadata save, event, version update)
+        // into a single loadContent call. All triggers fire within ~10ms of each other.
+        const timer = setTimeout(() => { loadContent(); }, 150);
+        return () => clearTimeout(timer);
+    }, [selectedFolderId, fileListVersion, metadata]);
 
 
     // Auto-dive logic is now consolidated into loadContent for consistency.
