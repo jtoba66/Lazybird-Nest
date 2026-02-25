@@ -26,13 +26,12 @@ export function UserGrowthChart() {
             });
             if (res.ok) {
                 const history = await res.json();
-                console.log('[DEBUG] User Growth Data:', history);
                 setData(history);
             } else {
-                console.error('[DEBUG] User Growth Fetch Failed:', res.status, res.statusText);
+                console.error('User Growth Fetch Failed:', res.status, res.statusText);
             }
         } catch (err) {
-            console.error('[DEBUG] User Growth Error:', err);
+            console.error('User Growth Error:', err);
         } finally {
             setLoading(false);
         }
@@ -121,7 +120,16 @@ export function UserGrowthChart() {
                     <div className={`w-4 h-4 rounded-full transition-all ${showPaid ? 'bg-secondary shadow-[0_0_10px_rgba(var(--color-secondary-rgb),0.5)]' : 'bg-text-muted/20'}`} />
                     <div className="flex flex-col">
                         <span className={`text-xs font-bold transition-colors ${showPaid ? 'text-text-main' : 'text-text-muted'}`}>Paid Users</span>
-                        {data.length > 0 && <span className="text-[10px] text-text-muted font-medium">{data[data.length - 1].paid} Pro</span>}
+                        {data.length > 0 && (
+                            <span className="text-[10px] text-text-muted font-medium">
+                                {data[data.length - 1].paid} Pro
+                                {data[data.length - 1].total > 0 && (
+                                    <span className="ml-1 text-secondary font-bold">
+                                        ({Math.round((data[data.length - 1].paid / data[data.length - 1].total) * 100)}% conversion)
+                                    </span>
+                                )}
+                            </span>
+                        )}
                     </div>
                 </label>
             </div>

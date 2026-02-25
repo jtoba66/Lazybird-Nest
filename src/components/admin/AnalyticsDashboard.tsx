@@ -12,8 +12,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             <div className="bg-background/90 border border-white/10 p-3 rounded-lg shadow-xl backdrop-blur-md">
                 <p className="text-text-muted text-xs mb-1">{new Date(label).toLocaleString()}</p>
                 <p className="text-primary font-bold font-mono">
-                    +{formatBytes(payload[0].value)}
+                    {formatBytes(payload[0].value)}
                 </p>
+                <p className="text-text-muted text-[10px]">Total Managed Storage</p>
             </div>
         );
     }
@@ -46,15 +47,12 @@ export const AnalyticsDashboard = () => {
             const token = localStorage.getItem('nest_token');
             const headers = { 'Authorization': `Bearer ${token}` };
 
-            // Fetch History
             const histRes = await fetch(`${API_BASE_URL}/admin/analytics/history?range=${range}`, { headers });
             const histData = await histRes.json();
 
             if (Array.isArray(histData)) {
-                console.log('[ANALYTICS-DEBUG-FRONTEND] History data received:', histData.length, 'points, Sample:', histData.slice(0, 2));
                 setHistory(histData);
             } else {
-                console.error('History data is not an array:', histData);
                 setHistory([]);
             }
 
@@ -76,12 +74,17 @@ export const AnalyticsDashboard = () => {
 
             if (Array.isArray(data)) {
                 setPulse(data);
-            } else {
-                console.error('Pulse data is not an array:', data);
-                // Optional: keep old data or clear it? keeping old data is safer for UI flickering
             }
         } catch (e) { console.error(e); }
     };
+
+    // Derive pulse stats
+    const pulseFileCount = pulse.filter(p => p.type === 'file').length;
+    const pulseChunkCount = pulse.filter(p => p.type === 'chunk').length;
+    const pulseTotalBytes = pulse.reduce((acc, p) => acc + (p.size || 0), 0);
+
+    // Current storage headline from last history data point
+    const currentStorage = history.length > 0 ? history[history.length - 1].bytes : 0;
 
     if (loading && history.length === 0 && pulse.length === 0) {
         return (
@@ -97,7 +100,7 @@ export const AnalyticsDashboard = () => {
         <div className="space-y-6">
             {/* 1. Storage Growth Chart */}
             <div className="glass-panel p-6">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-2">
                     <div>
                         <h3 className="text-lg font-bold flex items-center gap-2">
                             <HardDrives className="text-primary" size={24} weight="duotone" />
@@ -117,6 +120,12 @@ export const AnalyticsDashboard = () => {
                             </button>
                         ))}
                     </div>
+                </div>
+
+                {/* Headline Stat */}
+                <div className="mb-4">
+                    <span className="text-3xl font-bold font-mono text-text-main">{formatBytes(currentStorage, 1)}</span>
+                    <span className="text-xs text-text-muted ml-2">Total Managed Storage</span>
                 </div>
 
                 <div className="h-[300px] w-full relative">
@@ -175,7 +184,7 @@ export const AnalyticsDashboard = () => {
             {/* 2. User Growth Chart */}
             <UserGrowthChart />
 
-            {/* 3. Blob Pulse (Live Feed) */}
+            {/* 3. Network Pulse (Live Feed) */}
             <div className="glass-panel p-6 overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold flex items-center gap-2">
@@ -195,7 +204,7 @@ export const AnalyticsDashboard = () => {
                 <div className="relative w-full overflow-hidden mask-linear-fade">
                     <div className="flex gap-3 animate-scroll-left w-max">
                         {pulse.map((item, i) => {
-                            const isPending = item.hash === 'pending' || item.hash.includes('pending');
+                            const isPending = !item.hash || item.hash === 'pending' || (typeof item.hash === 'string' && item.hash.includes('pending'));
                             return (
                                 <div
                                     key={i}
@@ -210,7 +219,7 @@ export const AnalyticsDashboard = () => {
                                         <CloudCheck size={16} className="text-success" weight="fill" />
                                     )}
                                     <span className={`font-mono text-xs ${isPending ? 'text-yellow-200' : 'text-text-muted'}`}>
-                                        {isPending ? 'Uploading...' : `${item.storage_id.substring(0, 16)}...`}
+                                        {isPending ? 'Uploading...' : `${item.storage_id?.substring(0, 16) || '???'}...`}
                                     </span>
                                     <span className="text-xs font-bold text-text-main">
                                         {formatBytes(item.size)}
@@ -227,16 +236,27 @@ export const AnalyticsDashboard = () => {
                     </div>
                 </div>
 
-                {/* Grid View of Pulse (Matrix Style) */}
-                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 opacity-50 hover:opacity-100 transition-opacity duration-500">
-                    {pulse.slice(0, 12).map((item, i) => (
-                        <div key={i} className={`h-12 rounded-md bg-white/5 border border-white/5 flex items-center justify-center relative overflow-hidden group`}>
-                            <div className={`absolute inset-0 bg-secondary/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300`} />
-                            <div className="font-mono text-[10px] text-text-muted z-10 group-hover:text-white transition-colors">
-                                {item.type === 'chunk' ? 'CHK' : 'FILE'}
-                            </div>
-                        </div>
-                    ))}
+                {/* Pulse Summary Stats */}
+                <div className="mt-4 flex items-center gap-6 pt-4 border-t border-white/5">
+                    <div className="flex items-center gap-2">
+                        <span className="text-text-muted text-xs font-medium">Recent Uploads</span>
+                        <span className="text-sm font-bold font-mono text-text-main">{pulse.length}</span>
+                    </div>
+                    <div className="h-4 w-px bg-white/10" />
+                    <div className="flex items-center gap-2">
+                        <span className="text-text-muted text-xs font-medium">Files</span>
+                        <span className="text-sm font-bold font-mono text-text-main">{pulseFileCount}</span>
+                    </div>
+                    <div className="h-4 w-px bg-white/10" />
+                    <div className="flex items-center gap-2">
+                        <span className="text-text-muted text-xs font-medium">Chunks</span>
+                        <span className="text-sm font-bold font-mono text-text-main">{pulseChunkCount}</span>
+                    </div>
+                    <div className="h-4 w-px bg-white/10" />
+                    <div className="flex items-center gap-2">
+                        <span className="text-text-muted text-xs font-medium">Volume</span>
+                        <span className="text-sm font-bold font-mono text-text-main">{formatBytes(pulseTotalBytes, 1)}</span>
+                    </div>
                 </div>
             </div>
 
