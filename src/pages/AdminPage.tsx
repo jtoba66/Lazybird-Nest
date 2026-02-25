@@ -843,16 +843,14 @@ export default function AdminPage() {
                                                 </td>
                                                 <td className="px-6 py-4 text-sm font-mono">{formatBytes(file.file_size)}</td>
                                                 <td className="px-6 py-4">
-                                                    {(file.storage_type === 'blob' || file.is_chunked === 1 || file.is_chunked === true) && (
-                                                        <button
-                                                            onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: file.type === 'permanent' ? 'graveyard' : 'files' })}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold transition-colors"
-                                                            title="Inspect Chunks"
-                                                        >
-                                                            <MagnifyingGlass size={14} weight="bold" />
-                                                            Inspect
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: file.type === 'permanent' ? 'graveyard' : 'files', fileData: { id: file.id, merkle_hash: file.merkle_hash, file_size: file.file_size, is_gateway_verified: 0, is_chunked: file.is_chunked } })}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold transition-colors"
+                                                        title="Inspect"
+                                                    >
+                                                        <MagnifyingGlass size={14} weight="bold" />
+                                                        Inspect
+                                                    </button>
 
                                                     <button
                                                         onClick={() => handlePruneGraveyard(file.id)}
