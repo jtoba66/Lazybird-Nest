@@ -13,26 +13,45 @@ interface Chunk {
     created_at: string;
 }
 
+interface FileInfo {
+    id: number;
+    merkle_hash?: string;
+    file_size: number;
+    is_gateway_verified: number;
+    is_chunked?: number;
+}
+
 interface Props {
     isOpen: boolean;
     onClose: () => void;
     fileId: number | null;
     filename: string;
     source: 'files' | 'graveyard';
+    fileData?: FileInfo | null;
 }
 
-export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source }: Props) => {
+export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source, fileData }: Props) => {
     const [chunks, setChunks] = useState<Chunk[]>([]);
     const [loading, setLoading] = useState(true);
-    const [verifyingId, setVerifyingId] = useState<number | null>(null);
+    const [verifyingId, setVerifyingId] = useState<number | string | null>(null);
     const [retryingId, setRetryingId] = useState<number | null>(null);
+    const [fileVerified, setFileVerified] = useState(false);
     const { showToast } = useToast();
+
+    const isSingleFile = fileData && !fileData.is_chunked;
 
     useEffect(() => {
         if (isOpen && fileId) {
-            fetchChunks();
+            if (isSingleFile) {
+                setLoading(false);
+                setChunks([]);
+                setFileVerified(fileData.is_gateway_verified === 1);
+            } else {
+                fetchChunks();
+            }
         } else {
             setChunks([]);
+            setFileVerified(false);
         }
     }, [isOpen, fileId]);
 
@@ -59,7 +78,7 @@ export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source
         }
     };
 
-    const handleVerify = async (chunk: Chunk) => {
+    const handleVerifyChunk = async (chunk: Chunk) => {
         if (!chunk.jackal_merkle) return;
         setVerifyingId(chunk.id);
         try {
@@ -72,12 +91,36 @@ export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source
 
             if (res.ok && data.verified) {
                 showToast(`Chunk ${chunk.chunk_index} verified!`, 'success');
-                // Update local state
                 setChunks(prev => prev.map(c => c.id === chunk.id ? { ...c, is_gateway_verified: 1 } : c));
             } else {
                 showToast('Verification failed: Not found on gateway', 'error');
             }
 
+        } catch (e) {
+            console.error(e);
+            showToast('Verification request failed', 'error');
+        } finally {
+            setVerifyingId(null);
+        }
+    };
+
+    const handleVerifyFile = async () => {
+        if (!fileId) return;
+        setVerifyingId('file');
+        try {
+            const token = localStorage.getItem('nest_token');
+            const res = await fetch(`${API_BASE_URL}/admin/files/${fileId}/verify`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+
+            if (res.ok && data.verified) {
+                showToast('File verified on gateway!', 'success');
+                setFileVerified(true);
+            } else {
+                showToast(data.message || 'Verification failed', 'error');
+            }
         } catch (e) {
             console.error(e);
             showToast('Verification request failed', 'error');
@@ -98,7 +141,6 @@ export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source
 
             if (res.ok && data.success) {
                 showToast(`Chunk ${chunk.chunk_index} re-uploaded!`, 'success');
-                // Update local state - verify needed next
                 setChunks(prev => prev.map(c => c.id === chunk.id ? { ...c, jackal_merkle: data.merkle, is_gateway_verified: 0 } : c));
             } else {
                 showToast(`Retry failed: ${data.error}`, 'error');
@@ -119,18 +161,76 @@ export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizeStr[i];
     };
 
+    const modalTitle = isSingleFile ? `Inspect File: ${filename}` : `Inspect Chunks: ${filename}`;
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Inspect Chunks: ${filename}`} maxWidth="max-w-4xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} maxWidth="max-w-4xl">
             <div className="space-y-4">
                 {loading ? (
                     <div className="flex justify-center p-8">
                         <Spinner size={32} className="animate-spin text-primary" />
+                    </div>
+                ) : isSingleFile ? (
+                    /* ─── Single File View ─── */
+                    <div className="overflow-x-auto custom-scrollbar border border-white/5 rounded-lg">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-white/5 uppercase text-xs font-bold text-text-muted">
+                                <tr>
+                                    <th className="px-4 py-3">Size</th>
+                                    <th className="px-4 py-3">Merkle Hash</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    {source === 'files' && <th className="px-4 py-3">Action</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                <tr className="hover:bg-white/5 transition-colors">
+                                    <td className="px-4 py-3 font-mono">{formatBytes(fileData?.file_size || 0)}</td>
+                                    <td className="px-4 py-3 font-mono text-xs max-w-[200px] truncate" title={fileData?.merkle_hash}>
+                                        {fileData?.merkle_hash || '-'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        {fileVerified ? (
+                                            <span className="inline-flex items-center gap-1 text-success font-bold text-xs bg-success/10 px-2 py-0.5 rounded border border-success/20">
+                                                <CheckCircle weight="fill" /> Verified
+                                            </span>
+                                        ) : fileData?.merkle_hash && fileData.merkle_hash !== 'UNKNOWN' && fileData.merkle_hash !== 'pending' ? (
+                                            <span className="inline-flex items-center gap-1 text-warning font-bold text-xs bg-warning/10 px-2 py-0.5 rounded border border-warning/20">
+                                                <Clock weight="bold" /> Pending
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 text-text-muted font-bold text-xs bg-white/5 px-2 py-0.5 rounded">
+                                                Not Uploaded
+                                            </span>
+                                        )}
+                                    </td>
+                                    {source === 'files' && (
+                                        <td className="px-4 py-3">
+                                            {!fileVerified && fileData?.merkle_hash && fileData.merkle_hash !== 'UNKNOWN' && fileData.merkle_hash !== 'pending' && (
+                                                <button
+                                                    onClick={handleVerifyFile}
+                                                    disabled={verifyingId === 'file'}
+                                                    className="flex items-center gap-1.5 px-3 py-1 bg-primary/10 hover:bg-primary/20 text-text-main border border-primary/20 rounded text-xs font-bold transition-all disabled:opacity-50"
+                                                >
+                                                    {verifyingId === 'file' ? (
+                                                        <Spinner className="animate-spin" />
+                                                    ) : (
+                                                        <ShieldCheck weight="bold" />
+                                                    )}
+                                                    Verify
+                                                </button>
+                                            )}
+                                        </td>
+                                    )}
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 ) : chunks.length === 0 ? (
                     <div className="text-center p-8 text-text-muted">
                         No chunks found for this file. It might not be a chunked upload.
                     </div>
                 ) : (
+                    /* ─── Chunked File View (existing) ─── */
                     <div className="overflow-x-auto custom-scrollbar border border-white/5 rounded-lg">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-white/5 uppercase text-xs font-bold text-text-muted">
@@ -169,7 +269,7 @@ export const ChunksInspectorModal = ({ isOpen, onClose, fileId, filename, source
                                             <td className="px-4 py-3 flex items-center gap-2">
                                                 {!chunk.is_gateway_verified && chunk.jackal_merkle && (
                                                     <button
-                                                        onClick={() => handleVerify(chunk)}
+                                                        onClick={() => handleVerifyChunk(chunk)}
                                                         disabled={verifyingId === chunk.id}
                                                         className="flex items-center gap-1.5 px-3 py-1 bg-primary/10 hover:bg-primary/20 text-text-main border border-primary/20 rounded text-xs font-bold transition-all disabled:opacity-50"
                                                     >

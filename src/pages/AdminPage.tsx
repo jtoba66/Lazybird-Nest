@@ -35,6 +35,7 @@ interface FileRecord {
     can_retry: boolean;
     encrypted_file_path?: string;
     created_at: string;
+    deleted_at?: string | null;
     folder_id: number | null;
     is_chunked?: number;
     chunk_progress?: {
@@ -78,7 +79,7 @@ export default function AdminPage() {
     const [activeTab, setActiveTab] = useState<'overview' | 'insights' | 'files' | 'users' | 'failed' | 'graveyard'>('overview');
     const [system, setSystem] = useState<SystemMetrics | null>(null);
     const [files, setFiles] = useState<FileRecord[]>([]);
-    const [inspectFile, setInspectFile] = useState<{ id: number, name: string, source: 'files' | 'graveyard' } | null>(null);
+    const [inspectFile, setInspectFile] = useState<{ id: number, name: string, source: 'files' | 'graveyard', fileData?: { id: number, merkle_hash?: string, file_size: number, is_gateway_verified: number, is_chunked?: number } } | null>(null);
     const [users, setUsers] = useState<UserRecord[]>([]);
     const [analytics, setAnalytics] = useState<Analytics | null>(null);
     const [failedFiles, setFailedFiles] = useState<FileRecord[]>([]);
@@ -552,6 +553,7 @@ export default function AdminPage() {
                                     <tr>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Status</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
@@ -565,6 +567,17 @@ export default function AdminPage() {
                                         <tr key={file.id} className="hover:bg-white/5 transition-colors">
                                             <td className="px-6 py-4 text-sm font-mono text-text-muted">#{file.id}</td>
                                             <td className="px-6 py-4 text-sm font-medium">{file.user_email}</td>
+                                            <td className="px-6 py-4">
+                                                {file.deleted_at ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-warning/10 text-warning border border-warning/20">
+                                                        <Trash size={10} weight="fill" /> In Trash
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-success/10 text-success border border-success/20">
+                                                        <CheckCircle size={10} weight="fill" /> Active
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className="px-6 py-4 text-sm font-mono text-primary truncate max-w-[200px]" title={file.storage_id}>{file.storage_id}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${file.storage_type === 'blob' ? 'bg-secondary/20 text-secondary border border-secondary/30 shadow-[0_0_8px_rgba(var(--color-secondary-rgb),0.2)]' : 'bg-primary/10 text-primary border border-primary/20'}`}>
@@ -617,7 +630,7 @@ export default function AdminPage() {
 
                                                     {/* Inspect Button - Always visible for chunked files or just all files */}
                                                     <button
-                                                        onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: 'files' })}
+                                                        onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: 'files', fileData: { id: file.id, merkle_hash: file.merkle_hash, file_size: file.file_size, is_gateway_verified: file.jackal_status === 'uploaded' ? 1 : 0, is_chunked: file.is_chunked } })}
                                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold transition-colors"
                                                         title="Inspect Chunks"
                                                     >
@@ -872,6 +885,7 @@ export default function AdminPage() {
                         fileId={inspectFile.id}
                         filename={inspectFile.name}
                         source={inspectFile.source}
+                        fileData={inspectFile.fileData || null}
                     />
                 )
             }

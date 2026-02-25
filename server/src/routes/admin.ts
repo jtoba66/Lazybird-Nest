@@ -50,12 +50,11 @@ router.get('/system', authenticateToken, requireAdmin, async (req, res) => {
         const totalUsers = (await db.select({ count: count() }).from(users))[0].count;
         const totalFolders = (await db.select({ count: count() }).from(folders))[0].count;
 
-        // Use COALESCE to ensure we get 0 instead of null
+        // Total Managed Footprint: includes active + trash (quota still held)
         const totalStorageRes = await db.select({
             sum: sql<number>`COALESCE(SUM(${files.file_size}), 0)`
         })
-            .from(files)
-            .where(isNull(files.deleted_at));
+            .from(files);
 
         const totalStorage = totalStorageRes[0].sum;
 
@@ -199,6 +198,7 @@ router.get('/files', authenticateToken, requireAdmin, async (req, res) => {
             is_chunked: files.is_chunked,
             chunk_count: files.chunk_count,
             created_at: files.created_at,
+            deleted_at: files.deleted_at,
             retry_count: files.retry_count,
             is_gateway_verified: files.is_gateway_verified,
             encrypted_file_path: files.encrypted_file_path,
@@ -208,7 +208,6 @@ router.get('/files', authenticateToken, requireAdmin, async (req, res) => {
             .from(files)
             .innerJoin(users, eq(files.userId, users.id))
             .leftJoin(folders, eq(files.folderId, folders.id))
-            .where(isNull(files.deleted_at))
             .orderBy(desc(files.created_at));
 
         const enhancedFiles = await Promise.all(fileList.map(async (file: any) => {
@@ -279,66 +278,8 @@ router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
     }
 });
 
-router.get('/graveyard', authenticateToken, requireAdmin, async (req, res) => {
-    try {
-        const softDeleted = await db.select({
-            id: files.id,
-            user_email: users.email,
-            jackal_filename: files.jackal_filename,
-            merkle_hash: files.merkle_hash,
-            file_size: files.file_size,
-            is_chunked: files.is_chunked,
-            chunk_count: files.chunk_count,
-            deleted_at: files.deleted_at
-        })
-            .from(files)
-            .innerJoin(users, eq(files.userId, users.id))
-            .where(isNotNull(files.deleted_at))
-            .limit(100);
+// Duplicate /graveyard route removed — canonical version is below (line ~490)
 
-        const archived = await db.select({
-            id: graveyard.id,
-            user_email: users.email,
-            jackal_filename: graveyard.filename,
-            merkle_hash: graveyard.merkle_hash,
-            file_size: graveyard.file_size,
-            deleted_at: graveyard.deleted_at,
-            jackal_fid: graveyard.jackal_fid,
-            chunk_count: sql<number>`(SELECT count(*)::int FROM ${graveyardChunks} WHERE ${graveyardChunks.graveyard_id} = ${graveyard.id})`
-        })
-            .from(graveyard)
-            .leftJoin(users, eq(graveyard.user_id, users.id))
-            .limit(100);
-
-        const combined = [
-            ...softDeleted.map(f => ({
-                ...f,
-                type: 'soft',
-                storage_type: f.is_chunked ? 'blob' : 'single',
-                storage_id: f.jackal_filename || f.merkle_hash || 'pending'
-            })),
-            ...archived.map(a => {
-                const isBlob = (a.jackal_fid === 'chunked-complete' || !a.jackal_fid || a.merkle_hash === 'pending-chunks') && !!a.merkle_hash;
-                return {
-                    ...a,
-                    type: 'permanent',
-                    storage_id: a.jackal_filename || a.merkle_hash || 'archived',
-                    storage_type: isBlob ? 'blob' : 'single',
-                    is_chunked: isBlob ? 1 : 0,
-                    chunk_count: a.chunk_count || 0
-                };
-            })
-        ].sort((a, b) => {
-            const dateA = a.deleted_at ? new Date(a.deleted_at).getTime() : 0;
-            const dateB = b.deleted_at ? new Date(b.deleted_at).getTime() : 0;
-            return dateB - dateA;
-        });
-
-        res.json(combined);
-    } catch (err: any) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
 router.post('/files/:id/retry', authenticateToken, requireAdmin, async (req, res) => {
     const { id } = req.params;
@@ -621,6 +562,37 @@ router.post('/chunks/:id/verify', authenticateToken, requireAdmin, async (req, r
 
     } catch (err: any) {
         console.error('[ADMIN] Verify chunk failed:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Verify a single (non-chunked) file on the Jackal gateway
+router.post('/files/:id/verify', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const fileId = parseInt(req.params.id);
+        if (isNaN(fileId)) return res.status(400).json({ error: 'Invalid file ID' });
+
+        const [file] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
+        if (!file) return res.status(404).json({ error: 'File not found' });
+
+        const hash = file.merkle_hash;
+        if (!hash || hash === 'UNKNOWN' || hash === 'pending') {
+            return res.status(400).json({ error: 'File has no Merkle Hash (not uploaded yet)' });
+        }
+
+        const verified = await verifyOnGateway(hash);
+
+        if (verified) {
+            await db.update(files)
+                .set({ is_gateway_verified: 1 })
+                .where(eq(files.id, fileId));
+
+            res.json({ success: true, verified: true });
+        } else {
+            res.json({ success: true, verified: false, message: 'Gateway returned 404 for this hash' });
+        }
+    } catch (err: any) {
+        console.error('[ADMIN] Verify file failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1001,6 +973,7 @@ router.get('/analytics/pulse', authenticateToken, requireAdmin, async (req, res)
             created_at: files.created_at,
         })
             .from(files)
+            .where(isNull(files.deleted_at))
             .orderBy(desc(files.created_at))
             .limit(20);
 
