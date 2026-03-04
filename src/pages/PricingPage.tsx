@@ -163,7 +163,7 @@ export const PricingPage = () => {
                 <div className="grid grid-cols-3 gap-4">
                     <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center text-center group cursor-default">
                         <ShieldCheck size={24} weight="duotone" className="text-primary mb-2 opacity-80 group-hover:opacity-100 transition-opacity" />
-                        <span className="text-[10px] font-bold text-text-main uppercase tracking-wider">Military-Grade</span>
+                        <span className="text-[10px] font-bold text-text-main uppercase tracking-wider">Military Grade</span>
                     </motion.div>
                     <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center text-center border-x border-text-muted/10 group cursor-default">
                         <ShareNetwork size={24} weight="duotone" className="text-primary mb-2 opacity-80 group-hover:opacity-100 transition-opacity" />
