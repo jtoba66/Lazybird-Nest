@@ -4,7 +4,7 @@ import { filesAPI } from '../api/files';
 import { foldersAPI } from '../api/folders';
 import { CreateFolderModal } from '../components/CreateFolderModal';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
-import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey } from '../crypto/v2';
+import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey, decryptFolderKey, encryptFileKey, fromBase64 } from '../crypto/v2';
 import { useAuth } from '../contexts/AuthContext';
 import { useUpload } from '../contexts/UploadContext';
 import { useToast } from '../contexts/ToastContext';
@@ -30,16 +30,29 @@ export const FileGrid = () => {
 
         const file = acceptedFiles[0];
         const uploadId = addUpload(file);
-        setUploading(true);
-        setUploadProgress(0);
-        setShareLink('');
-        setUploadedFilename('');
 
         try {
+            setUploading(true);
+            setUploadProgress(0);
+            setShareLink('');
+            setUploadedFilename('');
+
             console.log('[v2-upload] Starting metadata-first upload:', file.name);
 
-            // 1. Generate local encryption data
+            // 1. Generate local encryption data (Requires Folder Key)
+            const { key: fkEnc, nonce: fkNonce } = await foldersAPI.getKey(null);
+
+            let folderKey: Uint8Array;
+            if (fkEnc && fkNonce && masterKey) {
+                folderKey = decryptFolderKey(fromBase64(fkEnc), fromBase64(fkNonce), masterKey);
+            } else {
+                // Fallback for unexpected states or older migration paths
+                folderKey = masterKey!;
+            }
+
             const fileKey = generateFileKey();
+            const fileKeyEnv = encryptFileKey(fileKey, folderKey);
+
             const { encryptedBlob } = await encryptFile(file, fileKey);
             console.log('[v2-upload] ✅ Encryption complete');
 
@@ -49,8 +62,8 @@ export const FileGrid = () => {
                 file_size: file.size,
                 mimeType: file.type,
                 folderId: null, // Root for now
-                fileKeyEncrypted: toBase64(fileKey),
-                fileKeyNonce: toBase64(new Uint8Array(24)) // Simple padding for now
+                fileKeyEncrypted: toBase64(fileKeyEnv.encrypted),
+                fileKeyNonce: toBase64(fileKeyEnv.nonce)
             });
 
             const fileId = initRes.file_id;
@@ -72,19 +85,11 @@ export const FileGrid = () => {
 
             // 4. Step 3: Upload the actual bits
             console.log('[v2-upload] Uploading bits...');
-            if (initRes.is_chunked) {
-                // Future: Implement chunked logic here if needed
-                // For now, let's stick to simple upload for the FileGrid scope
-                await filesAPI.upload(fileId, encryptedBlob, (progress: number) => {
-                    updateProgress(uploadId, progress);
-                    setUploadProgress(Math.round(progress));
-                });
-            } else {
-                await filesAPI.upload(fileId, encryptedBlob, (progress: number) => {
-                    updateProgress(uploadId, progress);
-                    setUploadProgress(Math.round(progress));
-                });
-            }
+
+            await filesAPI.upload(fileId, encryptedBlob, (progress: number) => {
+                updateProgress(uploadId, progress);
+                setUploadProgress(Math.round(progress));
+            });
 
             completeUpload(uploadId);
             updateProgress(uploadId, 100);
@@ -92,8 +97,8 @@ export const FileGrid = () => {
             console.log('[v2-upload] ✅ Full upload complete');
             showToast(`"${file.name}" uploaded safely!`, 'success');
 
-            const shareLink = `${window.location.origin}/s/${initRes.share_token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
-            setShareLink(shareLink);
+            const newShareLink = `${window.location.origin}/s/${initRes.share_token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
+            setShareLink(newShareLink);
             setUploadedFilename(file.name);
             triggerFileRefresh();
 
@@ -105,7 +110,7 @@ export const FileGrid = () => {
             setUploading(false);
             setUploadProgress(0);
         }
-    }, [addUpload, updateProgress, completeUpload, failUpload, showToast]);
+    }, [addUpload, updateProgress, completeUpload, failUpload, showToast, metadata, masterKey, saveMetadata, triggerFileRefresh]);
 
 
     const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
