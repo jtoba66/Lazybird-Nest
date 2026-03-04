@@ -737,7 +737,13 @@ router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
                 if (success && fs.existsSync(tempPath)) {
                     const stream = fs.createReadStream(tempPath);
                     res.setHeader('Content-Type', 'application/octet-stream');
-                    res.setHeader('Content-Length', file.file_size);
+
+                    try {
+                        const stats = fs.statSync(tempPath);
+                        res.setHeader('Content-Length', stats.size);
+                    } catch (e) {
+                        // fallback
+                    }
 
                     await new Promise<void>(resolve => {
                         stream.pipe(res);
@@ -755,7 +761,14 @@ router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
         // Serve local file
         const stream = fs.createReadStream(filePath);
         res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Length', file.file_size);
+
+        try {
+            const stats = fs.statSync(filePath);
+            res.setHeader('Content-Length', stats.size);
+        } catch (e) {
+            // fallback if stat fails
+        }
+
         stream.pipe(res);
 
     } catch (error: any) {

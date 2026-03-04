@@ -142,6 +142,10 @@ export const SharePage = () => {
                         clearTimeout(timeoutId);
 
                         if (res.ok) {
+                            const contentType = res.headers.get('content-type');
+                            if (contentType && contentType.includes('text/html')) {
+                                throw new Error('Gateway returned HTML instead of file payload');
+                            }
                             blob = await res.blob();
                             console.log('[SharePage] ✅ Gateway Download Successful');
                         } else {
