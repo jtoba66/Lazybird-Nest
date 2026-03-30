@@ -236,8 +236,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                         storage_quota_bytes: PRICING.pro.storage
                     }).where(eq(users.id, parseInt(userId)));
 
-                    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, parseInt(userId))).limit(1);
-                    if (user?.email) sendSubscriptionStartedEmail(user.email).catch(console.error);
+                    // Defensive email sending
+                    try {
+                        const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, parseInt(userId))).limit(1);
+                        if (user?.email) await sendSubscriptionStartedEmail(user.email);
+                    } catch (emailErr: any) {
+                        logger.error(`[BILLING-WEBHOOK] Failed to send subscription started email: ${emailErr.message}`);
+                    }
+                    
                     logger.info(`[BILLING-WEBHOOK] User ${userId} upgraded to Pro`);
                 }
                 break;
@@ -272,7 +278,13 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                         stripe_subscription_id: null,
                         storage_quota_bytes: PRICING.free.storage
                     }).where(eq(users.id, user.id));
-                    if (user.email) sendCancellationFarewellEmail(user.email).catch(console.error);
+                    
+                    try {
+                        if (user.email) await sendCancellationFarewellEmail(user.email);
+                    } catch (emailErr: any) {
+                        logger.error(`[BILLING-WEBHOOK] Failed to send cancellation email: ${emailErr.message}`);
+                    }
+                    
                     logger.info(`[BILLING-WEBHOOK] User ${user.id} downgraded to Free`);
                 }
                 break;
@@ -280,15 +292,25 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
             case 'invoice.payment_succeeded': {
                 const invoice = event.data.object as Stripe.Invoice;
                 logger.info(`[BILLING-WEBHOOK] payment_succeeded for customer ${invoice.customer}`);
+                
+                if (!invoice.customer) {
+                   logger.warn('[BILLING-WEBHOOK] invoice.payment_succeeded missing customer ID');
+                   break;
+                }
+
                 await db.update(users).set({ subscription_status: 'active' })
                     .where(and(eq(users.stripe_customer_id, invoice.customer as string), eq(users.subscription_tier, 'pro')));
 
-                // Send payment received email (skip initial payment - already sent subscription started)
+                // Send payment received email
                 if (invoice.billing_reason === 'subscription_cycle') {
-                    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.stripe_customer_id, invoice.customer as string)).limit(1);
-                    if (user?.email) {
-                        const amount = invoice.amount_paid ? `$${(invoice.amount_paid / 100).toFixed(2)}` : '$4.99';
-                        sendPaymentReceivedEmail(user.email, amount).catch(console.error);
+                    try {
+                        const [user] = await db.select({ email: users.email }).from(users).where(eq(users.stripe_customer_id, invoice.customer as string)).limit(1);
+                        if (user?.email) {
+                            const amount = invoice.amount_paid ? `$${(invoice.amount_paid / 100).toFixed(2)}` : '$2.99';
+                            await sendPaymentReceivedEmail(user.email, amount);
+                        }
+                    } catch (emailErr: any) {
+                        logger.error(`[BILLING-WEBHOOK] Failed to send payment received email: ${emailErr.message}`);
                     }
                 }
                 break;
@@ -299,15 +321,25 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.stripe_customer_id, invoice.customer as string)).limit(1);
                 if (user) {
                     await db.update(users).set({ subscription_status: 'past_due' }).where(eq(users.id, user.id));
-                    if (user.email) sendPaymentFailedEmail(user.email).catch(console.error);
+                    
+                    try {
+                        if (user.email) await sendPaymentFailedEmail(user.email);
+                    } catch (emailErr: any) {
+                        logger.error(`[BILLING-WEBHOOK] Failed to send payment failed email: ${emailErr.message}`);
+                    }
+                    
                     logger.warn(`[BILLING-WEBHOOK] User ${user.id} marked as past_due`);
                 }
                 break;
             }
         }
         res.json({ received: true });
-    } catch (e) {
-        res.status(500).json({ error: 'Failed' });
+    } catch (e: any) {
+        logger.error(`[BILLING-WEBHOOK] 🔥 CRITICAL ERROR: ${e.message}`, { 
+            stack: e.stack,
+            eventType: event.type 
+        });
+        res.status(500).json({ error: 'Webhook processing failed', details: e.message });
     }
 });
 
