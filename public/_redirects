@@ -1,5 +1,5 @@
 /sitemap.xml /sitemap.xml 200
 /robots.txt /robots.txt 200
 /google*.html /google:splat.html 200
-/api/*  http://95.111.238.100:3004/api/:splat  200
+/api/*  https://nestapi.lazybird.io/api/:splat  200
 /* /index.html 200
