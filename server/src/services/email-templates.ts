@@ -12,19 +12,16 @@
 // Theme Constants
 const THEME = {
     colors: {
-        bg: '#F3F4F6',          // Zinc-100
-        card: '#FFFFFF',        // White
-        textMain: '#18181B',    // Zinc-900
-        textMuted: '#71717A',   // Zinc-500
-        border: '#E4E4E7',      // Zinc-200
-        primary: '#000000',     // Black
-        accent: '#768A96',      // Nest primary (Slate Blue)
-        success: '#10B981',     // Emerald-500
-        error: '#EF4444',       // Red-500
+        bg: '#FFFFFF',          // Pure White
+        card: '#FFFFFF',        // Pure White
+        textMain: '#18181B',    // Zinc-900 (Main text)
+        textMuted: '#4B5563',   // Gray-600 (Better for readability)
+        border: '#F3F4F6',      // Zinc-100 (Subtle divide)
+        primary: '#18181B',     // Black
     },
     spacing: {
         container: '40px 20px',
-        card: '40px',
+        card: '0px',            // No card padding needed for letter style
     }
 };
 
@@ -44,101 +41,62 @@ function wrapTemplate(content: string, title: string): string {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                 background-color: ${THEME.colors.bg};
                 margin: 0;
-                padding: 0;
+                padding: 40px 20px;
                 line-height: 1.6;
                 color: ${THEME.colors.textMain};
                 -webkit-font-smoothing: antialiased;
             }
-            .wrapper {
-                width: 100%;
-                background-color: ${THEME.colors.bg};
-                padding: ${THEME.spacing.container};
-            }
             .container {
                 max-width: 540px;
                 margin: 0 auto;
-                background-color: ${THEME.colors.card};
-                border-radius: 16px;
-                border: 1px solid ${THEME.colors.border};
-                box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-                overflow: hidden;
-            }
-            .header {
-                padding: 40px 40px 20px 40px;
-                text-align: center;
             }
             .logo {
-                font-size: 24px;
-                font-weight: 800;
-                letter-spacing: -1px;
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: -0.5px;
                 color: ${THEME.colors.textMain};
+                margin-bottom: 32px;
+                display: block;
                 text-decoration: none;
-                display: inline-block;
-                margin-bottom: 8px;
-            }
-            .content {
-                padding: 10px 40px 40px 40px;
             }
             .h1 {
-                font-size: 20px;
+                font-size: 22px;
                 font-weight: 600;
                 margin: 0 0 16px 0;
                 color: ${THEME.colors.textMain};
             }
             .p {
-                font-size: 15px;
+                font-size: 16px;
                 margin: 0 0 24px 0;
                 color: ${THEME.colors.textMuted};
-                line-height: 1.6;
             }
             .btn {
                 display: inline-block;
                 background-color: ${THEME.colors.primary};
-                color: #ffffff;
-                padding: 12px 28px;
-                border-radius: 8px;
+                color: #ffffff !important;
+                padding: 12px 24px;
+                border-radius: 6px;
                 text-decoration: none;
                 font-weight: 500;
-                font-size: 14px;
+                font-size: 15px;
                 margin: 10px 0;
-                text-align: center;
             }
-            .btn:hover { opacity: 0.9; }
-            .status-badge {
-                display: inline-block;
-                padding: 6px 12px;
-                border-radius: 99px;
-                font-size: 12px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            .status-success { background: #ECFDF5; color: ${THEME.colors.success}; }
-            .status-error { background: #FEF2F2; color: ${THEME.colors.error}; }
-            
             .footer {
-                padding: 30px;
-                text-align: center;
-                font-size: 13px;
-                color: ${THEME.colors.textMuted};
+                margin-top: 48px;
+                padding-top: 24px;
                 border-top: 1px solid ${THEME.colors.border};
-                background-color: #FAFAFA;
+                font-size: 13px;
+                color: #9ca3af;
             }
         </style>
     </head>
     <body>
-        <div class="wrapper">
-            <div class="container">
-                <div class="header">
-                    <div class="logo">Nest</div>
-                </div>
-                <div class="content">
-                    ${content}
-                </div>
-                <div class="footer">
-                    <p style="margin: 0 0 8px 0;">© ${new Date().getFullYear()} Nest</p>
-                    <p style="margin: 0;">Secure • Private • Zero-Knowledge</p>
-                </div>
+        <div class="container">
+            <a href="https://lazybird.io" class="logo">Nest</a>
+            ${content}
+            <div class="footer">
+                <p>© ${new Date().getFullYear()} Nest • Secure, Zero-Knowledge Storage</p>
+                <p>Sent from admin@lazybird.io</p>
             </div>
         </div>
     </body>
@@ -152,17 +110,13 @@ function wrapTemplate(content: string, title: string): string {
 export function passwordResetEmail(resetUrl: string) {
     const title = 'Reset Password';
     const content = `
-        <h1 class="h1" style="text-align: center;">Reset your password</h1>
-        <p class="p" style="text-align: center;">
-            We received a request to reset the password for your Nest account. If this was you, click the button below to proceed.
-        </p>
-
-        <div style="text-align: center; margin: 32px 0;">
-            <a href="${resetUrl}" class="btn">Reset Password</a>
-        </div>
-
-        <p class="p" style="text-align: center; font-size: 13px;">
-            This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.
+        <h1 class="h1">Reset your Nest password</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">We received a request to reset the password for your Nest account.</p>
+        <p class="p">If you made this request, you can set a new password by clicking the link below:</p>
+        <a href="${resetUrl}" class="btn">Reset Password</a>
+        <p class="p" style="margin-top: 24px; font-size: 14px;">
+            <i>This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.</i>
         </p>
     `;
     return wrapTemplate(content, title);
@@ -174,18 +128,11 @@ export function passwordResetEmail(resetUrl: string) {
 export function passwordChangedEmail() {
     const title = 'Password Changed';
     const content = `
-        <h1 class="h1" style="text-align: center;">Password Updated</h1>
-        <p class="p" style="text-align: center;">
-            Your Nest account password has been successfully changed. You can now log in with your new credentials.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/login" class="btn">Log In</a>
-        </div>
-
-        <p class="p" style="text-align: center; font-size: 13px; margin-top: 16px;">
-            If you didn't make this change, please contact support immediately.
-        </p>
+        <h1 class="h1">Password changed successfully</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your Nest account password has been successfully updated. You can now sign in with your new credentials.</p>
+        <p class="p" style="font-size: 14px;"><i>If you didn't make this change, please contact our support team immediately.</i></p>
+        <a href="${process.env.FRONTEND_URL || '#'}/login" class="btn">Sign In</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -196,23 +143,12 @@ export function passwordChangedEmail() {
 export function welcomeEmail(email: string) {
     const title = 'Welcome to Nest';
     const content = `
-        <h1 class="h1" style="text-align: center;">Welcome to your private nest</h1>
-        <p class="p" style="text-align: center;">
-            We're excited to have you on board! Your files are now protected with zero-knowledge encryption.
-        </p>
-
-        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-            <p style="margin: 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">Your Account</p>
-            <p style="margin: 4px 0 0 0; color: ${THEME.colors.textMuted};">${email}</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/" class="btn">Start Uploading</a>
-        </div>
-
-        <p class="p" style="text-align: center; font-size: 13px; margin-top: 24px;">
-            <strong>Zero-Knowledge Encryption:</strong> Your encryption keys never leave your device. 
-            Even we can't access your files.
+        <h1 class="h1">Your private space is ready</h1>
+        <p class="p">Your Nest account is ready. You can now start securing your files with end-to-end encryption.</p>
+        <p class="p">Since only you hold the keys to your data, your privacy is guaranteed by design not just by promise.</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/dashboard" class="btn">Start Uploading</a>
+        <p class="p" style="margin-top: 24px; font-size: 14px; font-style: italic;">
+            Reminder: We never see your Master Key, please ensure it is backed up safely.
         </p>
     `;
     return wrapTemplate(content, title);
@@ -222,34 +158,13 @@ export function welcomeEmail(email: string) {
  * Storage Quota Warning (90% full)
  */
 export function storageQuotaWarningEmail(email: string, used: number, quota: number, tier: string) {
-    const title = 'Storage Almost Full';
-    const percentage = Math.round((used / quota) * 100);
-    const usedGB = (used / (1024 * 1024 * 1024)).toFixed(2);
-    const quotaGB = (quota / (1024 * 1024 * 1024)).toFixed(2);
-
+    const title = 'Storage Status';
     const content = `
-        <h1 class="h1" style="text-align: center;">Storage Running Low</h1>
-        <p class="p" style="text-align: center;">
-            Your Nest storage is ${percentage}% full. Consider upgrading or cleaning up files to continue uploading.
-        </p>
-
-        <div style="background-color: #FEF2F2; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; border: 1px solid #FEE2E2;">
-            <p style="margin: 0; font-weight: 600; font-size: 32px; color: ${THEME.colors.error};">${usedGB} GB / ${quotaGB} GB</p>
-            <p style="margin: 8px 0 0 0; color: ${THEME.colors.textMuted}; font-size: 14px;">Current Plan: ${tier.toUpperCase()}</p>
-        </div>
-
-        ${tier === 'free' ? `
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/pricing" class="btn">Upgrade to Pro</a>
-        </div>
-        <p class="p" style="text-align: center; font-size: 13px; margin-top: 16px;">
-            Pro plan includes 100GB storage for just $4.99/month
-        </p>
-        ` : `
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/" class="btn">Manage Storage</a>
-        </div>
-        `}
+        <h1 class="h1">Account Update: Storage status</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">We're reaching out to let you know that your Nest account is nearing its storage limit (90% used).</p>
+        <p class="p">To ensure your future uploads continue without interruption, you can review your files or check your plan options here:</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">View Storage Settings</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -260,21 +175,11 @@ export function storageQuotaWarningEmail(email: string, used: number, quota: num
 export function fileUploadedEmail() {
     const title = 'File Secured';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-success">Secured</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Your file is now encrypted and stored</h1>
-        <p class="p" style="text-align: center;">
-            We'd tell you the name, but we genuinely don't know it. That's zero-knowledge encryption working exactly as intended.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL?.split(',')[0].trim()}/folders" class="btn">View Files</a>
-        </div>
-
-        <p class="p" style="text-align: center; margin-top: 24px; font-size: 13px;">
-            Only you hold the keys. Your data is safe on the decentralized network.
-        </p>
+        <h1 class="h1">Confirmation: File Secured</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your recent upload was successful and has been secured to your private library.</p>
+        <p class="p">As always, your data is protected by your personal keys and is only accessible by you.</p>
+        <a href="${process.env.FRONTEND_URL?.split(',')[0].trim()}/folders" class="btn">View Your Files</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -285,21 +190,11 @@ export function fileUploadedEmail() {
 export function fileUploadFailedEmail(filename: string) {
     const title = 'Upload Issue';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-warning" style="background-color: #FEE2E2; color: #EF4444;">Failed</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Issue securing your file</h1>
-        <p class="p" style="text-align: center;">
-            An error occurred while trying to secure your file <strong>${filename}</strong> to our servers.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL?.split(',')[0].trim()}/dashboard" class="btn">Try Again</a>
-        </div>
-
-        <p class="p" style="text-align: center; margin-top: 24px; font-size: 13px;">
-            This usually happens due to a network timeout. Your data remains safe on your device.
-        </p>
+        <h1 class="h1">Issue securing your file</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">An error occurred while trying to secure your file <strong>${filename}</strong> to our servers.</p>
+        <p class="p">This usually happens due to a network timeout. Your data remains safe on your device, and you can try the upload again here:</p>
+        <a href="${process.env.FRONTEND_URL?.split(',')[0].trim()}/dashboard" class="btn">Try Again</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -310,17 +205,11 @@ export function fileUploadFailedEmail(filename: string) {
 export function jobCompletedEmail(job: any) {
     const title = 'Job Completed Successfully';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-success">Completed</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Conversion Finished</h1>
-        <p class="p" style="text-align: center;">
-            Your job <strong>${job.original_filename || 'File'}</strong> has been successfully processed.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/" class="btn">Download Result</a>
-        </div>
+        <h1 class="h1">Conversion Finished</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your job <strong>${job.original_filename || 'File'}</strong> has been successfully processed.</p>
+        <p class="p">You can download your converted file directly from your dashboard:</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/dashboard" class="btn">Download Result</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -331,17 +220,11 @@ export function jobCompletedEmail(job: any) {
 export function jobFailedEmail(job: any) {
     const title = 'Job Failed';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-error">Failed</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Processing Error</h1>
-        <p class="p" style="text-align: center;">
-            Unfortunately, your job <strong>${job.original_filename || 'File'}</strong> could not be processed.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/" class="btn">View Details</a>
-        </div>
+        <h1 class="h1">Processing Error</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Unfortunately, your job <strong>${job.original_filename || 'File'}</strong> could not be processed.</p>
+        <p class="p">This can happen with corrupted files or unsupported formats. You can view the details in your dashboard:</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/dashboard" class="btn">View Details</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -352,22 +235,11 @@ export function jobFailedEmail(job: any) {
 export function subscriptionStartedEmail() {
     const title = 'Subscription Started';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-success">Pro Plan Active</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Upgrade Successful</h1>
-        <p class="p" style="text-align: center;">
-            Thank you for upgrading to Nest Pro. Your 100GB storage quota is now active.
-        </p>
-
-        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-            <p style="margin: 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">Included with Pro</p>
-            <p style="margin: 4px 0 0 0; color: ${THEME.colors.textMuted};">100GB Secure Storage • 10GB File Limit • Priority Support</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/" class="btn">Start Uploading</a>
-        </div>
+        <h1 class="h1">Your 100GB Nest Pro account is active</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your upgrade to Nest Pro is complete. Your account has been updated with the new 100GB storage quota.</p>
+        <p class="p">You now have increased file limits and priority access to our support team if you ever need help.</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/dashboard" class="btn">Access Your Nest</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -378,20 +250,11 @@ export function subscriptionStartedEmail() {
 export function subscriptionCanceledEmail() {
     const title = 'Subscription Canceled';
     const content = `
-        <h1 class="h1" style="text-align: center;">Subscription Canceled</h1>
-        <p class="p" style="text-align: center;">
-            Your Nest Pro subscription has been canceled. You will still have access to Pro features until the end of your current billing period.
-        </p>
-
-        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-            <p style="margin: 0; font-size: 14px; color: ${THEME.colors.textMuted};">
-                After the current period ends, your quota will return to 2GB.
-            </p>
-        </div>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/pricing" class="btn">Renew Subscription</a>
-        </div>
+        <h1 class="h1">Your Nest Pro subscription has been canceled</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your Nest Pro subscription has been canceled. You'll continue to have access to Pro features until the end of your current billing period.</p>
+        <p class="p">After that, your quota will return to the free 2GB limit.</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/pricing" class="btn">Manage Subscription</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -402,20 +265,13 @@ export function subscriptionCanceledEmail() {
 export function paymentFailedEmail() {
     const title = 'Payment Failed';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-error">Action Required</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Problem with Payment</h1>
-        <p class="p" style="text-align: center;">
-            We were unable to process the recurring payment for your Nest Pro subscription. Please update your payment method to avoid any service interruption.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Update Billing</a>
-        </div>
-
-        <p class="p" style="text-align: center; font-size: 13px; margin-top: 24px;">
-            We will attempt the payment again in a few days.
+        <h1 class="h1">Action Required: Payment issue with Nest Pro</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">We were unable to process the latest payment for your Nest subscription.</p>
+        <p class="p">To keep your 100GB quota and Pro features active, please update your payment method in your settings:</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Update Payment Method</a>
+        <p class="p" style="margin-top: 24px; font-size: 14px;">
+            We'll try to process the payment again in a few days. If you have any questions, just reply to this email.
         </p>
     `;
     return wrapTemplate(content, title);
@@ -427,22 +283,11 @@ export function paymentFailedEmail() {
 export function paymentReceivedEmail(amount: string) {
     const title = 'Payment Received';
     const content = `
-        <div style="text-align: center; margin-bottom: 24px;">
-            <span class="status-badge status-success">Paid</span>
-        </div>
-        <h1 class="h1" style="text-align: center;">Payment Received</h1>
-        <p class="p" style="text-align: center;">
-            Your monthly Nest Pro payment of ${amount} has been processed successfully. Thank you for your continued support.
-        </p>
-
-        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-            <p style="margin: 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">Next billing date</p>
-            <p style="margin: 4px 0 0 0; color: ${THEME.colors.textMuted};">Approximately 30 days from now</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Manage Subscription</a>
-        </div>
+        <h1 class="h1">Payment Received - Nest Pro</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your monthly Nest Pro payment of ${amount} has been processed successfully.</p>
+        <p class="p">Thank you for your continued support of private storage. You can manage your subscription and view your history in your settings:</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Billing Settings</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -453,20 +298,11 @@ export function paymentReceivedEmail(amount: string) {
 export function securityAlertEmail() {
     const title = 'New Sign In';
     const content = `
-        <h1 class="h1" style="text-align: center;">New sign in to your account</h1>
-        <p class="p" style="text-align: center;">
-            There was a new sign in to your Nest account. If this was you, no action is needed.
-        </p>
-
-        <div style="background-color: #FEF2F2; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; border: 1px solid #FEE2E2;">
-            <p style="margin: 0; font-size: 14px; color: ${THEME.colors.textMain};">
-                If you didn't sign in, please change your password immediately.
-            </p>
-        </div>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Change Password</a>
-        </div>
+        <h1 class="h1">New sign-in to your Nest account</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">We detected a new sign-in to your account. If this was you, no action is needed.</p>
+        <p class="p" style="font-size: 14px;"><i>If you don't recognize this activity, we recommend changing your password immediately to keep your account secure.</i></p>
+        <a href="${process.env.FRONTEND_URL || '#'}/settings" class="btn">Security Settings</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -475,30 +311,13 @@ export function securityAlertEmail() {
  * Cancellation Farewell Email (with consequences)
  */
 export function cancellationFarewellEmail() {
-    const title = 'Subscription Canceled';
+    const title = 'Subscription Status';
     const content = `
-        <h1 class="h1" style="text-align: center;">Sorry to see you go</h1>
-        <p class="p" style="text-align: center;">
-            Your Nest Pro subscription has been canceled. You'll continue to have Pro features until the end of your current billing period.
-        </p>
-
-        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; margin: 24px 0;">
-            <p style="margin: 0 0 12px 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">What happens next:</p>
-            <ul style="margin: 0; padding-left: 20px; color: ${THEME.colors.textMuted}; font-size: 14px;">
-                <li style="margin-bottom: 8px;">Your storage quota will return to 2GB</li>
-                <li style="margin-bottom: 8px;">If you have more than 2GB stored, new uploads will be blocked</li>
-                <li style="margin-bottom: 8px;">New share links cannot be created while over quota</li>
-                <li style="margin-bottom: 8px;">Your existing files remain safe and accessible</li>
-            </ul>
-        </div>
-
-        <p class="p" style="text-align: center; font-size: 13px;">
-            We'd love to know why you're leaving. Your feedback helps us improve.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/pricing" class="btn">Resubscribe</a>
-        </div>
+        <h1 class="h1">Your storage quota has changed</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your Nest Pro subscription has ended and your storage quota has returned to 2GB.</p>
+        <p class="p">If you have more than 2GB currently stored, you'll still be able to access your existing files, but new uploads will be paused until you are within the limit again.</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/pricing" class="btn">View Current Plan</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -509,19 +328,11 @@ export function cancellationFarewellEmail() {
 export function shareLinkDigestEmail(totalDownloads: number, maxFileDownloads: number) {
     const title = 'Your Files are Popular';
     const content = `
-        <h1 class="h1" style="text-align: center;">Weekly Share Summary</h1>
-        <p class="p" style="text-align: center;">
-            Your shared files were downloaded <strong>${totalDownloads}</strong> times this week.
-        </p>
-
-        <div style="background-color: #FAFAFA; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-            <p style="margin: 0; font-weight: 600; font-size: 14px; color: ${THEME.colors.textMain};">Most Popular File</p>
-            <p style="margin: 4px 0 0 0; color: ${THEME.colors.textMuted};">${maxFileDownloads} downloads</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/shared" class="btn">Manage Links</a>
-        </div>
+        <h1 class="h1">Weekly Share Summary</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">Your shared files were downloaded <strong>${totalDownloads}</strong> times this week.</p>
+        <p class="p">Your most popular file received <strong>${maxFileDownloads}</strong> downloads. You can manage your active links and see more details in your dashboard:</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/shared" class="btn">Manage Shared Links</a>
     `;
     return wrapTemplate(content, title);
 }
@@ -530,16 +341,13 @@ export function shareLinkDigestEmail(totalDownloads: number, maxFileDownloads: n
  * Account Inactive Nudge
  */
 export function accountInactiveEmail() {
-    const title = 'We Miss You';
+    const title = 'Following up';
     const content = `
-        <h1 class="h1" style="text-align: center;">It's been a while</h1>
-        <p class="p" style="text-align: center;">
-            We haven't seen you in your Nest lately. Just a reminder that your encrypted files are safe and waiting for you.
-        </p>
-
-        <div style="text-align: center; margin-top: 32px;">
-            <a href="${process.env.FRONTEND_URL || '#'}/login" class="btn">Sign In</a>
-        </div>
+        <h1 class="h1">Following up from Nest</h1>
+        <p class="p">Hi there,</p>
+        <p class="p">It's been a while since we've seen you. Just a reminder that your encrypted files are safe and waiting for you.</p>
+        <p class="p">We're always here if you need to secure more of your digital life.</p>
+        <a href="${process.env.FRONTEND_URL || '#'}/login" class="btn">Sign In</a>
     `;
     return wrapTemplate(content, title);
 }
