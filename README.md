@@ -3,10 +3,10 @@
 > **Zero-Knowledge Encrypted Cloud Storage System**
 > *Secure by design. Private by default.*
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-production_ready-success.svg)
-![Security](https://img.shields.io/badge/encryption-AES--256--GCM-green.svg)
-![Storage](https://img.shields.io/badge/storage-decentralized-purple.svg)
+![License](https://img.shields.io/badge/license-Proprietary-red.svg)
+![Status](https://img.shields.io/badge/status-Production--Ready-success.svg)
+![Security](https://img.shields.io/badge/protocol-v1-blue.svg)
+![Protocol](https://img.shields.io/badge/encryption-Zero--Knowledge-green.svg)
 
 Nest is an enterprise-grade, zero-knowledge cloud storage platform engineered for absolute data privacy. It leverages client-side encryption and decentralized storage networks to ensure that **only the user** holds the keys to their data. The server acts purely as a blind facilitator, having zero visibility into file contents, filenames, or folder structures.
 
@@ -199,8 +199,12 @@ cd server && npm run build
 
 ---
 
+## 🛡 Security Disclosure
+
+If you discover a security vulnerability within Nest, please help us keep our community safe by sending a report to: **admin@lazybird.io**
+
 ## 📄 License & Legal
 
 **Copyright © 2026 LazyBird Inc. All Rights Reserved.**
 
-This software is the confidential and proprietary information of LazyBird Inc. ("Confidential Information"). You shall not disclose such Confidential Information and shall use it only in accordance with the terms of the license agreement you entered into with LazyBird Inc.
+This software is the **Proprietary Information** of LazyBird Inc. While the source is available for public audit and verification, any unauthorized redistribution, modification, or commercial use is strictly prohibited without explicit written consent from LazyBird Inc.
