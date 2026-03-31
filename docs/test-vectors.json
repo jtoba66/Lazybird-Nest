@@ -1,0 +1,119 @@
+{
+  "version": "2.0.0",
+  "generated_from": "Current Nest implementation",
+  "encoding_rules": {
+    "binary_api_encoding": "base64_rfc4648_padded",
+    "documentation_binary_encoding": "hex",
+    "text_encoding": "utf8"
+  },
+  "notes": [
+    "These vectors are implementation-derived and are intended to verify interoperability with the current web client.",
+    "AEAD vectors are deterministic because the nonce is supplied explicitly.",
+    "SecretStream vectors include captured headers from a reference run. SecretStream encryption output is nondeterministic unless RNG is controlled, so those vectors are primarily for decryption and round-trip verification.",
+    "For metadata encryption verification, use the exact metadataJson_utf8 string bytes shown here."
+  ],
+  "vectors": {
+    "kdf": {
+      "name": "password_to_rootkey_and_subkeys",
+      "input": {
+        "password_utf8": "NestTestPassword2026",
+        "salt_hex": "0707070707070707070707070707070707070707070707070707070707070707",
+        "params": {
+          "algorithm": "argon2id",
+          "memoryCost": 65536,
+          "timeCost": 3,
+          "parallelism": 4,
+          "hashLength": 32
+        }
+      },
+      "expected": {
+        "rootKey_hex": "664eb18258769d340272e83fdce62fba575a0b653c76e4676688632e52c8a319",
+        "authHash_hex": "455c841619b6a73b785a7b528f203a9683262c32aefb359fdd88ed1e6dbaa5d2",
+        "wrappingKey_hex": "cf226400b8d7397c9ac504eeb1ae884b0b05f01e690f9d9a1ea1a415463d5351"
+      }
+    },
+    "master_key_wrap": {
+      "name": "wrap_master_key_with_wrapping_key",
+      "input": {
+        "masterKey_hex": "0909090909090909090909090909090909090909090909090909090909090909",
+        "wrappingKey_hex": "cf226400b8d7397c9ac504eeb1ae884b0b05f01e690f9d9a1ea1a415463d5351",
+        "nonce_hex": "050505050505050505050505050505050505050505050505"
+      },
+      "expected": {
+        "ciphertext_hex": "3463d33ab204bba5379ca42ca257d340c6fdada69d7dc26f55eabc11ee42bafa95285f0d08e31bffdc790daf7955d782"
+      }
+    },
+    "folder_key_wrap": {
+      "name": "wrap_root_folder_key_with_master_key",
+      "input": {
+        "folderKey_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+        "masterKey_hex": "0909090909090909090909090909090909090909090909090909090909090909",
+        "nonce_hex": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+      },
+      "expected": {
+        "ciphertext_hex": "5d72868a81eca28ee48c5f49c907d932a9043bf8b40bd7025dcbe808a3f9c7c04aa909cd51c40cb6d3fc4dae6dd8547a"
+      }
+    },
+    "file_key_wrap": {
+      "name": "wrap_file_key_with_folder_key",
+      "input": {
+        "fileKey_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+        "folderKey_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+        "nonce_hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+      },
+      "expected": {
+        "ciphertext_hex": "b37b0c58c020d323bb03a7913a8ec5983861892b5aea2d2c6d29784575cf435fd95e746dd9e2902a7557b8013e448a51"
+      }
+    },
+    "metadata_blob": {
+      "name": "encrypt_metadata_blob_with_master_key",
+      "input": {
+        "masterKey_hex": "0909090909090909090909090909090909090909090909090909090909090909",
+        "nonce_hex": "060606060606060606060606060606060606060606060606",
+        "metadataJson_utf8": "{\"v\":2,\"folders\":{\"1\":{\"name\":\"Root\",\"created_at\":\"2026-03-29T00:00:00.000Z\"}},\"files\":{\"10\":{\"filename\":\"hello.txt\",\"mime_type\":\"text/plain\",\"file_size\":31,\"created_at\":\"2026-03-29T00:00:00.000Z\",\"folder_id\":\"1\"}}}"
+      },
+      "expected": {
+        "ciphertext_hex": "38cf2fc28b087c95ff583def398e303a155e43351416e79e9bd0dd17ad7f1d43d3ba3eb422c2a1baeadfed40b459a95d6b797c5db03deb9892b7a59c6cdbcf8303735dfc751c3a225a71eb4c2a5de5605eb87495e1da8d4dcc87966225a5c737f2b4c90daab3ae03dc117dae834f27fd5aa7460b9f8a154a55160950f39d655aee348160392961ebe5aca37c035452d3ed4a9775aee80b50731c105761d18f148fe0fc5f07bb6ffe5bbd6899abeea06be4a546cc7f4d74d52a433f1f86e408303f7feb01e6bd9e94351e615bd2c7ab540d3178319463cc6c8b0cc2e13dac28a0b97d9a84dcf972"
+      }
+    },
+    "secretstream_monolithic_reference": {
+      "name": "monolithic_file_reference_capture",
+      "input": {
+        "fileKey_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+        "plaintext_utf8": "Nest protocol test file\nLine 2\n"
+      },
+      "expected": {
+        "header_hex": "5c771edd27e3453636df0a6a689b5095c1c8a1003350522f",
+        "ciphertext_hex": "1da1fef7465a132f5aa405c8f1e71d9fdc2d2655333c4d29dcc0d103df529aa151ea54eac202cfc3e6c9b13aa1525bf3",
+        "combined_hex": "5c771edd27e3453636df0a6a689b5095c1c8a1003350522f1da1fef7465a132f5aa405c8f1e71d9fdc2d2655333c4d29dcc0d103df529aa151ea54eac202cfc3e6c9b13aa1525bf3"
+      },
+      "verification_rule": "Client MUST decrypt combined_hex back to plaintext_utf8 when treating the first 24 bytes as the embedded SecretStream header."
+    },
+    "secretstream_segmented_reference": {
+      "name": "chunked_segment_reference_capture",
+      "input": {
+        "fileKey_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+        "plaintext_utf8": "Segmented chunk test payload"
+      },
+      "expected": {
+        "header_hex": "73ed263aff22cf718a23a78ee7dfcbffcd9f6f8fee9b82fc",
+        "ciphertext_hex": "2ed4e6e5d2a57056cd953b4cdf9c8d4dbb83d2d4e6002752a232ff2082807676ddc949bf6176b679be2a0c7dda"
+      },
+      "verification_rule": "Client MUST initialize SecretStream pull with header_hex and decrypt ciphertext_hex back to plaintext_utf8."
+    },
+    "share_link_reference": {
+      "name": "public_share_link_fragment",
+      "input": {
+        "fileKey_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+        "fileKey_base64": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI=",
+        "shareToken": "sharetoken123",
+        "filename": "hello.txt",
+        "mime": "text/plain"
+      },
+      "expected": {
+        "shareUrl": "https://nest.lazybird.io/s/sharetoken123#key=IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI%3D&name=hello.txt&mime=text%2Fplain"
+      },
+      "verification_rule": "Client MUST parse the fragment with URLSearchParams semantics and base64-decode the key after replacing spaces with '+'."
+    }
+  }
+}
