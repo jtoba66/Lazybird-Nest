@@ -14,6 +14,11 @@ import {
     forgotPasswordSchema,
     resetPasswordSchema
 } from '../schemas/auth';
+import {
+    registerPushTokenSchema,
+    sendTestPushSchema,
+    unregisterPushTokenSchema
+} from '../schemas/push';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import logger from '../utils/logger';
 import {
@@ -26,6 +31,12 @@ import {
     sendPasswordResetConfirmation,
     sendSecurityAlertEmail
 } from '../services/email';
+import {
+    registerPushToken,
+    removePushToken,
+    sendPushToUser
+} from '../services/pushNotifications';
+import { isFirebaseMessagingConfigured } from '../services/firebaseAdmin';
 import { env } from '../config/env';
 import { authLimiter } from '../middleware/rateLimiter';
 
@@ -332,6 +343,18 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
                 ip_address: ip as string,
                 user_agent: userAgent as string,
             });
+
+            void sendPushToUser(user.id, {
+                category: 'security',
+                title: 'New sign-in detected',
+                body: 'Nest saw a sign-in from a new device or network.',
+                data: {
+                    event: 'new_login',
+                    ip,
+                }
+            }).catch((error) => {
+                logger.error('[AUTH-LOGIN] Failed to send security push', error);
+            });
         }
 
         // SIMPLIFIED ALERT LOGIC: One email per 24 hours max
@@ -402,6 +425,80 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
     } catch (e) {
         logger.error('[AUTH-ME] ❌ Get user failed:', e);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ============================================================================
+// PUSH TOKENS
+// ============================================================================
+
+router.post('/push/register', authenticateToken, validate(registerPushTokenSchema), async (req: AuthRequest, res) => {
+    try {
+        await registerPushToken({
+            userId: req.user!.userId,
+            token: req.body.token,
+            platform: req.body.platform,
+            deviceId: req.body.deviceId,
+            deviceLabel: req.body.deviceLabel,
+            appVersion: req.body.appVersion
+        });
+
+        res.json({
+            success: true,
+            messagingConfigured: isFirebaseMessagingConfigured()
+        });
+    } catch (error) {
+        logger.error('[AUTH-PUSH] Failed to register push token', error);
+        res.status(500).json({ error: 'Failed to register push token' });
+    }
+});
+
+router.delete('/push/register', authenticateToken, validate(unregisterPushTokenSchema), async (req: AuthRequest, res) => {
+    try {
+        await removePushToken({
+            userId: req.user!.userId,
+            token: req.body.token
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('[AUTH-PUSH] Failed to unregister push token', error);
+        res.status(500).json({ error: 'Failed to unregister push token' });
+    }
+});
+
+router.post('/push/test', authenticateToken, validate(sendTestPushSchema), async (req: AuthRequest, res) => {
+    try {
+        const pushResult = await sendPushToUser(req.user!.userId, {
+            category: req.body.category,
+            title: req.body.title || 'Nest test notification',
+            body: req.body.body || 'The Nest backend successfully reached this device.',
+            data: {
+                event: 'test_push'
+            }
+        });
+
+        if (pushResult.reason === 'not_configured') {
+            return res.status(503).json({
+                error: 'Firebase messaging is not configured',
+                push: pushResult
+            });
+        }
+
+        if (pushResult.reason === 'no_tokens') {
+            return res.status(404).json({
+                error: 'No registered push tokens for this user',
+                push: pushResult
+            });
+        }
+
+        res.json({
+            success: pushResult.delivered > 0,
+            push: pushResult
+        });
+    } catch (error) {
+        logger.error('[AUTH-PUSH] Failed to send test push', error);
+        res.status(500).json({ error: 'Failed to send test push' });
     }
 });
 

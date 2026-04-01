@@ -70,6 +70,12 @@ const envSchema = z.object({
 
     // Monitoring
     SENTRY_DSN: z.string().optional(),
+
+    // Firebase / FCM
+    FIREBASE_PROJECT_ID: z.string().optional(),
+    FIREBASE_CLIENT_EMAIL: z.string().optional(),
+    FIREBASE_PRIVATE_KEY: z.string().optional(),
+    FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
 });
 
 const _env = envSchema.safeParse(process.env);

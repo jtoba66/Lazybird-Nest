@@ -69,6 +69,21 @@ export const userDevices = pgTable('user_devices', {
     unq: unique().on(table.userId, table.device_hash)
 }));
 
+export const userPushTokens = pgTable('user_push_tokens', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    platform: text('platform').default('android').notNull(),
+    device_id: text('device_id'),
+    device_label: text('device_label'),
+    app_version: text('app_version'),
+    last_seen_at: timestamp('last_seen_at').defaultNow().notNull(),
+    created_at: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    userTokenUnq: unique().on(table.userId, table.token),
+    tokenUnq: uniqueIndex('user_push_tokens_token_idx').on(table.token),
+}));
+
 export const folders = pgTable('folders', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

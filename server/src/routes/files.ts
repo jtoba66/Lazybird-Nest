@@ -34,6 +34,7 @@ import {
     sendFileUploadFailedEmail,
     sendStorageQuotaWarning
 } from '../services/email';
+import { sendPushToUser } from '../services/pushNotifications';
 
 const router = express.Router();
 
@@ -241,6 +242,18 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
 
         // 8. Send File Uploaded Email
         sendFileUploadedEmail(req.user!.email).catch(console.error);
+
+        void sendPushToUser(userId, {
+            category: 'transfer',
+            title: 'Upload queued',
+            body: `Nest queued ${filename || `file ${fileId}`} for upload.`,
+            data: {
+                event: 'upload_queued',
+                fileId,
+            }
+        }).catch((pushError) => {
+            logger.error('[FILE-UP] Failed to send transfer push', pushError);
+        });
 
     } catch (error: any) {
         logger.error('[FILE-UP] ❌ Upload failed:', error);
@@ -571,6 +584,18 @@ router.post('/:id/share', authenticateToken, async (req: AuthRequest, res) => {
 
         if (!result) return res.status(404).json({ error: 'File not found or deleted' });
 
+        void sendPushToUser(userId, {
+            category: 'share',
+            title: 'Share link created',
+            body: `Nest created a public share link for file ${fileId}.`,
+            data: {
+                event: 'share_created',
+                fileId,
+            }
+        }).catch((pushError) => {
+            logger.error('[FILE-SHARE] Failed to send push notification', pushError);
+        });
+
         res.json({ success: true, share_token: shareToken, file_id: fileId });
     } catch (error) {
         logger.error('[FILE-SHARE] ❌ Failed:', error);
@@ -584,6 +609,19 @@ router.delete('/:id/share', authenticateToken, async (req: AuthRequest, res) => 
 
     try {
         await db.update(files).set({ share_token: null }).where(and(eq(files.id, fileId), eq(files.userId, userId)));
+
+        void sendPushToUser(userId, {
+            category: 'share',
+            title: 'Share link revoked',
+            body: `Nest revoked the public share link for file ${fileId}.`,
+            data: {
+                event: 'share_revoked',
+                fileId,
+            }
+        }).catch((pushError) => {
+            logger.error('[FILE-REVOKE] Failed to send push notification', pushError);
+        });
+
         res.json({ success: true, message: 'Share link revoked' });
     } catch (error) {
         logger.error('[FILE-REVOKE] ❌ Failed:', error);
@@ -1134,6 +1172,19 @@ router.post('/:id/finish', authenticateToken, async (req: AuthRequest, res) => {
             is_gateway_verified: isAllVerified ? 1 : 0,
             merkle_hash: isAllVerified ? 'obsideo-chunks' : 'pending-chunks'
         }).where(and(eq(files.id, fileId), eq(files.userId, userId)));
+
+        void sendPushToUser(userId, {
+            category: 'transfer',
+            title: 'Chunked upload finalized',
+            body: `Nest finalized ${chunks.length} chunks for file ${fileId}.`,
+            data: {
+                event: 'chunked_upload_finalized',
+                fileId,
+                chunkCount: chunks.length,
+            }
+        }).catch((pushError) => {
+            logger.error('[FILE-UP-FINISH] Failed to send transfer push', pushError);
+        });
 
         res.json({ success: true, chunk_count: chunks.length });
     } catch (error: any) {

@@ -14,6 +14,7 @@ import {
     sendPaymentReceivedEmail,
     sendCancellationFarewellEmail
 } from '../services/email';
+import { sendPushToUser } from '../services/pushNotifications';
 
 const router = express.Router(); // deploy: 2026-02-17T17:42
 
@@ -205,6 +206,18 @@ router.post('/sync-subscription', authenticateToken, async (req: AuthRequest, re
                 storage_quota_bytes: (PRICING as any)[tier].storage,
                 stripe_customer_id: session.customer as string
             }).where(eq(users.id, userId));
+
+            void sendPushToUser(userId, {
+                category: 'account',
+                title: 'Nest Pro is active',
+                body: 'Your subscription upgrade is active on this account.',
+                data: {
+                    event: 'subscription_synced',
+                    tier: 'pro'
+                }
+            }).catch((pushError) => {
+                logger.error('[BILLING-SYNC] Failed to send account push', pushError);
+            });
         }
 
         // Return the derived tier so the frontend knows what just happened
@@ -264,6 +277,18 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     } catch (emailErr: any) {
                         logger.error(`[BILLING-WEBHOOK] Failed to send subscription started email: ${emailErr.message}`);
                     }
+
+                    void sendPushToUser(parseInt(userId), {
+                        category: 'account',
+                        title: 'Nest Pro started',
+                        body: 'Your subscription and expanded storage are now active.',
+                        data: {
+                            event: 'subscription_started',
+                            tier: 'pro'
+                        }
+                    }).catch((pushError) => {
+                        logger.error('[BILLING-WEBHOOK] Failed to send subscription started push', pushError);
+                    });
                     
                     logger.info(`[BILLING-WEBHOOK] User ${userId} upgraded to Pro`);
                 }
@@ -291,6 +316,24 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     stripe_subscription_id: sub.id,
                     storage_quota_bytes: (PRICING as any)[tier].storage
                 }).where(eq(users.stripe_customer_id, sub.customer as string));
+
+                const [updatedUser] = await db.select({ id: users.id }).from(users)
+                    .where(eq(users.stripe_customer_id, sub.customer as string))
+                    .limit(1);
+                if (updatedUser) {
+                    void sendPushToUser(updatedUser.id, {
+                        category: 'account',
+                        title: 'Subscription updated',
+                        body: `Your Nest subscription status is now ${status}.`,
+                        data: {
+                            event: 'subscription_updated',
+                            status,
+                        }
+                    }).catch((pushError) => {
+                        logger.error('[BILLING-WEBHOOK] Failed to send subscription updated push', pushError);
+                    });
+                }
+
                 logger.info(`[BILLING-WEBHOOK] Subscription updated: status=${status}`);
                 break;
             }
@@ -311,6 +354,18 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     } catch (emailErr: any) {
                         logger.error(`[BILLING-WEBHOOK] Failed to send cancellation email: ${emailErr.message}`);
                     }
+
+                    void sendPushToUser(user.id, {
+                        category: 'account',
+                        title: 'Subscription canceled',
+                        body: 'Your Nest account has returned to the free plan.',
+                        data: {
+                            event: 'subscription_canceled',
+                            tier: 'free'
+                        }
+                    }).catch((pushError) => {
+                        logger.error('[BILLING-WEBHOOK] Failed to send cancellation push', pushError);
+                    });
                     
                     logger.info(`[BILLING-WEBHOOK] User ${user.id} downgraded to Free`);
                 }
@@ -340,6 +395,23 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                         logger.error(`[BILLING-WEBHOOK] Failed to send payment received email: ${emailErr.message}`);
                     }
                 }
+
+                const [paidUser] = await db.select({ id: users.id }).from(users)
+                    .where(eq(users.stripe_customer_id, invoice.customer as string))
+                    .limit(1);
+                if (paidUser) {
+                    void sendPushToUser(paidUser.id, {
+                        category: 'account',
+                        title: 'Payment received',
+                        body: 'Nest received your latest subscription payment.',
+                        data: {
+                            event: 'invoice_paid'
+                        }
+                    }).catch((pushError) => {
+                        logger.error('[BILLING-WEBHOOK] Failed to send payment received push', pushError);
+                    });
+                }
+
                 break;
             }
             case 'invoice.payment_failed': {
@@ -354,6 +426,17 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     } catch (emailErr: any) {
                         logger.error(`[BILLING-WEBHOOK] Failed to send payment failed email: ${emailErr.message}`);
                     }
+
+                    void sendPushToUser(user.id, {
+                        category: 'account',
+                        title: 'Payment failed',
+                        body: 'Nest could not process your latest subscription payment.',
+                        data: {
+                            event: 'invoice_payment_failed'
+                        }
+                    }).catch((pushError) => {
+                        logger.error('[BILLING-WEBHOOK] Failed to send payment failed push', pushError);
+                    });
                     
                     logger.warn(`[BILLING-WEBHOOK] User ${user.id} marked as past_due`);
                 }
