@@ -222,6 +222,7 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
                 logger.info(`[FILE-UP-BG] ✅ File ${fileId} uploaded (merkle: ${result.merkle_root})`);
 
                 if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+
             } catch (error: any) {
                 logger.error(`[FILE-UP-BG] ❌ File ${fileId} upload failed:`, error.message);
                 await db.update(files)
@@ -231,6 +232,18 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
                         failure_reason: error.message || 'Upload failed'
                     })
                     .where(eq(files.id, fileId));
+
+                void sendPushToUser(userId, {
+                    category: 'transfer',
+                    title: 'Upload failed',
+                    body: `Nest could not finish uploading ${filename || `file ${fileId}`}.`,
+                    data: {
+                        event: 'upload_failed',
+                        fileId,
+                    }
+                }).catch((pushError) => {
+                    logger.error('[FILE-UP-BG] Failed to send upload failed push', pushError);
+                });
             }
         });
 
@@ -304,8 +317,21 @@ router.post('/:id/upload', authenticateToken, uploadLimiter, upload.single('file
                     .where(eq(files.id, fileId));
 
                 if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+
             } catch (e: any) {
                 logger.error(`[FILE-UP-BITS] ❌ Failed:`, e);
+
+                void sendPushToUser(userId, {
+                    category: 'transfer',
+                    title: 'Upload failed',
+                    body: `Nest could not finish uploading file ${fileId}.`,
+                    data: {
+                        event: 'upload_failed',
+                        fileId,
+                    }
+                }).catch((pushError) => {
+                    logger.error('[FILE-UP-BITS] Failed to send upload failed push', pushError);
+                });
             }
         });
 
