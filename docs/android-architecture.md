@@ -243,7 +243,45 @@ Useful persisted fields:
 - Segment completion map
 - Local destination URI for downloads
 
-## 11. Verification Gates Before Shipping
+## 11. Backend Push Contract
+
+This branch now includes a concrete backend push contract for Android.
+
+Authenticated routes:
+
+- `POST /api/auth/push/register`
+- `DELETE /api/auth/push/register`
+- `POST /api/auth/push/test`
+
+Registration payload:
+
+- `token`
+- `platform` (`android`)
+- `deviceId` (optional)
+- `deviceLabel` (optional)
+- `appVersion` (optional)
+
+Current server behavior:
+
+- Stores push tokens in `user_push_tokens`
+- Delivers through Firebase Cloud Messaging when Firebase Admin credentials are configured
+- Safely no-ops when Firebase is not configured
+- Emits category values `transfer`, `share`, `security`, and `account`
+- Prunes invalid or unregistered FCM tokens after delivery failures
+
+Android client responsibilities:
+
+- Register the FCM token after password login or session restoration
+- Re-register on token refresh
+- Unregister on sign-out
+- Use `POST /api/auth/push/test` during development to validate end-to-end delivery
+
+Server environment options:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- or `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
+
+## 12. Verification Gates Before Shipping
 
 Android should not be considered protocol-ready until all of the following pass:
 
@@ -257,7 +295,7 @@ Android should not be considered protocol-ready until all of the following pass:
 8. Share links generated on either client open on the other
 9. Metadata written on Android preserves unknown fields and stays readable by web
 
-## 12. Recommended Delivery Order
+## 13. Recommended Delivery Order
 
 Build order should be:
 
@@ -270,7 +308,7 @@ Build order should be:
 7. Offline and background hardening
 8. UX polish
 
-## 13. Hard Rules For The Native Team
+## 14. Hard Rules For The Native Team
 
 Do not:
 
@@ -288,7 +326,7 @@ Do:
 
 Current strategy version: `1.2`
 
-## 14. Native UI & UX Specification
+## 15. Native UI & UX Specification
 
 The Android UX must feel like a premium, native extension of the Nest brand. It should not look like a "generic Android app" but rather a high-end secure vault.
 
@@ -324,11 +362,10 @@ The Android UX must feel like a premium, native extension of the Nest brand. It 
 - **Shimmer**: Use shimmers while metadata placeholders are being decrypted.
 - **Success States**: Subtle haptic feedback and a "Pulse" animation when a file is successfully secured.
 
-## 15. Handoff Readiness
+## 16. Handoff Readiness
 
 As of Version `1.2`, this blueprint is considered the normative reference for the Android Engineering team. All development should proceed in accordance with the protocol "freeze" documented in `docs/protocol-spec-v2.md`.
 
 ---
 **Document Status**: Finalized
-**Last Updated**: 2026-03-30
-
+**Last Updated**: 2026-03-31
