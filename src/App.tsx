@@ -19,6 +19,7 @@ const SignupPage = lazy(() => import('./pages/SignupPage').then(module => ({ def
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(module => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
 const SharePage = lazy(() => import('./pages/SharePage').then(module => ({ default: module.SharePage })));
+const MobileBillingReturnPage = lazy(() => import('./pages/MobileBillingReturnPage').then(module => ({ default: module.MobileBillingReturnPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const RecoverySetupPage = lazy(() => import('./pages/RecoverySetupPage').then(module => ({ default: module.RecoverySetupPage })));
 const TrashPage = lazy(() => import('./pages/TrashPage').then(module => ({ default: module.TrashPage })));
@@ -63,6 +64,7 @@ const App = () => {
                       <Route path="/signup" element={<SignupPage />} />
                       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                       <Route path="/reset-password" element={<ResetPasswordPage />} />
+                      <Route path="/mobile-billing-return" element={<MobileBillingReturnPage />} />
                       <Route path="/s/:shareToken" element={<SharePage />} />
                       <Route path="/s/:shareToken" element={<SharePage />} />
                       <Route path="/terms" element={<TermsPage />} />

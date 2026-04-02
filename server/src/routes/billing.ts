@@ -24,14 +24,81 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
 });
 
 let FRONTEND_URL = env.FRONTEND_URL.split(',')[0].trim();
+const MOBILE_BILLING_RETURN_PATH = '/mobile-billing-return';
 
 if (env.NODE_ENV === 'production' && FRONTEND_URL.includes('localhost')) {
     console.warn('[Billing] FRONTEND_URL is localhost in production. Defaulting to https://nest.lazybird.io');
     FRONTEND_URL = 'https://nest.lazybird.io';
 }
 
+type BillingClient = 'web' | 'android_app';
+
+function isAllowedReturnBaseUrl(candidate: string | undefined): candidate is string {
+    if (!candidate) return false;
+    try {
+        const url = new URL(candidate);
+        const hostname = url.hostname.toLowerCase();
+        return (
+            (url.protocol === 'https:' || url.protocol === 'http:') &&
+            (
+                hostname === 'localhost' ||
+                hostname === '127.0.0.1' ||
+                hostname === '10.0.2.2' ||
+                hostname.endsWith('lazybird.io')
+            )
+        );
+    } catch (_error) {
+        return false;
+    }
+}
+
+function resolveReturnBaseUrl(req: express.Request): string {
+    const explicitBaseUrl = req.body?.returnBaseUrl;
+    if (isAllowedReturnBaseUrl(explicitBaseUrl)) {
+        return explicitBaseUrl;
+    }
+
+    const origin = req.get('origin');
+    const referer = req.get('referer');
+
+    if (isAllowedReturnBaseUrl(origin)) {
+        return origin;
+    }
+
+    if (referer) {
+        try {
+            const refererOrigin = new URL(referer).origin;
+            if (isAllowedReturnBaseUrl(refererOrigin)) {
+                return refererOrigin;
+            }
+        } catch (_error) {
+            // Ignore invalid referers.
+        }
+    }
+
+    return FRONTEND_URL;
+}
+
+function resolveBillingClient(req: express.Request): BillingClient {
+    return req.body?.client === 'android_app' ? 'android_app' : 'web';
+}
+
+function buildMobileReturnUrl(
+    returnBaseUrl: string,
+    target: string,
+    extraParams: Record<string, string> = {}
+): string {
+    const url = new URL(MOBILE_BILLING_RETURN_PATH, `${returnBaseUrl.replace(/\/$/, '')}/`);
+    url.searchParams.set('target', target);
+    Object.entries(extraParams).forEach(([key, value]) => {
+        url.searchParams.set(key, value);
+    });
+    return url.toString();
+}
+
 router.post('/create-checkout-session', authenticateToken, async (req: AuthRequest, res) => {
     try {
+        const client = resolveBillingClient(req);
         const userId = req.user!.userId;
         const { tier = 'pro', interval = 'monthly' } = req.body;
 
@@ -66,25 +133,14 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
             await db.update(users).set({ stripe_customer_id: customerId }).where(eq(users.id, userId));
         }
 
-        // Dynamically determine return base URL from request headers if possible
-        let returnBaseUrl = FRONTEND_URL;
-        const origin = req.get('origin');
-        const referer = req.get('referer');
-
-        if (origin && (origin.includes('lazybird.io') || origin.includes('localhost'))) {
-            returnBaseUrl = origin;
-        } else if (referer && (referer.includes('lazybird.io') || referer.includes('localhost'))) {
-            try {
-                const url = new URL(referer);
-                returnBaseUrl = url.origin;
-            } catch (e) { /* ignore */ }
-        }
+        let returnBaseUrl = resolveReturnBaseUrl(req);
 
         if (env.NODE_ENV === 'production' && returnBaseUrl.includes('localhost')) {
             returnBaseUrl = 'https://nest.lazybird.io';
         }
 
         const priceId = (PRICING as any)[tier][interval].priceId;
+
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
             mode: 'subscription',
@@ -94,9 +150,12 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
                 trial_period_days: 7,
                 metadata: { userId: String(userId) }
             },
-            success_url: `${returnBaseUrl}/settings?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${returnBaseUrl}/pricing?upgrade=canceled`,
-            metadata: { userId: String(userId) }
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            metadata: {
+                userId: String(userId),
+                client
+            }
         });
 
         res.json({ url: session.url, sessionId: session.id });
@@ -108,6 +167,7 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
 
 router.post('/create-portal-session', authenticateToken, async (req: AuthRequest, res) => {
     try {
+        const client = resolveBillingClient(req);
         const userId = req.user!.userId;
         const [user] = await db.select({ stripe_customer_id: users.stripe_customer_id }).from(users).where(eq(users.id, userId)).limit(1);
 
@@ -115,24 +175,8 @@ router.post('/create-portal-session', authenticateToken, async (req: AuthRequest
             return res.status(400).json({ error: 'No subscription found' });
         }
 
-        // Dynamically determine return base URL from request headers if possible
-        let returnBaseUrl = FRONTEND_URL;
-        const origin = req.get('origin');
-        const referer = req.get('referer');
-
-        if (origin && (origin.includes('lazybird.io') || origin.includes('localhost'))) {
-            returnBaseUrl = origin;
-            logger.info(`[BILLING] Using Origin for return_url: ${returnBaseUrl}`);
-        } else if (referer && (referer.includes('lazybird.io') || referer.includes('localhost'))) {
-            try {
-                // If referer is present, extract origin
-                const url = new URL(referer);
-                returnBaseUrl = url.origin;
-                logger.info(`[BILLING] Using Referer for return_url: ${returnBaseUrl}`);
-            } catch (e) {
-                /* ignore invalid referer */
-            }
-        }
+        let returnBaseUrl = resolveReturnBaseUrl(req);
+        logger.info(`[BILLING] Using return_url base: ${returnBaseUrl}`);
 
         // Final sanity check: if running in production but still pointing to localhost, force prod domain
         if (env.NODE_ENV === 'production' && returnBaseUrl.includes('localhost')) {
@@ -140,9 +184,13 @@ router.post('/create-portal-session', authenticateToken, async (req: AuthRequest
             logger.warn('[BILLING] Forced return_url to production domain due to localhost config');
         }
 
+        const returnUrl = client === 'android_app'
+            ? buildMobileReturnUrl(returnBaseUrl, 'portal-return')
+            : `${returnBaseUrl}/settings`;
+
         const session = await stripe.billingPortal.sessions.create({
             customer: user.stripe_customer_id,
-            return_url: `${returnBaseUrl}/settings`
+            return_url: returnUrl
         });
 
         res.json({ url: session.url });
