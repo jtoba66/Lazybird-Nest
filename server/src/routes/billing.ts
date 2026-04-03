@@ -469,7 +469,7 @@ router.get('/subscription', authenticateToken, async (req: AuthRequest, res) => 
             trialEndsAt: user.trial_ends_at,
             isGrandfathered,
             isGodMode,
-            canManageBilling: user.stripe_customer_id && !isGrandfathered && !isGodMode
+            canManageBilling: Boolean(user.stripe_customer_id && !isGrandfathered && !isGodMode)
         });
     } catch (e) {
         res.status(500).json({ error: 'Failed' });
