@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FolderPlus } from '@phosphor-icons/react';
 import { FileTable } from '../components/FileTable';
 import { CreateFolderModal } from '../components/CreateFolderModal';
@@ -11,6 +11,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useRefresh } from '../contexts/RefreshContext';
 import { useStorage } from '../contexts/StorageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUpload } from '../contexts/UploadContext';
 import api from '../lib/api';
 
 interface FileItem {
@@ -29,6 +30,7 @@ export const FoldersPage = () => {
     const { fileListVersion, triggerFileRefresh } = useRefresh();
     const { refreshQuota } = useStorage();
     const { metadata, saveMetadata, masterKey, checkMetadataVersion } = useAuth();
+    const { addUpload } = useUpload();
 
     // URL State Management
     const searchParams = new URLSearchParams(location.search);
@@ -52,6 +54,28 @@ export const FoldersPage = () => {
     const [loading, setLoading] = useState(true);
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
     const [primaryRootId, setPrimaryRootId] = useState<number | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+
+    // Drag-and-drop handlers
+    const onDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const onDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const onFileDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            // Upload to the currently viewed folder
+            const targetId = selectedFolderId || primaryRootId || null;
+            addUpload(file, targetId);
+        }
+    };
 
     // Session Recovery: If key is lost, UI will show "Vault Locked" or prompt re-auth locally
     // We remove the auto-redirect to /login because it causes logout loops during race conditions.
@@ -623,7 +647,30 @@ export const FoldersPage = () => {
                     </motion.button>
                 </div>
 
-                <div className="flex-1 glass-panel overflow-hidden p-0 relative">
+                <div
+                    className="flex-1 glass-panel overflow-hidden p-0 relative"
+                    onDragOver={onDragOver}
+                    onDragLeave={onDragLeave}
+                    onDrop={onFileDrop}
+                >
+                    {/* Drag overlay */}
+                    <AnimatePresence>
+                        {isDragging && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute inset-0 z-30 bg-primary/10 backdrop-blur-[2px] border-2 border-dashed border-primary rounded-xl flex flex-col items-center justify-center pointer-events-none"
+                            >
+                                <svg className="w-12 h-12 text-primary mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <p className="text-primary font-bold text-lg">Drop to upload</p>
+                                <p className="text-primary/70 text-sm mt-1">Release to start upload</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                     {loading ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-white/10 backdrop-blur-sm">
                             <div className="flex flex-col items-center gap-3">

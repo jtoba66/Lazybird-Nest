@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FileTable } from '../components/FileTable';
 import { filesAPI } from '../api/files';
 import { useToast } from '../contexts/ToastContext';
@@ -422,7 +422,31 @@ export const NestPage = () => {
                 </div>
 
                 {/* Content List */}
-                <div className="flex-1 glass-panel overflow-hidden min-h-0 p-0 relative">
+                <div
+                    className="flex-1 glass-panel overflow-hidden min-h-0 p-0 relative"
+                    onDragOver={onDragOver}
+                    onDragLeave={onDragLeave}
+                    onDrop={onDrop}
+                >
+                    {/* Drag overlay — visible when dragging over populated list */}
+                    <AnimatePresence>
+                        {isDragging && files.length > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute inset-0 z-30 bg-primary/10 backdrop-blur-[2px] border-2 border-dashed border-primary rounded-xl flex flex-col items-center justify-center pointer-events-none"
+                            >
+                                <svg className="w-12 h-12 text-primary mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <p className="text-primary font-bold text-lg">Drop to upload</p>
+                                <p className="text-primary/70 text-sm mt-1">Release to start upload</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     {loading ? (
                         <PageLoader />
                     ) : files.length === 0 ? (
@@ -433,9 +457,6 @@ export const NestPage = () => {
                             whileTap={{ scale: 0.98 }}
                             className={`h-full flex flex-col items-center justify-center text-center p-6 sm:p-12 transition-all cursor-pointer group ${isDragging ? 'bg-primary/20 border-2 border-dashed border-primary scale-[0.98]' : 'hover:bg-background/40'
                                 }`}
-                            onDragOver={onDragOver}
-                            onDragLeave={onDragLeave}
-                            onDrop={onDrop}
                             onClick={() => fileInputRef.current?.click()}
                         >
                             <div className={`w-16 h-16 sm:w-20 sm:h-20 bg-background/50 rounded-2xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${isDragging ? 'scale-110' : 'animate-float'}`}>
