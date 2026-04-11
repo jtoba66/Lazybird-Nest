@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { files, fileChunks } from '../db/schema';
-import { eq, and, isNull, sql, lt, isNotNull } from 'drizzle-orm';
+import { eq, and, isNull, sql, isNotNull } from 'drizzle-orm';
 import logger from './logger';
 import { retryFileUpload, retryChunkUploads } from './retryHandler';
 
@@ -9,14 +9,17 @@ interface RetrySchedule {
     delayMinutes: number;
 }
 
-// Exponential backoff: 5min → 30min → 2hr
+// Progressive backoff: 5min → 30min → 2hr → 6hr → 6hr (forever)
+// After attempt 4, retries continue every 6 hours indefinitely.
 const RETRY_SCHEDULE: RetrySchedule[] = [
     { attemptNumber: 1, delayMinutes: 5 },
     { attemptNumber: 2, delayMinutes: 30 },
-    { attemptNumber: 3, delayMinutes: 120 }
+    { attemptNumber: 3, delayMinutes: 120 },
+    { attemptNumber: 4, delayMinutes: 360 },   // 6 hours
 ];
 
-const MAX_AUTO_RETRIES = 3;
+// No cap — retries are infinite. The tail delay (6h) applies forever.
+const TAIL_DELAY_MINUTES = 360;
 
 class RetryScheduler {
     private intervalId: NodeJS.Timeout | null = null;
@@ -25,7 +28,7 @@ class RetryScheduler {
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
-        logger.info('[RetryScheduler] Starting background retry scheduler');
+        logger.info('[RetryScheduler] Starting background retry scheduler (infinite retries)');
         this.checkAndScheduleRetries();
         this.intervalId = setInterval(() => this.checkAndScheduleRetries(), 60 * 1000);
     }
@@ -49,8 +52,7 @@ class RetryScheduler {
     }
 
     private async retryFailedFiles() {
-        const minRetryDelay = this.getRetryDelay(0);
-
+        // No retry_count cap — find ALL files that need uploading
         const eligibleFiles = await db.select({
             id: files.id,
             retry_count: files.retry_count,
@@ -60,10 +62,10 @@ class RetryScheduler {
             .where(and(
                 eq(files.is_chunked, 0),
                 isNull(files.deleted_at),
-                lt(files.retry_count, MAX_AUTO_RETRIES),
-                isNull(files.merkle_hash),
+                // No lt(retry_count, MAX) — infinite retries
                 isNotNull(files.encrypted_file_path),
-                sql`(${files.last_retry_at} IS NULL OR ${files.last_retry_at}::timestamp + (${minRetryDelay} || ' minutes')::interval <= now())`
+                sql`(${files.merkle_hash} IS NULL OR ${files.merkle_hash} = 'pending')`,
+                sql`(${files.last_retry_at} IS NULL OR ${files.last_retry_at}::timestamp + (${this.getRetryDelay(0)} || ' minutes')::interval <= now())`
             ));
 
         for (const file of eligibleFiles) {
@@ -78,8 +80,7 @@ class RetryScheduler {
     }
 
     private async retryFailedChunks() {
-        const minRetryDelay = this.getRetryDelay(0);
-
+        // No retry_count cap — find ALL chunks that need uploading
         const eligibleChunks = await db.select({
             id: fileChunks.id,
             file_id: fileChunks.fileId,
@@ -90,10 +91,10 @@ class RetryScheduler {
             .innerJoin(files, eq(fileChunks.fileId, files.id))
             .where(and(
                 isNull(files.deleted_at),
-                lt(fileChunks.retry_count, MAX_AUTO_RETRIES),
-                isNull(fileChunks.jackal_merkle),
+                // No lt(retry_count, MAX) — infinite retries
                 isNotNull(fileChunks.local_path),
-                sql`(${fileChunks.last_retry_at} IS NULL OR ${fileChunks.last_retry_at}::timestamp + (${minRetryDelay} || ' minutes')::interval <= now())`
+                sql`(${fileChunks.jackal_merkle} IS NULL OR ${fileChunks.jackal_merkle} = 'pending')`,
+                sql`(${fileChunks.last_retry_at} IS NULL OR ${fileChunks.last_retry_at}::timestamp + (${this.getRetryDelay(0)} || ' minutes')::interval <= now())`
             ));
 
         const chunksByFile = new Map<number, any[]>();
@@ -117,7 +118,7 @@ class RetryScheduler {
 
     private getRetryDelay(retryCount: number): number {
         const schedule = RETRY_SCHEDULE.find(s => s.attemptNumber === retryCount + 1);
-        return schedule ? schedule.delayMinutes : RETRY_SCHEDULE[RETRY_SCHEDULE.length - 1].delayMinutes;
+        return schedule ? schedule.delayMinutes : TAIL_DELAY_MINUTES;
     }
 
     private hasEnoughTimePassed(lastRetryAt: string, delayMinutes: number): boolean {

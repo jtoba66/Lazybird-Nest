@@ -151,35 +151,28 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
 
 import { initCrypto } from './crypto/keyManagement';
 import { UploadCleanupService } from './services/uploadCleanup';
-import { TrashReaperService } from './services/trashReaper';
 import { retryScheduler } from './utils/retryScheduler';
 import { startVerificationJob } from './cron/verificationJob';
 import { initRetentionWorker } from './utils/retention';
 
 
 // Start background services
-UploadCleanupService.start();
-TrashReaperService.start();
-retryScheduler.start();
-startVerificationJob();
-initRetentionWorker();
+UploadCleanupService.start();  // Recovery service: re-queues stale uploads instead of deleting
+retryScheduler.start();        // Infinite retry scheduler for failed uploads
+startVerificationJob();        // Gateway verification for uploaded files
+initRetentionWorker();         // Account retention policy
 
-// Fix #4 & #6: Register cron jobs for edge case cleanup
+// Register cron jobs
 import cron from 'node-cron';
-import { cleanupStaleUploads } from './jobs/cleanupStaleUploads';
 import { autoPurgeTrash } from './jobs/autoPurgeTrash';
 
-// Run stale upload cleanup every 6 hours
-cron.schedule('0 */6 * * *', async () => {
-    await cleanupStaleUploads();
-});
-
-// Run trash auto-purge every hour
+// Run trash auto-purge every hour (sole trash handler — archives to graveyard)
 cron.schedule('0 * * * *', async () => {
     await autoPurgeTrash();
 });
 
-console.log('[Cron] Background jobs initialized: stale uploads (6h), trash purge (1h)');
+console.log('[Cron] Background jobs initialized: trash purge (1h)');
+console.log('[Recovery] Upload recovery service active — stale uploads will be re-queued, never deleted');
 
 // Fix: Register email digest jobs
 import { shareLinkDigestJob, accountInactiveJob } from './cron/emailJobs';
