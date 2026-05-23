@@ -98,7 +98,7 @@ async function getObsideo() {
 async function uploadToObsideo(localPath: string, objectKey: string): Promise<string> {
     const client = await getObsideo();
     const fileBuffer = await fs.promises.readFile(localPath);
-    const result = await client.putObject(BUCKET, objectKey, fileBuffer, { encrypt: false });
+    const result = await client.putObject(BUCKET, objectKey, fileBuffer, { encryption: 'external' });
     return result?.merkle_root ?? result?.id ?? objectKey;
 }
 
