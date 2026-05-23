@@ -638,9 +638,8 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     }
 });
 
-router.post('/change-password', async (req, res) => {
+router.post('/change-password', authenticateToken, async (req: AuthRequest, res) => {
     const {
-        email,
         currentAuthHash,
         newAuthHash,
         newEncryptedMasterKey,
@@ -648,9 +647,10 @@ router.post('/change-password', async (req, res) => {
         newSalt,
         kdfParams
     } = req.body;
+    const userId = req.user!.userId;
 
     try {
-        const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         const match = await bcrypt.compare(currentAuthHash, user.password_hash);
@@ -675,7 +675,7 @@ router.post('/change-password', async (req, res) => {
             .where(eq(userCrypto.userId, user.id));
 
         logger.info(`[AUTH] ✅ Password changed for user ${user.id}`);
-        sendPasswordResetConfirmation(email).catch(err => logger.error(`[AUTH] Failed to send password change email: ${err.message}`));
+        sendPasswordResetConfirmation(user.email).catch(err => logger.error(`[AUTH] Failed to send password change email: ${err.message}`));
 
         res.json({ message: 'Password changed successfully' });
 

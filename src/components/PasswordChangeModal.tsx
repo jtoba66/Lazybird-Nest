@@ -114,6 +114,7 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
                     },
                     body: JSON.stringify({
                         email: userEmail,
