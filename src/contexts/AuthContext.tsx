@@ -40,33 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedRole = localStorage.getItem('nest_role');
         return savedEmail ? { email: savedEmail, role: savedRole || 'user' } : null;
     });
-    const [masterKey, setMasterKey] = useState<Uint8Array | null>(() => {
-        // Try to restore master key from localStorage
-        const stored = localStorage.getItem('nest_master_key');
-        if (stored) {
-            try {
-                // Master key is stored as base64 or raw string
-                if (stored.startsWith('---B64---')) {
-                    // We'll restore properly in the useEffect to avoid async issues in initializer
-                    return null;
-                } else {
-                    return Uint8Array.from(atob(stored), c => c.charCodeAt(0));
-                }
-            } catch (e) {
-                console.error('[AUTH] Failed to restore masterKey from storage:', e);
-                return null;
-            }
-        }
-
-        console.log('[AUTH] No master key in storage');
-        // If we have a token but no master key, we are in an inconsistent/locked state.
-        // For security and UX, we should force a re-login to recover the master key.
-        if (localStorage.getItem('nest_token')) {
-            console.warn('[AUTH] Session Locked: Token exists but Master Key is missing. This will be restored if possible, otherwise re-login is required.');
-            return null;
-        }
-        return null;
-    });
+    const [masterKey, setMasterKey] = useState<Uint8Array | null>(null);
 
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
     const [metadataVersion, setMetadataVersion] = useState<number>(0);
@@ -130,47 +104,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // Fix #14: Check master key expiry (90 days)
-    useEffect(() => {
-        const checkKeyExpiry = () => {
-            const savedAtStr = localStorage.getItem('nest_master_key_saved_at');
-            if (savedAtStr) {
-                const savedAt = parseInt(savedAtStr);
-                const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-                if (Date.now() - savedAt > NINETY_DAYS_MS) {
-                    console.warn('[AUTH] Master key expired (90 days). Forcing re-login for key rotation.');
-                    handleSessionLocked();
-                }
-            }
-        };
-        checkKeyExpiry();
-    }, []);
 
-    // 1. Restore master key if possible
+
+    // 1. Check if session is locked (token exists but no master key in memory)
     useEffect(() => {
         const restoreKeys = async () => {
-            if (!masterKey) {
-                const stored = localStorage.getItem('nest_master_key');
-                if (stored && stored.startsWith('---B64---')) {
-                    try {
-                        const { fromBase64 } = await import('../crypto/v2');
-                        const mk = fromBase64(stored.replace('---B64---', ''));
-                        setMasterKey(mk);
-                    } catch (e) {
-                        console.error('[AUTH] Failed to restore Master Key:', e);
-                        // Master key restoration failed - force re-login
-                        handleSessionLocked();
-                    }
-                } else if (token && !stored) {
-                    // Token exists but no master key in storage - session is locked
-                    console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
-                    handleSessionLocked();
-                }
+            if (!masterKey && token) {
+                // Token exists but no master key in memory - session is locked
+                console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
+                handleSessionLocked();
             }
             setIsRestoring(false);
         };
         restoreKeys();
-    }, [masterKey]);
+    }, [masterKey, token]);
 
     // Handle locked session - show toast and redirect to login
     const handleSessionLocked = () => {
@@ -330,7 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If logged in via just AuthHash (unusual), we can't decrypt master key here.
         if (rootKey && response.encryptedMasterKey && response.encryptedMasterKeyNonce) {
             try {
-                const { decryptMasterKey, deriveWrappingKey, fromBase64, toBase64, decryptMetadataBlob } = await import('../crypto/v2');
+                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob } = await import('../crypto/v2');
 
                 const wrappingKey = deriveWrappingKey(rootKey);
                 const mk = decryptMasterKey(
@@ -341,18 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 setMasterKey(mk);
 
-                // Persist master key to localStorage
-                const mkB64 = '---B64---' + toBase64(mk);
-                localStorage.setItem('nest_master_key', mkB64);
-                localStorage.setItem('nest_master_key_saved_at', Date.now().toString()); // Fix #14: Timestamp
 
-                // Verify persistence immediately
-                const verifyMeta = localStorage.getItem('nest_master_key');
-                if (verifyMeta === mkB64) {
-                    console.log('[AUTH] Master Key persisted correctly');
-                } else {
-                    console.error('[AUTH] Failed to verify Master Key persistence');
-                }
 
                 // Persist Encrypted Master Key (Expected by PasswordChangeModal)
                 localStorage.setItem('nest_encrypted_master_key', response.encryptedMasterKey);

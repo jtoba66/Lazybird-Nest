@@ -120,13 +120,8 @@ export const SettingsPage = () => {
                 }
             };
 
-            if (!user || (!masterKey && !localStorage.getItem('nest_master_key'))) {
+            if (!user || !masterKey) {
                 showToast('Encryption keys missing. Please re-login.', 'error');
-                return;
-            }
-
-            if (!masterKey) {
-                showToast('Security verification needed. Please reload.', 'error');
                 return;
             }
 
