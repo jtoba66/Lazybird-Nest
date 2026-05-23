@@ -10,6 +10,8 @@ import { db } from '../db';
 import { files, folders, users, userCrypto, fileChunks, graveyard, graveyardChunks, analyticsEvents } from '../db/schema';
 import { eq, and, isNull, sql, isNotNull, desc, asc, or } from 'drizzle-orm';
 import { getJackalHandler, uploadFileToJackal, verifyOnGateway } from '../jackal';
+import { getStorageProvider } from '../storage';
+import { env } from '../config/env';
 import logger from '../utils/logger';
 import { uploadQueue } from '../utils/uploadQueue';
 import { withTimeout } from '../utils/promise';
@@ -156,7 +158,8 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             chunk_count: 0,
             file_key_encrypted: base64ToBuffer(fileKeyEncrypted),
             file_key_nonce: base64ToBuffer(fileKeyNonce),
-            encrypted_file_path: file.path
+            encrypted_file_path: file.path,
+            storage_provider: env.STORAGE_PROVIDER,
         }).returning({ id: files.id });
 
         const fileId = newFile.id;
@@ -175,21 +178,17 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             meta: `file_${fileId}`
         });
 
-        // 7. Queue upload to Jackal
-        // 7. Queue upload to Jackal
+        // 7. Queue upload to active storage provider
         const tempFilePath = file.path;
         uploadQueue.add(async () => {
-            logger.info(`[FILE-UP-BG] Starting upload task for file ${fileId}`);
+            logger.info(`[FILE-UP-BG] Starting upload task for file ${fileId} via ${env.STORAGE_PROVIDER}`);
 
             // PRE-FLIGHT CHECK: Verify if already uploaded (e.g. via manual retry)
             try {
                 const [freshFile] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
                 if (freshFile && freshFile.merkle_hash && freshFile.merkle_hash !== 'pending') {
-                    logger.info(`[FILE-UP-BG] File ${fileId} already has Merkle (${freshFile.merkle_hash}). Skipping duplicate upload.`);
-                    if (fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
-                        logger.info(`[FILE-UP-BG] Cleaned up temp file for skipped task ${fileId}`);
-                    }
+                    logger.info(`[FILE-UP-BG] File ${fileId} already uploaded. Skipping.`);
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
                     return;
                 }
             } catch (err) {
@@ -197,46 +196,33 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             }
 
             try {
-                const { storage: jackalStorage } = await getJackalHandler();
-                const jackalFilename = `${userId}_${fileId}_${crypto.randomUUID()}`;
+                const provider = getStorageProvider();
+                const objectKey = `files/${fileId}`;
 
                 const fileSizeMB = file.size / (1024 * 1024);
                 const timeoutMs = (15 * 60 * 1000) + (fileSizeMB * 5000);
 
                 const result = await withTimeout(
-                    uploadFileToJackal(jackalStorage, tempFilePath, jackalFilename),
+                    provider.upload(tempFilePath, objectKey),
                     timeoutMs,
-                    `Jackal upload timed out after ${Math.round(timeoutMs / 1000)}s`
+                    `Upload timed out after ${Math.round(timeoutMs / 1000)}s`
                 );
 
-                if (result.success && result.merkle_hash) {
-                    await db.update(files)
-                        .set({
-                            jackal_fid: result.merkle_hash,
-                            merkle_hash: result.merkle_hash,
-                            jackal_filename: jackalFilename
-                        })
-                        .where(eq(files.id, fileId));
+                await db.update(files)
+                    .set({
+                        jackal_fid: result.merkle_root,
+                        merkle_hash: result.merkle_root,
+                        obsideo_key: objectKey,
+                        is_gateway_verified: 1,
+                        encrypted_file_path: null,
+                    })
+                    .where(eq(files.id, fileId));
 
-                    logger.info(`[FILE-UP-BG] ✅ File ${fileId} uploaded to Jackal (merkle: ${result.merkle_hash})`);
+                logger.info(`[FILE-UP-BG] ✅ File ${fileId} uploaded (merkle: ${result.merkle_root})`);
 
-                    // Immediate Cleanup
-                    if (fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
-                        logger.info(`[FILE-UP-BG] Cleaned up temp file for ${fileId}`);
-                    }
-
-                    // Background Verification
-                    verifyOnGateway(result.merkle_hash).then(async (verified) => {
-                        if (verified) {
-                            await db.update(files)
-                                .set({ is_gateway_verified: 1, encrypted_file_path: null })
-                                .where(eq(files.id, fileId));
-                        }
-                    });
-                }
+                if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
             } catch (error: any) {
-                logger.error(`[FILE-UP-BG] ❌ File ${fileId} Jackal upload exception:`, error.message);
+                logger.error(`[FILE-UP-BG] ❌ File ${fileId} upload failed:`, error.message);
                 await db.update(files)
                     .set({
                         retry_count: sql`${files.retry_count} + 1`,
@@ -289,28 +275,22 @@ router.post('/:id/upload', authenticateToken, uploadLimiter, upload.single('file
 
         uploadQueue.add(async () => {
             try {
-                const { storage: jackalStorage } = await getJackalHandler();
-                const jackalFilename = fileRecord.jackal_filename;
+                const provider = getStorageProvider();
+                const objectKey = `files/${fileId}`;
 
-                const result = await uploadFileToJackal(jackalStorage, tempFilePath, jackalFilename!);
+                const result = await provider.upload(tempFilePath, objectKey);
 
-                if (result.success && result.merkle_hash) {
-                    await db.update(files)
-                        .set({
-                            jackal_fid: result.merkle_hash,
-                            merkle_hash: result.merkle_hash,
-                            is_gateway_verified: 0
-                        })
-                        .where(eq(files.id, fileId));
+                await db.update(files)
+                    .set({
+                        jackal_fid: result.merkle_root,
+                        merkle_hash: result.merkle_root,
+                        obsideo_key: objectKey,
+                        is_gateway_verified: 1,
+                        encrypted_file_path: null
+                    })
+                    .where(eq(files.id, fileId));
 
-                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-
-                    verifyOnGateway(result.merkle_hash).then(async verified => {
-                        if (verified) {
-                            await db.update(files).set({ is_gateway_verified: 1, encrypted_file_path: null }).where(eq(files.id, fileId));
-                        }
-                    });
-                }
+                if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
             } catch (e: any) {
                 logger.error(`[FILE-UP-BITS] ❌ Failed:`, e);
             }
@@ -461,8 +441,12 @@ router.delete('/:fileId', authenticateToken, async (req: AuthRequest, res) => {
         const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
         if (!file) return res.status(404).json({ error: 'File not found' });
 
-        // Soft-delete: quota remains until permanent deletion (matches industry standard)
-        await db.update(files).set({ deleted_at: new Date(), share_token: null }).where(eq(files.id, fileId));
+        // Soft-delete: set deleted_at and purge_after (30 days).
+        // Quota is NOT decremented until purge_after fires — files in trash still count against quota.
+        const purgeAfter = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await db.update(files)
+            .set({ deleted_at: new Date(), share_token: null, purge_after: purgeAfter })
+            .where(eq(files.id, fileId));
 
         res.json({ success: true, message: 'File deleted' });
     } catch (error) {
@@ -497,7 +481,8 @@ router.get('/download/:fileId', authenticateToken, async (req: AuthRequest, res)
             index: fileChunks.chunk_index,
             size: fileChunks.size,
             nonce: fileChunks.nonce,
-            jackal_merkle: fileChunks.jackal_merkle
+            jackal_merkle: fileChunks.jackal_merkle,
+            obsideo_key: fileChunks.obsideo_key
         }).from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index) : undefined;
 
         res.json({
@@ -507,14 +492,14 @@ router.get('/download/:fileId', authenticateToken, async (req: AuthRequest, res)
             folder_key_encrypted: bufferToBase64(folder.folder_key_encrypted),
             folder_key_nonce: bufferToBase64(folder.folder_key_nonce),
             folder_id: file.folderId,
-            jackal_fid: file.jackal_fid,
-            merkle_hash: file.merkle_hash,
-            is_gateway_verified: !!file.is_gateway_verified,
+            jackal_fid: file.obsideo_key ?? file.jackal_fid,
+            merkle_hash: file.obsideo_key ?? file.merkle_hash,
+            is_gateway_verified: file.storage_provider === 'jackal' ? !!file.is_gateway_verified : false,
             chunks: chunks?.map(c => ({
                 index: c.index,
                 size: c.size,
                 nonce: bufferToBase64(c.nonce),
-                jackal_merkle: c.jackal_merkle
+                jackal_merkle: c.obsideo_key ?? c.jackal_merkle
             }))
         });
 
@@ -614,21 +599,40 @@ router.delete('/:id/permanent', authenticateToken, async (req: AuthRequest, res)
         const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
         if (!file) return res.status(404).json({ error: 'File not found' });
 
-        // Transaction wrapper to prevent race conditions
+        // FIX #3: Delete from storage backend BEFORE removing from DB.
+        // If storage delete fails, log to graveyard for retry — don't block the user.
+        const provider = getStorageProvider(file.storage_provider);
+        const storageKey = file.obsideo_key ?? file.jackal_fid;
+
+        if (storageKey && !['pending', 'pending-chunks', 'chunked-complete'].includes(storageKey)) {
+            if (file.is_chunked) {
+                const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
+                for (const chunk of chunks) {
+                    const chunkKey = chunk.obsideo_key ?? chunk.jackal_merkle;
+                    if (chunkKey && chunkKey !== 'pending') {
+                        const deleted = await provider.delete(chunkKey);
+                        if (!deleted) logger.warn(`[FILE-PERM-DEL] Storage delete failed for chunk key ${chunkKey} (file ${fileId})`);
+                    }
+                }
+            } else {
+                const deleted = await provider.delete(storageKey);
+                if (!deleted) logger.warn(`[FILE-PERM-DEL] Storage delete failed for key ${storageKey} (file ${fileId})`);
+            }
+        }
+
+        // Transaction: archive to graveyard + delete DB row + decrement quota atomically
         await db.transaction(async (tx) => {
-            // Archive to Graveyard (if it has Jackal data)
-            if (file.jackal_fid || file.merkle_hash) {
+            if (file.jackal_fid || file.merkle_hash || file.obsideo_key) {
                 const [gv] = await tx.insert(graveyard).values({
                     original_file_id: file.id,
                     user_id: file.userId,
                     filename: file.jackal_filename || 'unknown',
                     file_size: file.file_size,
-                    jackal_fid: file.jackal_fid,
+                    jackal_fid: file.obsideo_key ?? file.jackal_fid,
                     merkle_hash: file.merkle_hash,
                     deletion_reason: 'user_permanent_delete'
                 }).returning({ id: graveyard.id });
 
-                // Fix: Detect chunked files even if is_chunked flag is wrong
                 if (file.is_chunked || file.jackal_fid === 'chunked-complete') {
                     const chunks = await tx.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
                     if (chunks.length > 0) {
@@ -636,7 +640,7 @@ router.delete('/:id/permanent', authenticateToken, async (req: AuthRequest, res)
                             chunks.map(c => ({
                                 graveyard_id: gv.id,
                                 chunk_index: c.chunk_index,
-                                jackal_merkle: c.jackal_merkle,
+                                jackal_merkle: c.obsideo_key ?? c.jackal_merkle,
                                 size: c.size
                             }))
                         );
@@ -644,11 +648,8 @@ router.delete('/:id/permanent', authenticateToken, async (req: AuthRequest, res)
                 }
             }
 
-            // Delete from DB (Cascade should handle chunks, but we manually clean up physical files)
             await tx.delete(files).where(eq(files.id, fileId));
 
-            // Update Quota (INSIDE TRANSACTION)
-            // Fix #35: Prevent ghost usage by updating quota atomically with deletion
             await tx.update(users)
                 .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
                 .where(eq(users.id, userId));
@@ -748,16 +749,17 @@ router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
             meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
         });
 
-        const filePath = file.encrypted_file_path;
+        let filePath = file.encrypted_file_path;
 
         // Auto-hydration logic (same as authenticated /raw)
         if (!filePath || !fs.existsSync(filePath)) {
-            if (file.jackal_fid && file.jackal_fid !== 'pending') {
-                const { downloadFileFromJackal } = await import('../jackal');
+            const storageKey = file.obsideo_key ?? file.jackal_fid;
+            if (storageKey && storageKey !== 'pending') {
+                const provider = getStorageProvider(file.storage_provider);
                 const tempPath = path.join(__dirname, `../../uploads/temp_share_${file.id}_${Date.now()}`);
 
                 const handle = file.jackal_filename || `shared_${file.id}`;
-                const success = await downloadFileFromJackal(file.jackal_fid, handle, tempPath);
+                const success = await provider.download(storageKey, handle, tempPath);
 
                 if (success && fs.existsSync(tempPath)) {
                     const stream = fs.createReadStream(tempPath);
@@ -837,17 +839,17 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
             success: true,
             file_id: file.id,
             file_size: file.file_size,
-            jackal_fid: file.jackal_fid,
-            merkle_hash: file.merkle_hash,
+            jackal_fid: file.obsideo_key ?? file.jackal_fid,
+            merkle_hash: file.obsideo_key ?? file.merkle_hash,
             created_at: file.created_at,
-            is_gateway_verified: !!file.is_gateway_verified,
+            is_gateway_verified: file.storage_provider === 'jackal' ? !!file.is_gateway_verified : false,
             is_chunked: !!isActuallyChunked,
             chunks: chunks?.map(c => ({
                 index: c.chunk_index,
                 size: c.size,
                 nonce: bufferToBase64(c.nonce),
-                jackal_merkle: c.jackal_merkle,
-                status: (c.local_path && fs.existsSync(c.local_path)) ? 'local' : (c.jackal_merkle ? 'cloud' : 'pending')
+                jackal_merkle: c.obsideo_key ?? c.jackal_merkle,
+                status: (c.local_path && fs.existsSync(c.local_path)) ? 'local' : ((c.obsideo_key ?? c.jackal_merkle) ? 'cloud' : 'pending')
             }))
         });
 
@@ -862,7 +864,7 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
 router.get('/share/:shareToken/chunk/:index', shareLimiter, async (req, res) => {
     const { shareToken, index } = req.params;
     try {
-        const [file] = await db.select({ id: files.id, deleted_at: files.deleted_at }).from(files).where(eq(files.share_token, shareToken)).limit(1);
+        const [file] = await db.select({ id: files.id, deleted_at: files.deleted_at, storage_provider: files.storage_provider }).from(files).where(eq(files.share_token, shareToken)).limit(1);
         if (!file) {
             logger.warn(`[SHARE-CHUNK] Invalid token attempt: ${shareToken.substring(0, 8)}... from IP: ${req.ip}`);
             return res.status(404).json({ error: 'Share link not found' });
@@ -881,10 +883,11 @@ router.get('/share/:shareToken/chunk/:index', shareLimiter, async (req, res) => 
 
         // Auto-hydration for Shared Chunks (Fix #59)
         if (!chunkPath || !fs.existsSync(chunkPath)) {
-            if (chunk.jackal_merkle && chunk.jackal_merkle !== 'pending') {
-                const { downloadFileFromJackal } = await import('../jackal');
+            const storageKey = chunk.obsideo_key ?? chunk.jackal_merkle;
+            if (storageKey && storageKey !== 'pending') {
+                const provider = getStorageProvider(file.storage_provider);
                 const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_share_${chunk.id}_${Date.now()}`);
-                const success = await downloadFileFromJackal(chunk.jackal_merkle, `chunk_${chunk.chunk_index}`, tempPath);
+                const success = await provider.download(storageKey, `chunk_${chunk.chunk_index}`, tempPath);
                 if (success) {
                     chunkPath = tempPath;
                     isTemp = true;
@@ -980,7 +983,8 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             // share_token is intentionally NOT set here - created on-demand when user shares
             jackal_filename: 'pending',
             file_key_encrypted: base64ToBuffer(fileKeyEncrypted),
-            file_key_nonce: base64ToBuffer(fileKeyNonce)
+            file_key_nonce: base64ToBuffer(fileKeyNonce),
+            storage_provider: env.STORAGE_PROVIDER
         }).returning({ id: files.id, is_chunked: files.is_chunked });
 
         const jackalFilename = `${userId}_${newFile.id}_${crypto.randomUUID()}`;
@@ -1046,34 +1050,39 @@ router.post('/:id/chunk', authenticateToken, upload.single('chunk'), async (req:
 
         // chunk_count increment moved to /finish for accuracy (avoid double-counting retries)
 
-        // Jackal Background Upload
+        // Active Storage Provider Background Upload
         uploadQueue.add(async () => {
             try {
-                const { storage: jackalStorage } = await getJackalHandler();
-                const chunkJackalName = `${fileRecord.jackal_filename}_chunk_${chunk_index}`;
+                const provider = getStorageProvider();
+                const objectKey = `files/${fileId}/chunks/${chunk_index}`;
 
                 // Double check if already uploaded (race condition protection)
-                const [existing] = await db.select({ jackal_merkle: fileChunks.jackal_merkle }).from(fileChunks).where(eq(fileChunks.id, chunkId));
-                if (existing?.jackal_merkle && existing.jackal_merkle !== 'pending') {
+                const [existing] = await db.select({ 
+                    jackal_merkle: fileChunks.jackal_merkle,
+                    obsideo_key: fileChunks.obsideo_key 
+                }).from(fileChunks).where(eq(fileChunks.id, chunkId));
+                if (existing && (existing.obsideo_key || (existing.jackal_merkle && existing.jackal_merkle !== 'pending'))) {
                     logger.info(`[UPLOAD-QUEUE] Chunk ${chunk_index} was already uploaded, skipping.`);
                     return;
                 }
 
-                const result = await uploadFileToJackal(jackalStorage, persistentPath, chunkJackalName);
+                const result = await provider.upload(persistentPath, objectKey);
 
-                if (result.success && result.merkle_hash) {
-                    await db.update(fileChunks).set({ jackal_merkle: result.merkle_hash, jackal_cid: result.cid || null }).where(eq(fileChunks.id, chunkId));
-                    verifyOnGateway(result.merkle_hash).then(async verified => {
-                        if (verified) {
-                            await db.update(fileChunks).set({ is_gateway_verified: 1, local_path: null }).where(eq(fileChunks.id, chunkId));
-                            if (fs.existsSync(persistentPath)) fs.unlinkSync(persistentPath);
-                        }
-                    });
-                }
+                await db.update(fileChunks).set({ 
+                    jackal_merkle: result.merkle_root, 
+                    obsideo_key: objectKey,
+                    is_gateway_verified: 1, 
+                    local_path: null 
+                }).where(eq(fileChunks.id, chunkId));
+
+                if (fs.existsSync(persistentPath)) fs.unlinkSync(persistentPath);
             } catch (e: any) {
                 // Critical Fix: If we actually succeeded via event listener side-effect, IGNORE the error
-                const [check] = await db.select({ jackal_merkle: fileChunks.jackal_merkle }).from(fileChunks).where(eq(fileChunks.id, chunkId));
-                if (check?.jackal_merkle && check.jackal_merkle !== 'pending') {
+                const [check] = await db.select({ 
+                    jackal_merkle: fileChunks.jackal_merkle,
+                    obsideo_key: fileChunks.obsideo_key 
+                }).from(fileChunks).where(eq(fileChunks.id, chunkId));
+                if (check && (check.obsideo_key || (check.jackal_merkle && check.jackal_merkle !== 'pending'))) {
                     logger.info(`[UPLOAD-QUEUE] Error suppressed for chunk ${chunk_index} because upload actually succeeded: ${e.message}`);
                     return;
                 }
@@ -1124,6 +1133,7 @@ router.get('/:id/manifest', authenticateToken, async (req: AuthRequest, res) => 
             id: fileChunks.id,
             chunk_index: fileChunks.chunk_index,
             jackal_merkle: fileChunks.jackal_merkle,
+            obsideo_key: fileChunks.obsideo_key,
             size: fileChunks.size,
             nonce: fileChunks.nonce,
             is_gateway_verified: fileChunks.is_gateway_verified
@@ -1136,10 +1146,10 @@ router.get('/:id/manifest', authenticateToken, async (req: AuthRequest, res) => 
             chunks: chunks.map(c => ({
                 id: c.id,
                 chunk_index: c.chunk_index,
-                jackal_merkle: c.jackal_merkle,
+                jackal_merkle: c.obsideo_key ?? c.jackal_merkle,
                 size: c.size,
                 nonce: bufferToBase64(c.nonce),
-                is_gateway_verified: c.is_gateway_verified
+                is_gateway_verified: file.storage_provider === 'jackal' ? c.is_gateway_verified : 0
             }))
         });
     } catch (error: any) {
@@ -1168,10 +1178,11 @@ router.get('/:id/chunk/:index', authenticateToken, async (req: AuthRequest, res)
 
         // Auto-hydration
         if (!chunkPath || !fs.existsSync(chunkPath)) {
-            if (chunk.jackal_merkle && chunk.jackal_merkle !== 'pending') {
-                const { downloadFileFromJackal } = await import('../jackal');
+            const storageKey = chunk.obsideo_key ?? chunk.jackal_merkle;
+            if (storageKey && storageKey !== 'pending') {
+                const provider = getStorageProvider(file.storage_provider);
                 const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_chunk_${chunk.id}_${Date.now()}`);
-                const success = await downloadFileFromJackal(chunk.jackal_merkle, `chunk_${chunk.chunk_index}`, tempPath);
+                const success = await provider.download(storageKey, `chunk_${chunk.chunk_index}`, tempPath);
                 if (success) {
                     chunkPath = tempPath;
                     isTemp = true;
@@ -1229,11 +1240,12 @@ router.get('/raw/:fileId', authenticateToken, async (req: AuthRequest, res) => {
             for (const chunk of chunks) {
                 let chunkPath = chunk.local_path;
                 if (!chunkPath || !fs.existsSync(chunkPath)) {
-                    if (chunk.jackal_merkle && chunk.jackal_merkle !== 'pending') {
-                        const { downloadFileFromJackal } = await import('../jackal');
+                    const storageKey = chunk.obsideo_key ?? chunk.jackal_merkle;
+                    if (storageKey && storageKey !== 'pending') {
+                        const provider = getStorageProvider(file.storage_provider);
                         const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_chunk_${chunk.id}`);
-                        const success = await downloadFileFromJackal(chunk.jackal_merkle, `chunk_${chunk.chunk_index}`, tempPath);
-                        if (success) chunkPath = tempPath;
+                        const success = await provider.download(storageKey, `chunk_${chunk.chunk_index}`, tempPath);
+                        if (success && fs.existsSync(tempPath)) chunkPath = tempPath;
                     }
                 }
                 if (!chunkPath) throw new Error("Missing chunk");
@@ -1256,14 +1268,15 @@ router.get('/raw/:fileId', authenticateToken, async (req: AuthRequest, res) => {
 
         // Auto-hydration for Monolithic Files
         if (!filePath || !fs.existsSync(filePath)) {
-            if (file.jackal_fid && file.jackal_fid !== 'pending') {
-                logger.info(`[DEBUG-RAW] Hydrating monolithic file from Jackal: ${file.jackal_fid}`);
-                const { downloadFileFromJackal } = await import('../jackal');
+            const storageKey = file.obsideo_key ?? file.jackal_fid;
+            if (storageKey && storageKey !== 'pending') {
+                logger.info(`[DEBUG-RAW] Hydrating monolithic file: ${storageKey}`);
+                const provider = getStorageProvider(file.storage_provider);
                 const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_${file.id}_${Date.now()}`);
 
                 // Use jackal_filename or fid as handle
                 const handle = file.jackal_filename || `restored_file_${file.id}`;
-                const success = await downloadFileFromJackal(file.jackal_fid, handle, tempPath);
+                const success = await provider.download(storageKey, handle, tempPath);
 
                 if (success && fs.existsSync(tempPath)) {
                     logger.info(`[DEBUG-RAW] Hydration successful for file ${fileId}`);

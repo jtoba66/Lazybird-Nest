@@ -123,6 +123,12 @@ export const files = pgTable('files', {
     retry_count: integer('retry_count').default(0),
     last_retry_at: text('last_retry_at'),
     failure_reason: text('failure_reason'),
+
+    // Storage Provider (migration)
+    storage_provider: text('storage_provider').default('jackal').notNull(),
+    obsideo_key: text('obsideo_key'),
+    migration_status: text('migration_status'), // null | 'migrated' | 'broken'
+    purge_after: timestamp('purge_after'),       // set on soft-delete: NOW + 30 days
 });
 
 export const fileChunks = pgTable('file_chunks', {
@@ -131,6 +137,7 @@ export const fileChunks = pgTable('file_chunks', {
     chunk_index: integer('chunk_index').notNull(),
     jackal_merkle: text('jackal_merkle'),
     jackal_cid: text('jackal_cid'),
+    obsideo_key: text('obsideo_key'),  // Obsideo object key for this chunk
     size: integer('size').notNull(),
     nonce: bytea('nonce').notNull(),
     local_path: text('local_path'),

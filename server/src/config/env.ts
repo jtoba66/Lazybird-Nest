@@ -49,6 +49,16 @@ const envSchema = z.object({
 
     // Storage
     DOWNLOAD_GATEWAY_URL: z.string().url().default('https://gateway.lazybird.io'),
+    STORAGE_PROVIDER: z.enum(['jackal', 'obsideo']).default('jackal'),
+
+    // Obsideo credentials (optional — only required when STORAGE_PROVIDER=obsideo)
+    OBSIDEO_API_KEY: z.string().optional(),
+    OBSIDEO_ACCOUNT_ID: z.string().optional(),
+    OBSIDEO_CUSTOMER_PUBLIC_KEY: z.string().optional(),
+    OBSIDEO_CUSTOMER_PRIVATE_KEY: z.string().optional(),
+    OBSIDEO_COORDINATOR_URL: z.string().url().default('https://coordinator.obsideo.io'),
+    OBSIDEO_COORDINATOR_PUBLIC_KEY: z.string().optional(),
+    OBSIDEO_BUNDLE_STORE_PATH: z.string().default('/var/nest/obsideo-bundle'),
 
     // Monitoring
     SENTRY_DSN: z.string().optional(),

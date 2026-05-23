@@ -7,6 +7,7 @@ import { authenticateToken } from '../middleware/auth';
 import { requireAdmin } from '../middleware/admin';
 import os from 'os';
 import { getJackalHandler, uploadFileToJackal, verifyOnGateway } from '../jackal';
+import { getStorageProvider } from '../storage';
 import { withTimeout } from '../utils/promise';
 import logger from '../utils/logger';
 import fs from 'fs';
@@ -627,39 +628,35 @@ router.post('/chunks/:id/retry', authenticateToken, requireAdmin, async (req, re
             return res.status(400).json({ error: 'Local chunk file missing. Cannot retry.' });
         }
 
-        // 2. Init Jackal
-        const { storage } = await getJackalHandler();
+        // 2. Init Storage Provider
+        const provider = getStorageProvider();
 
         // 3. Upload
-        const filenameFragment = `${chunk.fileId}_chunk_${chunk.chunk_index}`;
-        const result = await uploadFileToJackal(storage, chunk.local_path, filenameFragment);
+        const objectKey = `files/${chunk.fileId}/chunks/${chunk.chunk_index}`;
+        const result = await provider.upload(chunk.local_path, objectKey);
 
-        if (result.success && result.merkle_hash) {
-            // 4. Update DB
-            await db.update(fileChunks)
-                .set({
-                    jackal_merkle: result.merkle_hash,
-                    jackal_cid: result.cid,
-                    retry_count: (chunk.retry_count || 0) + 1,
-                    last_retry_at: new Date().toISOString(),
-                    is_gateway_verified: 0 // Require re-verification
-                })
-                .where(eq(fileChunks.id, chunkId));
+        // 4. Update DB
+        await db.update(fileChunks)
+            .set({
+                jackal_merkle: result.merkle_root,
+                obsideo_key: objectKey,
+                retry_count: (chunk.retry_count || 0) + 1,
+                last_retry_at: new Date().toISOString(),
+                is_gateway_verified: 1
+            })
+            .where(eq(fileChunks.id, chunkId));
 
-            // Clean up local file immediately on success
-            if (fs.existsSync(chunk.local_path)) {
-                try {
-                    fs.unlinkSync(chunk.local_path);
-                    console.log(`[ADMIN] Cleaned up local chunk file: ${chunk.local_path}`);
-                } catch (e) {
-                    console.warn(`[ADMIN] Failed to delete local chunk file: ${e}`);
-                }
+        // Clean up local file immediately on success
+        if (fs.existsSync(chunk.local_path)) {
+            try {
+                fs.unlinkSync(chunk.local_path);
+                console.log(`[ADMIN] Cleaned up local chunk file: ${chunk.local_path}`);
+            } catch (e) {
+                console.warn(`[ADMIN] Failed to delete local chunk file: ${e}`);
             }
-
-            res.json({ success: true, merkle: result.merkle_hash });
-        } else {
-            res.status(500).json({ error: 'Jackal upload returned failure' });
         }
+
+        res.json({ success: true, merkle: result.merkle_root });
 
     } catch (err: any) {
         console.error('[ADMIN] ❌ Retry chunk failed!');

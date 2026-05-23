@@ -6,3 +6,6 @@ node_modules/
 dist/
 .env
 *.log
+
+# Obsideo account credentials — NEVER commit private keys
+obsideo-nest/

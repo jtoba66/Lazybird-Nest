@@ -2,13 +2,14 @@ import { db } from '../db';
 import { files, fileChunks } from '../db/schema';
 import { eq, and, isNull, sql, inArray } from 'drizzle-orm';
 import logger from './logger';
+import { getStorageProvider } from '../storage';
 import { uploadQueue } from './uploadQueue';
-import { getJackalHandler, uploadFileToJackal, verifyOnGateway } from '../jackal';
 import { withTimeout } from './promise';
+import { env } from '../config/env';
 import fs from 'fs';
 
 /**
- * Retry upload for a single monolithic file
+ * Retry upload for a single monolithic file using the active storage provider.
  */
 export async function retryFileUpload(fileId: number): Promise<void> {
     const [file] = await db.select({
@@ -16,7 +17,8 @@ export async function retryFileUpload(fileId: number): Promise<void> {
         userId: files.userId,
         jackal_filename: files.jackal_filename,
         encrypted_file_path: files.encrypted_file_path,
-        file_size: files.file_size
+        file_size: files.file_size,
+        storage_provider: files.storage_provider,
     })
         .from(files)
         .where(and(eq(files.id, fileId), isNull(files.deleted_at)))
@@ -32,39 +34,38 @@ export async function retryFileUpload(fileId: number): Promise<void> {
         return;
     }
 
-    logger.info(`[RETRY] Starting retry for file ${fileId}`);
+    logger.info(`[RETRY] Starting retry for file ${fileId} via ${env.STORAGE_PROVIDER}`);
 
     const now = new Date().toISOString();
     await db.update(files).set({ last_retry_at: now }).where(eq(files.id, fileId));
 
     uploadQueue.add(async () => {
         try {
-            const { storage: jackalStorage } = await getJackalHandler();
-            const jackalFilename = file.jackal_filename || `${file.userId}_${fileId}_file`;
+            const provider = getStorageProvider();
+            const objectKey = `files/${fileId}`;
 
             const fileSizeMB = file.file_size / (1024 * 1024);
             const timeoutMs = (15 * 60 * 1000) + (fileSizeMB * 5000);
 
             const result = await withTimeout(
-                uploadFileToJackal(jackalStorage, file.encrypted_file_path!, jackalFilename),
+                provider.upload(file.encrypted_file_path!, objectKey),
                 timeoutMs,
                 `Retry upload timed out after ${Math.round(timeoutMs / 1000)}s`
             );
 
-            if (result.success && result.merkle_hash) {
-                await db.update(files)
-                    .set({ jackal_fid: result.merkle_hash, merkle_hash: result.merkle_hash, jackal_filename: jackalFilename })
-                    .where(eq(files.id, fileId));
+            await db.update(files)
+                .set({
+                    jackal_fid: result.merkle_root,
+                    merkle_hash: result.merkle_root,
+                    obsideo_key: objectKey,
+                    is_gateway_verified: 1,
+                    encrypted_file_path: null,
+                })
+                .where(eq(files.id, fileId));
 
-                logger.info(`[RETRY] ✅ File ${fileId} uploaded to Jackal`);
+            logger.info(`[RETRY] ✅ File ${fileId} uploaded (merkle: ${result.merkle_root})`);
 
-                verifyOnGateway(result.merkle_hash).then(async (verified: boolean) => {
-                    if (verified) {
-                        await db.update(files).set({ is_gateway_verified: 1, encrypted_file_path: null }).where(eq(files.id, fileId));
-                        if (fs.existsSync(file.encrypted_file_path!)) fs.unlinkSync(file.encrypted_file_path!);
-                    }
-                });
-            }
+            if (fs.existsSync(file.encrypted_file_path!)) fs.unlinkSync(file.encrypted_file_path!);
         } catch (error: any) {
             logger.error(`[RETRY] ❌ File ${fileId} retry failed:`, error.message);
             await db.update(files).set({
@@ -77,12 +78,13 @@ export async function retryFileUpload(fileId: number): Promise<void> {
 }
 
 /**
- * Retry upload for specific chunks of a file
+ * Retry upload for specific chunks of a file using the active storage provider.
  */
 export async function retryChunkUploads(fileId: number, chunkIds?: string[]): Promise<void> {
     const [file] = await db.select({
         id: files.id,
-        jackal_filename: files.jackal_filename
+        jackal_filename: files.jackal_filename,
+        storage_provider: files.storage_provider,
     }).from(files).where(and(eq(files.id, fileId), isNull(files.deleted_at))).limit(1);
 
     if (!file) throw new Error(`File ${fileId} not found or deleted`);
@@ -91,7 +93,12 @@ export async function retryChunkUploads(fileId: number, chunkIds?: string[]): Pr
     if (chunkIds && chunkIds.length > 0) {
         chunkList = await db.select().from(fileChunks).where(and(inArray(fileChunks.id, chunkIds), eq(fileChunks.fileId, fileId)));
     } else {
-        chunkList = await db.select().from(fileChunks).where(and(eq(fileChunks.fileId, fileId), sql`(${fileChunks.jackal_merkle} is null or ${fileChunks.is_gateway_verified} = 0)`));
+        chunkList = await db.select().from(fileChunks).where(
+            and(
+                eq(fileChunks.fileId, fileId),
+                sql`(${fileChunks.jackal_merkle} is null or ${fileChunks.is_gateway_verified} = 0)`
+            )
+        );
     }
 
     if (chunkList.length === 0) {
@@ -108,27 +115,27 @@ export async function retryChunkUploads(fileId: number, chunkIds?: string[]): Pr
 
         uploadQueue.add(async () => {
             try {
-                const { storage: jackalStorage } = await getJackalHandler();
-                const chunkJackalName = `${file.jackal_filename || `file_${fileId}`}_chunk_${chunk.chunk_index}`;
+                const provider = getStorageProvider();
+                const objectKey = `files/${fileId}/chunks/${chunk.chunk_index}`;
 
                 const fileSizeMB = chunk.size / (1024 * 1024);
                 const timeoutMs = (10 * 60 * 1000) + (fileSizeMB * 5000);
 
                 const result = await withTimeout(
-                    uploadFileToJackal(jackalStorage, chunk.local_path!, chunkJackalName),
+                    provider.upload(chunk.local_path!, objectKey),
                     timeoutMs,
                     `Chunk retry timed out`
                 );
 
-                if (result.success && result.merkle_hash) {
-                    await db.update(fileChunks).set({ jackal_merkle: result.merkle_hash, jackal_cid: result.cid || null }).where(eq(fileChunks.id, chunk.id));
-                    verifyOnGateway(result.merkle_hash).then(async verified => {
-                        if (verified) {
-                            await db.update(fileChunks).set({ is_gateway_verified: 1, local_path: null }).where(eq(fileChunks.id, chunk.id));
-                            if (fs.existsSync(chunk.local_path!)) fs.unlinkSync(chunk.local_path!);
-                        }
-                    });
-                }
+                await db.update(fileChunks).set({
+                    jackal_merkle: result.merkle_root,
+                    obsideo_key: objectKey,
+                    is_gateway_verified: 1,
+                    local_path: null,
+                }).where(eq(fileChunks.id, chunk.id));
+
+                if (fs.existsSync(chunk.local_path!)) fs.unlinkSync(chunk.local_path!);
+                logger.info(`[RETRY] ✅ Chunk ${chunk.chunk_index} of file ${fileId} uploaded`);
             } catch (error: any) {
                 await db.update(fileChunks).set({
                     retry_count: sql`${fileChunks.retry_count} + 1`,
