@@ -124,9 +124,11 @@ app.use('/api/folders', foldersRoutes);
 app.use('/api/storage', storageRoutes);
 app.use('/api/admin', adminRoutes);
 
-app.get("/api/debug-sentry", function mainHandler(req, res) {
-    throw new Error("My first Sentry error!");
-});
+if (env.NODE_ENV !== 'production') {
+    app.get("/api/debug-sentry", function mainHandler(req, res) {
+        throw new Error("My first Sentry error!");
+    });
+}
 
 // The error handler must be registered before any other error middleware and after all controllers
 Sentry.setupExpressErrorHandler(app);
