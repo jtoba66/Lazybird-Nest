@@ -131,7 +131,20 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             logger.info(`[FILE-UP] 🔓 God-mode bypass for ${req.user.email}`);
         }
 
-        // 2. Save file metadata to database FIRST
+        // 2. Validate target folder ownership before insert (skip for null = root)
+        if (folderId) {
+            const [folder] = await db.select({ id: folders.id })
+                .from(folders)
+                .where(and(eq(folders.id, parseInt(folderId)), eq(folders.userId, userId)))
+                .limit(1);
+            if (!folder) {
+                fs.unlinkSync(file.path);
+                logger.warn(`[FILE-UP] User ${userId} attempted upload to unowned folder ${folderId}`);
+                return res.status(403).json({ error: 'Target folder not found or access denied' });
+            }
+        }
+
+        // 3. Save file metadata to database FIRST
         const [newFile] = await db.insert(files).values({
             userId,
             jackal_fid: 'pending',
@@ -926,7 +939,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
                 .limit(1);
             if (!folder) {
                 logger.warn(`[UPLOAD-INIT] Invalid folder ID: ${folderId} for user ${userId}`);
-                return res.status(404).json({ error: 'Target folder not found' });
+                return res.status(403).json({ error: 'Target folder not found or access denied' });
             }
         }
 
