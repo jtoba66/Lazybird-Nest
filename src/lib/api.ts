@@ -32,6 +32,7 @@ api.interceptors.response.use(
                 localStorage.removeItem('nest_email');
                 localStorage.removeItem('nest_role');
                 localStorage.removeItem('nest_master_key');
+                sessionStorage.removeItem('nest_master_key');
 
                 // Show user-friendly message
                 const message = error.response?.data?.error || 'Your session has expired. Please log in again.';

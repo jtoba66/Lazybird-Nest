@@ -114,7 +114,7 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('nest_token')}`
                     },
                     body: JSON.stringify({
                         email: userEmail,
@@ -145,9 +145,10 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
                     // Force logout because tokens might be invalidated conceptually (though JWT remains valid)
                     // But local storage is now STALE (encrypted with old key).
                     // We must clear it.
-                    localStorage.removeItem('encryptedMasterKey');
-                    localStorage.removeItem('encryptedMasterKeyNonce');
-                    localStorage.removeItem('token');
+                    localStorage.removeItem('nest_encrypted_master_key');
+                    localStorage.removeItem('nest_encrypted_master_key_nonce');
+                    localStorage.removeItem('nest_token');
+                    sessionStorage.removeItem('nest_master_key');
                     window.location.href = '/login';
                 }, 2000);
 
