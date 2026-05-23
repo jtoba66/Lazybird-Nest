@@ -834,11 +834,18 @@ router.get('/share/:shareToken', shareLimiter, async (req, res) => {
 });
 
 
-router.get('/share/:shareToken/chunk/:index', async (req, res) => {
+router.get('/share/:shareToken/chunk/:index', shareLimiter, async (req, res) => {
     const { shareToken, index } = req.params;
     try {
-        const [file] = await db.select({ id: files.id }).from(files).where(eq(files.share_token, shareToken)).limit(1);
-        if (!file) return res.status(404).json({ error: 'Share link not found' });
+        const [file] = await db.select({ id: files.id, deleted_at: files.deleted_at }).from(files).where(eq(files.share_token, shareToken)).limit(1);
+        if (!file) {
+            logger.warn(`[SHARE-CHUNK] Invalid token attempt: ${shareToken.substring(0, 8)}... from IP: ${req.ip}`);
+            return res.status(404).json({ error: 'Share link not found' });
+        }
+        if (file.deleted_at) {
+            logger.warn(`[SHARE-CHUNK] Attempted access to deleted file via token ${shareToken.substring(0, 8)}`);
+            return res.status(410).json({ error: 'This file is no longer available' });
+        }
 
         const [chunk] = await db.select().from(fileChunks).where(and(eq(fileChunks.fileId, file.id), eq(fileChunks.chunk_index, parseInt(index)))).limit(1);
 
