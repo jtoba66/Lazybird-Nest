@@ -524,6 +524,18 @@ router.put('/:fileId/move', authenticateToken, validate(moveFileSchema), async (
         const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
         if (!file) return res.status(404).json({ error: 'File not found' });
 
+        // Validate target folder ownership (skip for null = root, which is always valid)
+        if (folderId !== null && folderId !== undefined) {
+            const [folder] = await db.select({ id: folders.id })
+                .from(folders)
+                .where(and(eq(folders.id, folderId), eq(folders.userId, userId)))
+                .limit(1);
+            if (!folder) {
+                logger.warn(`[FILE-MOVE] User ${userId} attempted to move file ${fileId} to unowned folder ${folderId}`);
+                return res.status(403).json({ error: 'Target folder not found or access denied' });
+            }
+        }
+
         const updateData: any = { folderId: folderId || null };
         if (fileKeyEncrypted && fileKeyNonce) {
             updateData.file_key_encrypted = base64ToBuffer(fileKeyEncrypted);
