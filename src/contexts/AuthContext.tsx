@@ -40,7 +40,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedRole = localStorage.getItem('nest_role');
         return savedEmail ? { email: savedEmail, role: savedRole || 'user' } : null;
     });
-    const [masterKey, setMasterKey] = useState<Uint8Array | null>(null);
+    const [masterKey, setMasterKey] = useState<Uint8Array | null>(() => {
+        // Restore master key from sessionStorage (tab-scoped, cleared on tab close)
+        const stored = sessionStorage.getItem('nest_master_key');
+        if (stored) {
+            try {
+                return Uint8Array.from(atob(stored.replace('---B64---', '')), c => c.charCodeAt(0));
+            } catch (e) {
+                console.error('[AUTH] Failed to restore masterKey from sessionStorage:', e);
+                sessionStorage.removeItem('nest_master_key');
+            }
+        }
+        return null;
+    });
 
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
     const [metadataVersion, setMetadataVersion] = useState<number>(0);
@@ -106,13 +118,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
 
-    // 1. Check if session is locked (token exists but no master key in memory)
+    // 1. Check if session is locked (token exists but no master key in memory or sessionStorage)
     useEffect(() => {
         const restoreKeys = async () => {
             if (!masterKey && token) {
-                // Token exists but no master key in memory - session is locked
-                console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
-                handleSessionLocked();
+                // Check sessionStorage one more time (handles edge cases where state init ran before storage was ready)
+                const stored = sessionStorage.getItem('nest_master_key');
+                if (stored) {
+                    try {
+                        const { fromBase64 } = await import('../crypto/v2');
+                        const mk = fromBase64(stored.replace('---B64---', ''));
+                        setMasterKey(mk);
+                    } catch (e) {
+                        console.error('[AUTH] Failed to restore Master Key from sessionStorage:', e);
+                        sessionStorage.removeItem('nest_master_key');
+                        handleSessionLocked();
+                    }
+                } else {
+                    // Token exists but no master key anywhere - session is locked, force re-login
+                    console.warn('[AUTH] Session locked: Token exists but Master Key is missing.');
+                    handleSessionLocked();
+                }
             }
             setIsRestoring(false);
         };
@@ -125,9 +151,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('nest_token');
         localStorage.removeItem('nest_email');
         localStorage.removeItem('nest_role');
-        localStorage.removeItem('nest_master_key');
+        localStorage.removeItem('nest_master_key');         // Legacy: wipe any old localStorage key
+        localStorage.removeItem('nest_master_key_saved_at'); // Legacy: wipe old expiry timestamp
         localStorage.removeItem('nest_encrypted_master_key');
         localStorage.removeItem('nest_encrypted_master_key_nonce');
+        sessionStorage.removeItem('nest_master_key');        // Wipe current sessionStorage key
 
         // Show toast notification
         const toast = document.createElement('div');
@@ -222,10 +250,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setMetadata({ v: 2, folders: {}, files: {} });
                 }
             } else if (token && !masterKey) {
-                // Only warn if it's TRULY missing from storage too.
-                // Otherwise, we are just waiting for the async restoreKeys effect to finish.
-                if (!localStorage.getItem('nest_master_key')) {
-                    console.warn('[AUTH] Cannot restore metadata: Master Key is missing from memory and storage.');
+                if (!sessionStorage.getItem('nest_master_key')) {
+                    console.warn('[AUTH] Cannot restore metadata: Master Key is missing from memory and sessionStorage.');
                 }
             }
         };
@@ -288,6 +314,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 setMasterKey(mk);
 
+                // Persist master key to sessionStorage (tab-scoped; cleared on tab/browser close)
+                const { toBase64 } = await import('../crypto/v2');
+                sessionStorage.setItem('nest_master_key', '---B64---' + toBase64(mk));
 
 
                 // Persist Encrypted Master Key (Expected by PasswordChangeModal)
@@ -451,10 +480,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('nest_token');
         localStorage.removeItem('nest_email');
         localStorage.removeItem('nest_role');
-        localStorage.removeItem('nest_master_key');
-        localStorage.removeItem('nest_master_key_saved_at'); // Fix C2: Clean up timestamp
+        localStorage.removeItem('nest_master_key');         // Legacy: wipe any old localStorage key
+        localStorage.removeItem('nest_master_key_saved_at'); // Legacy: wipe old expiry timestamp
         localStorage.removeItem('nest_encrypted_master_key');
         localStorage.removeItem('nest_encrypted_master_key_nonce');
+        sessionStorage.removeItem('nest_master_key');        // Wipe current sessionStorage key
 
         // Clear sensitive memory explicitly if possible (though GC handles it eventually)
         if (masterKey) {
