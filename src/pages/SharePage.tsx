@@ -190,6 +190,7 @@ export const SharePage = () => {
                     fileKey,
                     filename,
                     chunks: fileInfo.chunks,
+                    isGatewayVerified: fileInfo.is_gateway_verified,
                     onProgress: (p) => setDownloadProgress(p)
                 });
             }

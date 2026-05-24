@@ -19,6 +19,7 @@ export interface DownloadOptions {
     shareToken?: string;
     fileId?: number;
     authToken?: string;
+    isGatewayVerified?: boolean;
 }
 
 /**
@@ -37,7 +38,7 @@ function isIOS(): boolean {
  */
 export class StreamingDownloader {
     static async download(options: DownloadOptions): Promise<void> {
-        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress } = options;
+        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress, isGatewayVerified } = options;
         const totalSize = chunks.reduce((acc, c) => acc + c.size, 0);
         let bytesDownloaded = 0;
 
@@ -83,8 +84,20 @@ export class StreamingDownloader {
                         throw new Error('Missing auth config for local download');
                     }
                 } else if (chunk.status === 'cloud' && chunk.jackal_merkle) {
-                    tryGateway = true;
-                    chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
+                    if (isGatewayVerified) {
+                        tryGateway = true;
+                        chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
+                    } else {
+                        // Use Server proxy for cloud files that aren't gateway-verified (e.g. obsideo)
+                        if (shareToken) {
+                            chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                        } else if (fileId && authToken) {
+                            chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
+                            headers['Authorization'] = `Bearer ${authToken}`;
+                        } else {
+                            throw new Error('Missing auth config for local download');
+                        }
+                    }
                 } else {
                     throw new Error(`Chunk ${chunk.index} is not ready yet (Status: ${chunk.status})`);
                 }

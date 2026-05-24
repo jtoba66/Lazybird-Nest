@@ -159,6 +159,7 @@ export const NestPage = () => {
                     chunks: downloadChunks,
                     fileId: file.id,
                     authToken: token!,
+                    isGatewayVerified: downloadInfo.data.is_gateway_verified,
                     onProgress: (p) => {
                         if (toastId) updateToast(toastId, `Downloading... ${p.toFixed(0)}%`, 'info');
                     }
