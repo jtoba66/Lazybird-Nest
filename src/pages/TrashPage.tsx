@@ -131,7 +131,7 @@ export const TrashPage = () => {
                         <Trash size={32} weight="fill" className="text-primary scale-90 sm:scale-100" />
                         Trash
                     </h1>
-                    <p className="text-text-muted mt-1">Files are kept here for 24 hours before being permanently deleted.</p>
+                    <p className="text-text-muted mt-1">Files are kept here for 30 days before being permanently deleted.</p>
                 </div>
             </div>
 
@@ -143,7 +143,7 @@ export const TrashPage = () => {
                 <div>
                     <h4 className="font-bold text-primary">Automatic Purge Policy</h4>
                     <p className="text-sm text-text-muted">
-                        Nest automatically purges items in the trash after 24 hours. Once purged, files cannot be recovered as their encryption keys are wiped from the server.
+                        Nest automatically purges items in the trash after 30 days. Once purged, files cannot be recovered as their encryption keys are wiped from the server.
                     </p>
                 </div>
             </div>
@@ -159,7 +159,7 @@ export const TrashPage = () => {
                             <Trash size={48} />
                         </div>
                         <h3 className="text-xl font-bold text-text-main">Trash is empty</h3>
-                        <p className="text-text-muted mt-2">Any files you delete will appear here for 24 hours.</p>
+                        <p className="text-text-muted mt-2">Any files you delete will appear here for 30 days.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -201,7 +201,7 @@ export const TrashPage = () => {
 
                                 <div className="mt-4 pt-4 border-t border-text-muted/5">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-text-muted/40">
-                                        Permanent purge in &lt; 24h
+                                        Permanent purge in &lt; 30d
                                     </span>
                                 </div>
                             </div>
