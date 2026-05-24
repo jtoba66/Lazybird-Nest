@@ -60,6 +60,12 @@ function registerWorker() {
 function onMessage (event) {
   let { data, ports, origin } = event
 
+  // Ignore broadcast messages from crypto extensions (MetaMask, Keplr, etc)
+  // that do not contain the MessageChannel ports StreamSaver expects.
+  if (!ports || !ports.length) {
+    return;
+  }
+
   // It's important to have a messageChannel, don't want to interfere
   // with other simultaneous downloads
   if (!ports || !ports.length) {
