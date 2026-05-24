@@ -159,7 +159,7 @@ const obsideoProvider: StorageProvider = {
             if (metaRes.status === 404) return null;
             if (!metaRes.ok) throw new Error(`Coordinator returned ${metaRes.status}`);
             
-            const meta = await metaRes.json();
+            const meta = await metaRes.json() as any;
             
             // 2. Fetch stream from Provider
             const dlRes = await fetch(`${meta.provider_url}/download/${meta.merkle_root}`, {
