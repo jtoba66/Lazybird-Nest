@@ -2,7 +2,7 @@ import { db } from '../db';
 import { files as filesTable } from '../db/schema';
 import { eq, and, isNull, sql, isNotNull, ne } from 'drizzle-orm';
 import fs from 'fs';
-import { verifyOnGateway } from '../jackal';
+import { verifyFile } from '../storage';
 
 const BATCH_SIZE = 50;
 const JOB_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -21,6 +21,8 @@ async function runVerificationCycle() {
             id: filesTable.id,
             jackal_filename: filesTable.jackal_filename,
             merkle_hash: filesTable.merkle_hash,
+            obsideo_key: filesTable.obsideo_key,
+            storage_provider: filesTable.storage_provider,
             encrypted_file_path: filesTable.encrypted_file_path
         })
             .from(filesTable)
@@ -43,8 +45,10 @@ async function runVerificationCycle() {
 
         for (const file of filesToCheck) {
             try {
-                if (!file.merkle_hash) continue;
-                const verified = await verifyOnGateway(file.merkle_hash, 5, 60000);
+                const storageKey = file.obsideo_key || file.merkle_hash;
+                if (!storageKey) continue;
+                
+                const verified = await verifyFile(storageKey, file.storage_provider);
 
                 if (verified) {
                     console.log(`[VerificationJob] ✅ File verified: ${file.jackal_filename} (ID: ${file.id})`);

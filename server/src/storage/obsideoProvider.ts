@@ -121,6 +121,27 @@ const obsideoProvider: StorageProvider = {
             return false;
         }
     },
+
+    async verify(merkleOrKey: string) {
+        const client = await getClient();
+        logger.info(`[ObsideoProvider] Verifying key=${merkleOrKey}`);
+
+        try {
+            // listObjects returns ObjectInfo[] matching the prefix.
+            // If the exact key exists, it will be in the list.
+            const objects = await client.listObjects(BUCKET, merkleOrKey);
+            const exists = objects.some((obj: any) => obj.key === merkleOrKey);
+            if (exists) {
+                logger.info(`[ObsideoProvider] ✅ Verified ${merkleOrKey} exists`);
+            } else {
+                logger.warn(`[ObsideoProvider] ⚠️ ${merkleOrKey} not found in bucket`);
+            }
+            return exists;
+        } catch (err: any) {
+            logger.error(`[ObsideoProvider] ❌ Verify failed for ${merkleOrKey}: ${err.message}`);
+            return false;
+        }
+    },
 };
 
 export default obsideoProvider;

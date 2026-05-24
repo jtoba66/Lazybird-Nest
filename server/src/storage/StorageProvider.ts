@@ -28,4 +28,11 @@ export interface StorageProvider {
      * @returns true on success, false on failure (caller decides whether to retry).
      */
     delete(merkleOrKey: string): Promise<boolean>;
+
+    /**
+     * Verifies if an object exists on the storage backend without downloading it.
+     * @param merkleOrKey  Jackal merkle hash OR Obsideo object key.
+     * @returns true if the file exists, false otherwise.
+     */
+    verify(merkleOrKey: string): Promise<boolean>;
 }

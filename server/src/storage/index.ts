@@ -18,3 +18,11 @@ export function getStorageProvider(providerName?: string | null): StorageProvide
     if (name === 'obsideo') return obsideoProvider;
     return jackalProvider;
 }
+
+/**
+ * Convenience helper to verify a file directly via its provider.
+ */
+export async function verifyFile(merkleOrKey: string, providerName?: string | null): Promise<boolean> {
+    const provider = getStorageProvider(providerName);
+    return provider.verify(merkleOrKey);
+}

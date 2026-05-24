@@ -6,8 +6,8 @@ import { PRICING } from '../config/pricing';
 import { authenticateToken } from '../middleware/auth';
 import { requireAdmin } from '../middleware/admin';
 import os from 'os';
-import { getJackalHandler, uploadFileToJackal, verifyOnGateway } from '../jackal';
-import { getStorageProvider } from '../storage';
+import { getJackalHandler, uploadFileToJackal } from '../jackal';
+import { getStorageProvider, verifyFile } from '../storage';
 import { withTimeout } from '../utils/promise';
 import logger from '../utils/logger';
 import fs from 'fs';
@@ -212,7 +212,7 @@ router.get('/files', authenticateToken, requireAdmin, async (req, res) => {
             .orderBy(desc(files.created_at));
 
         const enhancedFiles = await Promise.all(fileList.map(async (file: any) => {
-            let jackal_status: 'pending' | 'verifying' | 'uploaded';
+            let storage_status: 'pending' | 'verifying' | 'uploaded';
             let chunk_progress = null;
 
             if (file.is_chunked) {
@@ -228,22 +228,22 @@ router.get('/files', authenticateToken, requireAdmin, async (req, res) => {
 
                 chunk_progress = { total, verified, verifying, pending: total - verified - verifying };
 
-                if (verified === total && total > 0) jackal_status = 'uploaded';
-                else if (verifying > 0 || verified > 0) jackal_status = 'verifying';
-                else jackal_status = 'pending';
+                if (verified === total && total > 0) storage_status = 'uploaded';
+                else if (verifying > 0 || verified > 0) storage_status = 'verifying';
+                else storage_status = 'pending';
             } else {
-                if (file.is_gateway_verified === 1) jackal_status = 'uploaded';
-                else if (file.merkle_hash && file.merkle_hash !== 'UNKNOWN' && file.merkle_hash !== 'pending') jackal_status = 'verifying';
-                else jackal_status = 'pending';
+                if (file.is_gateway_verified === 1) storage_status = 'uploaded';
+                else if (file.merkle_hash && file.merkle_hash !== 'UNKNOWN' && file.merkle_hash !== 'pending') storage_status = 'verifying';
+                else storage_status = 'pending';
             }
 
             return {
                 ...file,
                 storage_id: file.jackal_filename || file.merkle_hash || 'pending',
                 storage_type: file.is_chunked ? 'blob' : 'single',
-                jackal_status,
+                storage_status,
                 chunk_progress,
-                can_retry: jackal_status !== 'uploaded' && (file.retry_count || 0) < 3
+                can_retry: storage_status !== 'uploaded' && (file.retry_count || 0) < 3
             };
         }));
 
@@ -542,10 +542,14 @@ router.post('/chunks/:id/verify', authenticateToken, requireAdmin, async (req, r
         });
 
         if (!chunk) return res.status(404).json({ error: 'Chunk not found' });
-        if (!chunk.jackal_merkle) return res.status(400).json({ error: 'Chunk has no Merkle Hash (not uploaded yet)' });
+        
+        const storageKey = chunk.obsideo_key || chunk.jackal_merkle;
+        if (!storageKey || storageKey === 'pending') return res.status(400).json({ error: 'Chunk has no Storage Key (not uploaded yet)' });
 
-        // 2. Verify on Gateway
-        const verified = await verifyOnGateway(chunk.jackal_merkle);
+        const providerName = chunk.obsideo_key ? 'obsideo' : 'jackal';
+
+        // 2. Verify on Storage Backend
+        const verified = await verifyFile(storageKey, providerName);
 
         if (verified) {
             // 3. Update Status
@@ -576,12 +580,12 @@ router.post('/files/:id/verify', authenticateToken, requireAdmin, async (req, re
         const [file] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
         if (!file) return res.status(404).json({ error: 'File not found' });
 
-        const hash = file.merkle_hash;
+        const hash = file.obsideo_key || file.merkle_hash;
         if (!hash || hash === 'UNKNOWN' || hash === 'pending') {
-            return res.status(400).json({ error: 'File has no Merkle Hash (not uploaded yet)' });
+            return res.status(400).json({ error: 'File has no Storage Key (not uploaded yet)' });
         }
 
-        const verified = await verifyOnGateway(hash);
+        const verified = await verifyFile(hash, file.storage_provider);
 
         if (verified) {
             await db.update(files)

@@ -1,5 +1,5 @@
 import { StorageProvider } from './StorageProvider';
-import { getJackalHandler, uploadFileToJackal, downloadFileFromJackal } from '../jackal';
+import { getJackalHandler, uploadFileToJackal, downloadFileFromJackal, verifyOnGateway } from '../jackal';
 import logger from '../utils/logger';
 
 /**
@@ -28,6 +28,17 @@ const jackalProvider: StorageProvider = {
         // We log this as a no-op — quota is managed in DB regardless.
         logger.warn(`[JackalProvider] delete() called for ${_merkleOrKey} — Jackal has no delete API, treating as success.`);
         return true;
+    },
+
+    async verify(merkleOrKey: string) {
+        // Ping Jackal gateway to see if the file is successfully uploaded
+        // Timeout set to 10 seconds, retries = 5 based on existing Jackal logic
+        try {
+            return await verifyOnGateway(merkleOrKey, 5, 10000);
+        } catch (err) {
+            logger.error(`[JackalProvider] Verification failed for ${merkleOrKey}:`, err);
+            return false;
+        }
     },
 };
 

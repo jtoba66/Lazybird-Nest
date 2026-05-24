@@ -31,7 +31,7 @@ interface FileRecord {
     file_size: number;
     jackal_fid: string;
     merkle_hash: string;
-    jackal_status: 'pending' | 'verifying' | 'uploaded';
+    storage_status: 'pending' | 'verifying' | 'uploaded';
     can_retry: boolean;
     encrypted_file_path?: string;
     created_at: string;
@@ -150,7 +150,7 @@ export default function AdminPage() {
     };
 
     const handlePruneGraveyard = async (graveId: number) => {
-        if (!confirm('Are you SURE you want to prune this file? This will permanently remove it from Jackal network (simulate) and update history.')) return;
+        if (!confirm('Are you SURE you want to prune this file? This will permanently remove it from Storage network (simulate) and update history.')) return;
 
         try {
             const token = localStorage.getItem('nest_token');
@@ -254,7 +254,7 @@ export default function AdminPage() {
             const token = localStorage.getItem('nest_token');
             if (!token) return;
 
-            showToast('Retrying upload to Jackal...', 'info');
+            showToast('Retrying upload to Storage...', 'info');
 
             const response = await fetch(`${API_BASE_URL}/admin/files/${fileId}/retry-upload`, {
                 method: 'POST',
@@ -268,7 +268,7 @@ export default function AdminPage() {
             if (response.ok) {
                 const message = data.queued
                     ? 'Retry queued successfully (processing in background)'
-                    : 'Retry successful! File uploaded to Jackal';
+                    : 'Retry successful! File uploaded to Storage';
 
                 showToast(message, 'success');
                 // Don't refresh immediately if queued, better to let user refresh manually or wait for auto-refresh
@@ -443,7 +443,7 @@ export default function AdminPage() {
                             </div>
                         </div>
 
-                        {/* Jackal Statistics */}
+                        {/* Storage Statistics */}
                         {analytics && (
                             <div className="glass-panel p-6">
                                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -554,10 +554,10 @@ export default function AdminPage() {
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Status</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Storage Key</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Status</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Storage Status</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Created</th>
                                     </tr>
@@ -587,12 +587,12 @@ export default function AdminPage() {
                                             <td className="px-6 py-4 text-sm font-mono">{formatBytes(file.file_size)}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    {file.jackal_status === 'uploaded' ? (
+                                                    {file.storage_status === 'uploaded' ? (
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-success/10 border border-success/20 text-success rounded text-xs font-bold uppercase w-fit">
                                                             <CheckCircle size={12} weight="fill" />
                                                             Uploaded
                                                         </span>
-                                                    ) : file.jackal_status === 'verifying' ? (
+                                                    ) : file.storage_status === 'verifying' ? (
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-warning/10 border border-warning/20 text-warning rounded text-xs font-bold uppercase w-fit">
                                                             <Spinner size={12} weight="bold" className="animate-spin" />
                                                             Verifying
@@ -630,7 +630,7 @@ export default function AdminPage() {
 
                                                     {/* Inspect Button - Always visible for chunked files or just all files */}
                                                     <button
-                                                        onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: 'files', fileData: { id: file.id, merkle_hash: file.merkle_hash, file_size: file.file_size, is_gateway_verified: file.jackal_status === 'uploaded' ? 1 : 0, is_chunked: file.is_chunked } })}
+                                                        onClick={() => setInspectFile({ id: file.id, name: file.storage_id, source: 'files', fileData: { id: file.id, merkle_hash: file.merkle_hash, file_size: file.file_size, is_gateway_verified: file.storage_status === 'uploaded' ? 1 : 0, is_chunked: file.is_chunked } })}
                                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold transition-colors"
                                                         title="Inspect Chunks"
                                                     >
@@ -735,8 +735,8 @@ export default function AdminPage() {
                             <div className="flex items-center gap-3">
                                 <Warning size={24} className="text-error" />
                                 <div>
-                                    <h2 className="text-lg font-bold">Failed Jackal Uploads</h2>
-                                    <p className="text-sm text-text-muted">Files that failed to upload to Jackal storage - require user re-upload</p>
+                                    <h2 className="text-lg font-bold">Failed Storage Uploads</h2>
+                                    <p className="text-sm text-text-muted">Files that failed to upload to Storage storage - require user re-upload</p>
                                 </div>
                             </div>
                         </div>
@@ -753,7 +753,7 @@ export default function AdminPage() {
                                         <tr>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
-                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Storage Key</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
@@ -805,7 +805,7 @@ export default function AdminPage() {
                                 <Trash size={24} className="text-warning" />
                                 <div>
                                     <h2 className="text-lg font-bold">File Graveyard</h2>
-                                    <p className="text-sm text-text-muted">Deleted files still on Jackal storage - manual cleanup required</p>
+                                    <p className="text-sm text-text-muted">Deleted files still on Storage storage - manual cleanup required</p>
                                 </div>
                             </div>
                         </div>
@@ -813,7 +813,7 @@ export default function AdminPage() {
                         {graveyardFiles.length === 0 ? (
                             <div className="p-6 sm:p-12 text-center">
                                 <CheckCircle size={48} className="text-success mx-auto mb-4" />
-                                <p className="text-text-muted">Graveyard is empty - no deleted files on Jackal!</p>
+                                <p className="text-text-muted">Graveyard is empty - no deleted files on Storage!</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
@@ -822,7 +822,7 @@ export default function AdminPage() {
                                         <tr>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">ID</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">User</th>
-                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Jackal Storage Key</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Storage Key</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Type</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Size</th>
                                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-text-muted">Actions</th>
@@ -855,7 +855,7 @@ export default function AdminPage() {
                                                     <button
                                                         onClick={() => handlePruneGraveyard(file.id)}
                                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-bold transition-colors"
-                                                        title="Permanently Prune from Jackal"
+                                                        title="Permanently Prune from Storage"
                                                     >
                                                         <Trash size={14} weight="bold" />
                                                         Prune
