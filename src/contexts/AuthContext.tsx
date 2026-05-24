@@ -287,37 +287,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 2. Authenticate
         const response = await authAPI.login({ email: credentials.email, authHash });
 
-        setToken(response.token);
-        localStorage.setItem('nest_token', response.token); // Fix: Ensure API interceptor can see the token immediately
-        localStorage.setItem('nest_email', credentials.email); // Fix: Persist email for session restoration
-        localStorage.setItem('nest_role', response.user.role || 'user');
-
-        setUser({
-            email: credentials.email,
-            role: response.user.role,
-            storageUsed: response.user.storageUsed,
-            storageQuota: response.user.storageQuota
-        });
+        let mk: Uint8Array | null = null;
+        let meta: MetadataBlob | null = null;
 
         // 3. Decrypt Vault (if we have the Root Key)
-        // If logged in via just AuthHash (unusual), we can't decrypt master key here.
+        // We do this BEFORE setting the token to avoid tripping the session lock useEffect
         if (rootKey && response.encryptedMasterKey && response.encryptedMasterKeyNonce) {
             try {
-                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob } = await import('../crypto/v2');
+                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob, toBase64 } = await import('../crypto/v2');
 
                 const wrappingKey = deriveWrappingKey(rootKey);
-                const mk = decryptMasterKey(
+                mk = decryptMasterKey(
                     fromBase64(response.encryptedMasterKey),
                     fromBase64(response.encryptedMasterKeyNonce),
                     wrappingKey
                 );
 
-                setMasterKey(mk);
-
-                // Persist master key to sessionStorage (tab-scoped; cleared on tab/browser close)
-                const { toBase64 } = await import('../crypto/v2');
+                // Persist master key to sessionStorage BEFORE setting token state
                 sessionStorage.setItem('nest_master_key', '---B64---' + toBase64(mk));
-
 
                 // Persist Encrypted Master Key (Expected by PasswordChangeModal)
                 localStorage.setItem('nest_encrypted_master_key', response.encryptedMasterKey);
@@ -327,16 +314,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // 4. Decrypt Metadata
                 if (response.encryptedMetadata && response.encryptedMetadataNonce) {
                     try {
-                        const meta = decryptMetadataBlob(
+                        meta = decryptMetadataBlob(
                             fromBase64(response.encryptedMetadata),
                             fromBase64(response.encryptedMetadataNonce),
                             mk
                         );
-                        setMetadata(meta);
                     } catch (e) {
                         console.error("Metadata decryption failed:", e);
                         // Non-fatal, might be empty or corrupted, but access is secured
-                        setMetadata({ v: 2, folders: {}, files: {} });
+                        meta = { v: 2, folders: {}, files: {} };
                     }
                 }
             } catch (e) {
@@ -345,6 +331,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // or if we have a hash collision (unlikely)
             }
         }
+
+        // Now that storage and decryption is ready, update React states and localStorage
+        localStorage.setItem('nest_token', response.token); // Ensure API interceptor can see the token immediately
+        localStorage.setItem('nest_email', credentials.email); // Persist email for session restoration
+        localStorage.setItem('nest_role', response.user.role || 'user');
+
+        if (mk) setMasterKey(mk);
+        if (meta) setMetadata(meta);
+
+        setUser({
+            email: credentials.email,
+            role: response.user.role,
+            storageUsed: response.user.storageUsed,
+            storageQuota: response.user.storageQuota
+        });
+
+        setToken(response.token);
 
         return response;
     };
