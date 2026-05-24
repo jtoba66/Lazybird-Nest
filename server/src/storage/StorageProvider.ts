@@ -35,4 +35,11 @@ export interface StorageProvider {
      * @returns true if the file exists, false otherwise.
      */
     verify(merkleOrKey: string): Promise<boolean>;
+
+    /**
+     * Get a raw readable stream of the object directly from the storage provider.
+     * @param merkleOrKey  Jackal merkle hash OR Obsideo object key.
+     * @returns A Node.js Readable stream or null if not supported/found.
+     */
+    getStream?(merkleOrKey: string): Promise<import('stream').Readable | null>;
 }

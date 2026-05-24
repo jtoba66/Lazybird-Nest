@@ -1196,11 +1196,28 @@ router.get('/:id/chunk/:index', authenticateToken, async (req: AuthRequest, res)
         let chunkPath = chunk.local_path;
         let isTemp = false;
 
-        // Auto-hydration
+        // Auto-hydration or Direct Streaming
         if (!chunkPath || !fs.existsSync(chunkPath)) {
             const storageKey = chunk.obsideo_key ?? chunk.jackal_merkle;
             if (storageKey && storageKey !== 'pending') {
                 const provider = getStorageProvider(file.storage_provider);
+
+                // Direct Streaming (e.g. Obsideo)
+                if (provider.getStream) {
+                    const stream = await provider.getStream(storageKey);
+                    if (stream) {
+                        res.setHeader('Content-Type', 'application/octet-stream');
+                        res.setHeader('X-Chunk-Nonce', bufferToBase64(chunk.nonce));
+                        stream.pipe(res);
+                        stream.on('error', (err) => {
+                            logger.error(`[STREAM] Error fetching chunk ${chunk.chunk_index} from provider:`, err);
+                            res.destroy(err);
+                        });
+                        return;
+                    }
+                }
+
+                // Fallback to disk download (Jackal or if getStream fails)
                 const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_chunk_${chunk.id}_${Date.now()}`);
                 const success = await provider.download(storageKey, `chunk_${chunk.chunk_index}`, tempPath);
                 if (success) {
@@ -1263,6 +1280,21 @@ router.get('/raw/:fileId', authenticateToken, async (req: AuthRequest, res) => {
                     const storageKey = chunk.obsideo_key ?? chunk.jackal_merkle;
                     if (storageKey && storageKey !== 'pending') {
                         const provider = getStorageProvider(file.storage_provider);
+                        
+                        // Direct Streaming
+                        if (provider.getStream) {
+                            const stream = await provider.getStream(storageKey);
+                            if (stream) {
+                                logger.info(`[STREAM-RAW] Serving Chunk ${chunk.chunk_index} via direct stream`);
+                                await new Promise((r, reject) => {
+                                    stream.pipe(res, { end: false });
+                                    stream.on('end', () => r(null));
+                                    stream.on('error', reject);
+                                });
+                                continue;
+                            }
+                        }
+                        
                         const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_chunk_${chunk.id}`);
                         const success = await provider.download(storageKey, `chunk_${chunk.chunk_index}`, tempPath);
                         if (success && fs.existsSync(tempPath)) chunkPath = tempPath;

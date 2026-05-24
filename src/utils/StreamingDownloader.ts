@@ -129,41 +129,56 @@ export class StreamingDownloader {
                 }
 
                 let response;
+                let fetchError;
 
-                if (tryGateway) {
+                for (let attempt = 1; attempt <= 3; attempt++) {
                     try {
-                        console.log(`[Downloader] 🚀 Attempting Direct Gateway for Chunk ${chunk.index}...`);
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+                        if (tryGateway && attempt === 1) {
+                            try {
+                                console.log(`[Downloader] 🚀 Attempting Direct Gateway for Chunk ${chunk.index}...`);
+                                const controller = new AbortController();
+                                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-                        response = await fetch(chunkUrl, { headers, signal: controller.signal });
-                        clearTimeout(timeoutId);
+                                response = await fetch(chunkUrl, { headers, signal: controller.signal });
+                                clearTimeout(timeoutId);
 
-                        if (!response.ok) throw new Error(`Gateway returned ${response.status}`);
-                        console.log(`[Downloader] ✅ Gateway Success for Chunk ${chunk.index}`);
-
-                    } catch (e) {
-                        console.warn(`[Downloader] ⚠️ Gateway failed for Chunk ${chunk.index}, falling back to Server Proxy:`, e);
-                        // Fallback to Server
-                        if (shareToken) {
-                            chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
-                        } else if (fileId && authToken) {
-                            chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
-                            headers['Authorization'] = `Bearer ${authToken}`;
+                                if (!response.ok) throw new Error(`Gateway returned ${response.status}`);
+                                console.log(`[Downloader] ✅ Gateway Success for Chunk ${chunk.index}`);
+                            } catch (e) {
+                                console.warn(`[Downloader] ⚠️ Gateway failed for Chunk ${chunk.index}, falling back to Server Proxy:`, e);
+                                // Fallback to Server on next attempt loop
+                                if (shareToken) {
+                                    chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                                } else if (fileId && authToken) {
+                                    chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
+                                    headers['Authorization'] = `Bearer ${authToken}`;
+                                }
+                                throw e; // Trigger retry with server URL
+                            }
+                        } else {
+                            // Direct Server (Local or forced)
+                            response = await fetch(chunkUrl, { headers });
+                            if (!response.ok) throw new Error(`Server returned ${response.status}`);
                         }
-                        response = await fetch(chunkUrl, { headers });
+                        
+                        // If we got here, response is OK
+                        break;
+                    } catch (err: any) {
+                        fetchError = err;
+                        console.warn(`[Downloader] Fetch attempt ${attempt} failed for chunk ${chunk.index}:`, err);
+                        if (attempt < 3) await new Promise(r => setTimeout(r, 2000 * attempt));
                     }
-                } else {
-                    // Direct Server (Local or forced)
-                    response = await fetch(chunkUrl, { headers });
                 }
 
-                console.log(`[Downloader] Chunk ${chunk.index} Fetch Status: ${response!.status}`);
-                console.log(`[Downloader] Type: ${response!.headers.get('content-type')}`);
-                console.log(`[Downloader] Length: ${response!.headers.get('content-length')}`);
+                if (!response || !response.ok) {
+                    throw new Error(`Failed to fetch chunk ${chunk.index} after 3 attempts. Last error: ${fetchError?.message}`);
+                }
 
-                if (!response!.ok) throw new Error(`Failed to fetch chunk ${chunk.index}`);
-                if (!response!.body) throw new Error(`Chunk ${chunk.index} body is empty`);
+                console.log(`[Downloader] Chunk ${chunk.index} Fetch Status: ${response.status}`);
+                console.log(`[Downloader] Type: ${response.headers.get('content-type')}`);
+                console.log(`[Downloader] Length: ${response.headers.get('content-length')}`);
+
+                if (!response.body) throw new Error(`Chunk ${chunk.index} body is empty`);
 
                 // Create Decryption Stream for this chunk
                 console.log(`[Downloader] Creating decryption stream for Chunk ${chunk.index} (Nonce: ${chunk.nonce.substring(0, 10)}...)`);

@@ -143,6 +143,39 @@ const obsideoProvider: StorageProvider = {
             return false;
         }
     },
+
+    async getStream(merkleOrKey: string): Promise<import('stream').Readable | null> {
+        logger.info(`[ObsideoProvider] Getting stream for key=${merkleOrKey}`);
+        try {
+            const apiKey = env.OBSIDEO_API_KEY;
+            const coordUrl = env.OBSIDEO_COORDINATOR_URL;
+            const bucketEnc = encodeURIComponent(BUCKET);
+            const keyEnc = encodeURIComponent(merkleOrKey);
+            
+            // 1. Fetch metadata from Coordinator
+            const metaRes = await fetch(`${coordUrl}/v1/buckets/${bucketEnc}/objects/${keyEnc}`, {
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+            if (metaRes.status === 404) return null;
+            if (!metaRes.ok) throw new Error(`Coordinator returned ${metaRes.status}`);
+            
+            const meta = await metaRes.json();
+            
+            // 2. Fetch stream from Provider
+            const dlRes = await fetch(`${meta.provider_url}/download/${meta.merkle_root}`, {
+                headers: { 'Authorization': `Bearer ${meta.download_token}` }
+            });
+            if (!dlRes.ok) throw new Error(`Provider returned ${dlRes.status}`);
+            if (!dlRes.body) throw new Error(`Provider returned empty body`);
+            
+            const { Readable } = await import('stream');
+            // @ts-ignore - Readable.fromWeb expects Web stream which dlRes.body is in Node 18+
+            return Readable.fromWeb(dlRes.body);
+        } catch (err: any) {
+            logger.error(`[ObsideoProvider] ❌ getStream failed for ${merkleOrKey}: ${err.message}`);
+            return null;
+        }
+    },
 };
 
 export default obsideoProvider;
