@@ -2,6 +2,10 @@ import API_BASE_URL from '../config/api';
 import { createDecryptionStream, fromBase64 } from '../crypto/v2';
 import streamSaver from 'streamsaver';
 
+// Use local MITM to bypass SES (e.g. from crypto extensions like Keplr/MetaMask) 
+// and to avoid third-party cookie blocking issues in Chrome/Brave.
+streamSaver.mitm = '/mitm.html';
+
 export interface DownloadChunk {
     index: number;
     size: number;
