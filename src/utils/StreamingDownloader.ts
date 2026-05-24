@@ -58,13 +58,35 @@ export class StreamingDownloader {
             if (!proceed) throw new Error('Download cancelled by user');
         }
 
-        // Create universal writable stream via StreamSaver.js
-        // Chrome/Edge: SW MITM streaming (zero memory)
-        // Safari: Blob fallback (accumulates in RAM, saves on close)
-        const writeStream = streamSaver.createWriteStream(filename, {
-            size: totalSize
-        });
-        const writer = writeStream.getWriter();
+        let writer: any;
+        let writeStream: any;
+
+        // 1. Try Native File System Access API first (Chrome/Edge/Brave)
+        // This completely bypasses StreamSaver, Service Workers, and any crypto extension interference.
+        if ('showSaveFilePicker' in window) {
+            try {
+                const fileHandle = await (window as any).showSaveFilePicker({
+                    suggestedName: filename,
+                });
+                writeStream = await fileHandle.createWritable();
+                writer = writeStream.getWriter();
+                console.log('[Downloader] Using native File System Access API');
+            } catch (err: any) {
+                if (err.name === 'AbortError') {
+                    throw new Error('Download cancelled by user');
+                }
+                console.warn('[Downloader] File System Access API failed, falling back to StreamSaver', err);
+            }
+        }
+
+        // 2. Fallback to StreamSaver.js (Safari/Firefox/Older browsers)
+        if (!writer) {
+            console.log('[Downloader] Using StreamSaver.js fallback');
+            writeStream = streamSaver.createWriteStream(filename, {
+                size: totalSize
+            });
+            writer = writeStream.getWriter();
+        }
 
         // 2. Sequential Chunk Download & Decrypt
         try {
