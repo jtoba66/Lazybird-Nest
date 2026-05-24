@@ -974,7 +974,10 @@ router.get('/analytics/pulse', authenticateToken, requireAdmin, async (req, res)
             created_at: files.created_at,
         })
             .from(files)
-            .where(isNull(files.deleted_at))
+            .where(and(
+                isNull(files.deleted_at),
+                sql`${files.created_at} >= now() - interval '24 hours'`
+            ))
             .orderBy(desc(files.created_at))
             .limit(20);
 
@@ -985,6 +988,7 @@ router.get('/analytics/pulse', authenticateToken, requireAdmin, async (req, res)
             created_at: fileChunks.created_at,
         })
             .from(fileChunks)
+            .where(sql`${fileChunks.created_at} >= now() - interval '24 hours'`)
             .orderBy(desc(fileChunks.created_at))
             .limit(20);
 

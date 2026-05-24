@@ -11,7 +11,8 @@ async function getClient(): Promise<any> {
     if (_clientPromise) return _clientPromise;
 
     _clientPromise = (async () => {
-        const { ObsideoClient, FilesystemBundleStore } = await import('@obsideo/sdk');
+        const { ObsideoClient, FilesystemBundleStore, ensureSodiumReady } = await import('@obsideo/sdk');
+        await ensureSodiumReady();
 
         if (
             !env.OBSIDEO_API_KEY ||
@@ -73,7 +74,7 @@ const obsideoProvider: StorageProvider = {
         logger.info(`[ObsideoProvider] Uploading ${objectKey} from ${localPath}`);
 
         const fileBuffer = await fs.promises.readFile(localPath);
-        const result = await client.putObject(BUCKET, objectKey, fileBuffer, { encrypt: false });
+        const result = await client.putObject(BUCKET, objectKey, fileBuffer, { encrypt: false, encryption: 'external' });
 
         // putObject returns a PutObjectResult — merkle_root is the content hash.
         const merkle = result?.merkle_root ?? result?.id ?? objectKey;

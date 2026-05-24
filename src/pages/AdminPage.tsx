@@ -608,7 +608,7 @@ export default function AdminPage() {
                                                             {file.chunk_progress.verified}/{file.chunk_progress.total} chunks
                                                         </span>
                                                     )}
-                                                    {file.retry_count && file.retry_count > 0 && (
+                                                    {(file.retry_count ?? 0) > 0 && (
                                                         <span className="text-xs text-warning font-mono">
                                                             Retry {file.retry_count}/3
                                                         </span>

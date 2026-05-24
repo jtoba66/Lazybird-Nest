@@ -136,6 +136,21 @@ export async function retryChunkUploads(fileId: number, chunkIds?: string[]): Pr
 
                 if (fs.existsSync(chunk.local_path!)) fs.unlinkSync(chunk.local_path!);
                 logger.info(`[RETRY] ✅ Chunk ${chunk.chunk_index} of file ${fileId} uploaded`);
+
+                // Check if all chunks are now verified
+                const [chunkStats] = await db.select({
+                    total: sql`count(*)`,
+                    verified: sql`sum(case when is_gateway_verified = 1 then 1 else 0 end)`
+                }).from(fileChunks).where(eq(fileChunks.fileId, fileId));
+
+                const [parentFile] = await db.select({ chunk_count: files.chunk_count }).from(files).where(eq(files.id, fileId));
+
+                if (parentFile && parentFile.chunk_count && parentFile.chunk_count > 0 && Number(chunkStats.verified) >= parentFile.chunk_count) {
+                    await db.update(files).set({
+                        is_gateway_verified: 1,
+                        merkle_hash: 'obsideo-chunks'
+                    }).where(eq(files.id, fileId));
+                }
             } catch (error: any) {
                 await db.update(fileChunks).set({
                     retry_count: sql`${fileChunks.retry_count} + 1`,

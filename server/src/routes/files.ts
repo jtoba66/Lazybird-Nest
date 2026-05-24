@@ -1076,6 +1076,21 @@ router.post('/:id/chunk', authenticateToken, upload.single('chunk'), async (req:
                 }).where(eq(fileChunks.id, chunkId));
 
                 if (fs.existsSync(persistentPath)) fs.unlinkSync(persistentPath);
+
+                // Check if all chunks are now verified
+                const [chunkStats] = await db.select({
+                    total: sql`count(*)`,
+                    verified: sql`sum(case when is_gateway_verified = 1 then 1 else 0 end)`
+                }).from(fileChunks).where(eq(fileChunks.fileId, fileId));
+
+                const [parentFile] = await db.select({ chunk_count: files.chunk_count }).from(files).where(eq(files.id, fileId));
+
+                if (parentFile && parentFile.chunk_count && parentFile.chunk_count > 0 && Number(chunkStats.verified) >= parentFile.chunk_count) {
+                    await db.update(files).set({
+                        is_gateway_verified: 1,
+                        merkle_hash: 'obsideo-chunks'
+                    }).where(eq(files.id, fileId));
+                }
             } catch (e: any) {
                 // Critical Fix: If we actually succeeded via event listener side-effect, IGNORE the error
                 const [check] = await db.select({ 
@@ -1107,12 +1122,17 @@ router.post('/:id/finish', authenticateToken, async (req: AuthRequest, res) => {
     try {
         // Calculate actual chunk count
         const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
+        const verifiedChunks = chunks.filter(c => c.is_gateway_verified === 1).length;
 
         // Fix: Also set is_chunked=1 to prevent download 404s
+        const isAllVerified = chunks.length > 0 && verifiedChunks === chunks.length;
+
         await db.update(files).set({
             jackal_fid: 'chunked-complete',
             chunk_count: chunks.length,
-            is_chunked: 1
+            is_chunked: 1,
+            is_gateway_verified: isAllVerified ? 1 : 0,
+            merkle_hash: isAllVerified ? 'obsideo-chunks' : 'pending-chunks'
         }).where(and(eq(files.id, fileId), eq(files.userId, userId)));
 
         res.json({ success: true, chunk_count: chunks.length });
