@@ -32,7 +32,7 @@ const DatabaseDoc = () => {
                             {[
                                 { name: 'users', role: 'Identity & Billing', info: 'Stores email and bcrypt-hashed AuthHash.' },
                                 { name: 'user_crypto', role: 'ZK Core', info: 'Stores salt, wrapped master key, and encrypted metadata blob.' },
-                                { name: 'files', role: 'Cloud Pointers', info: 'Stores Jackal Merkle hashes and encrypted file keys.' },
+                                { name: 'files', role: 'Cloud Pointers', info: 'Stores Obsideo Merkle hashes and encrypted file keys.' },
                                 { name: 'folders', role: 'Structure', info: 'Stores relational hierarchy and encrypted folder keys.' }
                             ].map(table => (
                                 <div key={table.name} className="flex flex-col md:flex-row md:items-center justify-between py-4 border-b border-slate-100 last:border-0">

@@ -65,8 +65,8 @@ export const TermsPage = () => {
 
                     <h3>2. Decentralized Nature</h3>
                     <p>
-                        You acknowledge that our services interact with decentralized networks (such as Jackal Protocol).
-                        <strong>Jackal Protocol operates through independent storage providers that LazyBird Inc. does not own or control.</strong>{" "}
+                        You acknowledge that our services interact with decentralized networks (such as the Obsideo network).
+                        <strong>The Obsideo network operates through independent storage providers that LazyBird Inc. does not own or control.</strong>{" "}
                         While we aim for high availability, we cannot guarantee that files stored on decentralized infrastructure will remain accessible indefinitely.
                         LazyBird cannot reverse transactions, recover lost private keys, or restore access to encrypted data if you lose your credentials.
                         You are solely responsible for your wallet and account security.

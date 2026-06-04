@@ -51,7 +51,7 @@ const SecurityArchitecture = () => {
                     {/* Connector 2 */}
                     <div className="h-16 w-0.5 md:w-24 md:h-0.5 bg-slate-200 relative overflow-visible">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-2 text-xs font-mono text-slate-400 uppercase tracking-widest border border-slate-100 rounded-full">
-                            Jkl
+                            P2P
                         </div>
                     </div>
 
@@ -60,8 +60,8 @@ const SecurityArchitecture = () => {
                         <div className="mb-8 scale-110">
                             <PremiumIcon icon={Database} />
                         </div>
-                        <h3 className="text-2xl font-display font-bold mb-3 text-text-main">3. Jackal Storage</h3>
-                        <p className="text-text-muted text-base leading-relaxed font-sans">Data is chunked and scattered across the decentralized Jackal network.</p>
+                        <h3 className="text-2xl font-display font-bold mb-3 text-text-main">3. Obsideo Storage</h3>
+                        <p className="text-text-muted text-base leading-relaxed font-sans">Data is chunked and stored securely on the decentralized Obsideo network.</p>
                     </div>
                 </div>
 
