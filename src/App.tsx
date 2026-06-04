@@ -23,6 +23,7 @@ const RecoverySetupPage = lazy(() => import('./pages/RecoverySetupPage').then(mo
 const TrashPage = lazy(() => import('./pages/TrashPage').then(module => ({ default: module.TrashPage })));
 const TermsPage = lazy(() => import('./pages/TermsPage').then(module => ({ default: module.TermsPage })));
 const PricingPage = lazy(() => import('./pages/PricingPage').then(module => ({ default: module.PricingPage })));
+const SecurityPage = lazy(() => import('./pages/SecurityPage').then(module => ({ default: module.SecurityPage })));
 const LandingPage = lazy(() => import('./pages/LandingPage').then(module => ({ default: module.LandingPage })));
 
 
@@ -65,6 +66,7 @@ const App = () => {
                       <Route path="/s/:shareToken" element={<SharePage />} />
                       <Route path="/terms" element={<TermsPage />} />
                       <Route path="/privacy" element={<TermsPage />} />
+                      <Route path="/security" element={<SecurityPage />} />
 
                       <Route
                         path="/recovery-setup"
