@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ShieldCheck, DownloadSimple, CheckCircle, Warning, ArrowRight, LockKey } from '@phosphor-icons/react';
-import { toBase64 } from '../crypto/v2';
+import { toBase64 } from '@lazybird-inc/nest-crypto';
 
 export const RecoverySetupPage = () => {
     const { user, masterKey, login } = useAuth();

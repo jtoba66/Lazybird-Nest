@@ -4,7 +4,7 @@ import { filesAPI } from '../api/files';
 import { foldersAPI } from '../api/folders';
 import { CreateFolderModal } from '../components/CreateFolderModal';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
-import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey, decryptFolderKey, encryptFileKey, fromBase64 } from '../crypto/v2';
+import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey, decryptFolderKey, encryptFileKey, fromBase64 } from '@lazybird-inc/nest-crypto';
 import { useAuth } from '../contexts/AuthContext';
 import { useUpload } from '../contexts/UploadContext';
 import { useToast } from '../contexts/ToastContext';

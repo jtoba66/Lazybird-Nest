@@ -4,7 +4,7 @@ import * as fflate from 'fflate';
 import { filesAPI, type File } from '../api/files';
 import API_BASE_URL from '../config/api';
 
-import type { MetadataBlob } from '../crypto/v2';
+import type { MetadataBlob } from '@lazybird-inc/nest-crypto';
 
 // Use the default MITM to support browsers without Service Worker stream support
 // Use the default MITM to support browsers without Service Worker stream support
@@ -51,7 +51,7 @@ export const streamExport = async (
             fromBase64,
             decryptFileKey,
             decryptFolderKey
-        } = await import('../crypto/v2');
+        } = await import('@lazybird-inc/nest-crypto');
 
         // 3. Add Metadata JSON
         const metadataFile = new fflate.ZipPassThrough('account_info.json');

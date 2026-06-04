@@ -35,7 +35,7 @@ export const NestPage = () => {
     const handleShare = async (file: FileItem) => {
         try {
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
+            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
 
             // Get Master Key from context
             if (!masterKey) {
@@ -121,7 +121,7 @@ export const NestPage = () => {
             toastId = showToast('Preparing download...', 'info', Infinity);
 
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('../crypto/v2');
+            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('@lazybird-inc/nest-crypto');
 
             // 1. Fetch encrypted keys and file metadata from server
             const downloadInfo = await api.get(`/files/download/${file.id}`);
@@ -235,7 +235,7 @@ export const NestPage = () => {
 
         try {
             // Import crypto functions and foldersAPI
-            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
+            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
             const { foldersAPI } = await import('../api/folders');
 
             // 1. Get the file's current encrypted keys from the server

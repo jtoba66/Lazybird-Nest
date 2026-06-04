@@ -108,7 +108,7 @@ export const CloudDrivePage = () => {
 
             console.log('[CloudDrive] ✅ File info received. Verified on Gateway:', is_gateway_verified);
 
-            const { decryptFile, decryptChunk, fromBase64 } = await import('../crypto/v2');
+            const { decryptFile, decryptChunk, fromBase64 } = await import('@lazybird-inc/nest-crypto');
             const fileKey = fromBase64(file_key);
 
             let decryptedBlob: Blob;

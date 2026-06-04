@@ -1,5 +1,5 @@
 import API_BASE_URL from '../config/api';
-import { createDecryptionStream, fromBase64 } from '../crypto/v2';
+import { createDecryptionStream, fromBase64 } from '@lazybird-inc/nest-crypto';
 import streamSaver from 'streamsaver';
 
 // Use local MITM to bypass SES (e.g. from crypto extensions like Keplr/MetaMask) 

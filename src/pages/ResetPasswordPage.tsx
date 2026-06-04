@@ -35,7 +35,7 @@ export const ResetPasswordPage = () => {
                 encryptFolderKey,
                 fromBase64,
                 toBase64,
-            } = await import('../crypto/v2');
+            } = await import('@lazybird-inc/nest-crypto');
 
             // 1. Derive NEW Key Materials from NEW Password
             const salt = window.crypto.getRandomValues(new Uint8Array(32));

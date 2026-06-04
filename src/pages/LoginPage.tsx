@@ -27,7 +27,7 @@ export const LoginPage = () => {
                 deriveRootKey,
                 deriveAuthHash,
                 fromBase64
-            } = await import('../crypto/v2');
+            } = await import('@lazybird-inc/nest-crypto');
             const { authAPI } = await import('../api/auth');
 
             // 1. Get Salt from Server

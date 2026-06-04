@@ -196,7 +196,7 @@ export const FoldersPage = () => {
         if (!metadata || !masterKey) return;
         try {
             // 1. Generate & Encrypt Folder Key locally
-            const { generateFolderKey, encryptFolderKey, toBase64 } = await import('../crypto/v2');
+            const { generateFolderKey, encryptFolderKey, toBase64 } = await import('@lazybird-inc/nest-crypto');
 
             const folderKey = generateFolderKey();
             const { encrypted, nonce } = encryptFolderKey(folderKey, masterKey);
@@ -268,7 +268,7 @@ export const FoldersPage = () => {
     const handleShare = async (file: FileItem) => {
         try {
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
+            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
 
             // Get Master Key from context
             if (!masterKey) {
@@ -338,7 +338,7 @@ export const FoldersPage = () => {
             }
 
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('../crypto/v2');
+            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('@lazybird-inc/nest-crypto');
             toastId = showToast('Starting download...', 'info', Infinity);
 
             // 1. Fetch encrypted keys and file metadata from server
@@ -498,7 +498,7 @@ export const FoldersPage = () => {
 
         try {
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
+            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
 
             // 1. Get the file's current encrypted keys from the server
             const downloadInfo = await api.get(`/files/download/${fileId}`);

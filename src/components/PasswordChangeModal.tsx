@@ -47,7 +47,7 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
                 toBase64,
                 fromBase64,
                 encryptMasterKey
-            } = await import('../crypto/v2');
+            } = await import('@lazybird-inc/nest-crypto');
 
             // 1. Fetch current ZK params (Salt & Encrypted MK) from server
             setProgress('Fetching current security parameters...');

@@ -180,7 +180,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
         try {
             // Load Crypto Libs
-            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey } = await import('../crypto/v2');
+            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey } = await import('@lazybird-inc/nest-crypto');
             const { foldersAPI } = await import('../api/folders');
 
             // Get Master Key from Auth Context (via closure from component level)

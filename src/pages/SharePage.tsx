@@ -10,7 +10,7 @@ import {
     MusicNotes,
     FileText,
 } from '@phosphor-icons/react';
-import { fromBase64 } from '../crypto/v2';
+import { fromBase64 } from '@lazybird-inc/nest-crypto';
 import { StreamingDownloader } from '../utils/StreamingDownloader';
 import nestLogo from '../assets/nest-logo.png';
 
@@ -169,7 +169,7 @@ export const SharePage = () => {
                 }
 
                 // For monolithic files, we still use the old decrypt (rare in V3, but kept for compat)
-                const { decryptFile } = await import('../crypto/v2');
+                const { decryptFile } = await import('@lazybird-inc/nest-crypto');
                 // Note: Monolithic files have the nonce embedded or handled by decryptFile logic usually
                 // In V2/V3 transition, we pass null as nonce for monolithic
                 const decryptedBytes = await decryptFile(blob!, null, fileKey);
