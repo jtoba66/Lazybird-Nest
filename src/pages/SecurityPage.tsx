@@ -1,8 +1,7 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ShieldCheck, FileCode, MagnifyingGlass, BookOpen } from '@phosphor-icons/react';
-import { Link } from 'react-router-dom';
-import TopNav from '../landing/components/TopNav';
+import Navbar from '../landing/components/Navbar';
 import Footer from '../landing/components/Footer';
 
 const SecurityPage = () => {
@@ -12,7 +11,7 @@ const SecurityPage = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans selection:bg-primary selection:text-white">
-            <TopNav />
+            <Navbar />
 
             {/* Hero Section */}
             <section className="pt-32 pb-20 px-6 max-w-4xl mx-auto text-center">
