@@ -61,7 +61,12 @@ const envSchema = z.object({
     OBSIDEO_CUSTOMER_PRIVATE_KEY: z.string().optional(),
     OBSIDEO_COORDINATOR_URL: z.string().url().default('https://coordinator.obsideo.io'),
     OBSIDEO_COORDINATOR_PUBLIC_KEY: z.string().optional(),
-    OBSIDEO_BUNDLE_STORE_PATH: z.string().default('/var/nest/obsideo-bundle'),
+    OBSIDEO_BUNDLE_STORE_PATH: z.string().default('/var/nest/obsideo-bundle').transform(v => {
+        if (process.env.NODE_ENV !== 'production' && v.startsWith('/app/')) {
+            return path.join(process.cwd(), 'uploads', 'obsideo-bundle');
+        }
+        return v;
+    }),
 
     // Monitoring
     SENTRY_DSN: z.string().optional(),

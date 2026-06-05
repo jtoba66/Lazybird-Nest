@@ -57,7 +57,9 @@ const allowedOrigins = [
     'https://nest.lazybird.io',
     'https://lazybird.io',
     'https://www.lazybird.io',
-    'https://lazybird-nest.netlify.app'
+    'https://lazybird-nest.netlify.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
 ];
 
 app.use(cors({

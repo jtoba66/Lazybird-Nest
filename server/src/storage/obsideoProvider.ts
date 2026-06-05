@@ -70,20 +70,24 @@ const BUCKET = 'nest';
  */
 const obsideoProvider: StorageProvider = {
     async upload(localPath: string, objectKey: string) {
-        const client = await getClient();
-        logger.info(`[ObsideoProvider] Uploading ${objectKey} from ${localPath}`);
+        try {
+            const client = await getClient();
+            logger.info(`[ObsideoProvider] Uploading ${objectKey} from ${localPath}`);
 
-        const fileBuffer = await fs.promises.readFile(localPath);
-        const result = await client.putObject(BUCKET, objectKey, fileBuffer, { encrypt: false, encryption: 'external' });
+            const fileBuffer = await fs.promises.readFile(localPath);
+            const result = await client.putObject(BUCKET, objectKey, fileBuffer, { encrypt: false, encryption: 'external' });
 
-        // putObject returns a PutObjectResult — merkle_root is the content hash.
-        const merkle = result?.merkle_root ?? result?.id ?? objectKey;
-        logger.info(`[ObsideoProvider] ✅ Uploaded ${objectKey} (merkle: ${merkle})`);
+            const merkle = result?.merkle_root ?? result?.id ?? objectKey;
+            logger.info(`[ObsideoProvider] ✅ Uploaded ${objectKey} (merkle: ${merkle})`);
 
-        return {
-            id: objectKey,
-            merkle_root: merkle,
-        };
+            return {
+                id: objectKey,
+                merkle_root: merkle,
+            };
+        } catch (err: any) {
+            logger.error(`[ObsideoProvider] Upload crashed with full stack: ${err.stack || err.message}`);
+            throw err;
+        }
     },
 
     async download(merkleOrKey: string, _objectKey: string, destPath: string) {
