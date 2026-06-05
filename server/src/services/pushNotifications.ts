@@ -131,7 +131,7 @@ export async function sendPushToUser(userId: number, payload: PushPayload): Prom
         const response = await messaging.sendEachForMulticast(message);
         const invalidTokenDeletes: Promise<unknown>[] = [];
 
-        response.responses.forEach((item, index) => {
+        response.responses.forEach((item: { success: boolean; error?: { code?: string } }, index: number) => {
             if (!item.success && item.error?.code && INVALID_TOKEN_ERRORS.has(item.error.code)) {
                 invalidTokenDeletes.push(
                     db.delete(userPushTokens).where(eq(userPushTokens.id, rows[index]!.id))

@@ -141,6 +141,13 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
 
         const priceId = (PRICING as any)[tier][interval].priceId;
 
+        const successUrl = client === 'android_app'
+            ? buildMobileReturnUrl(returnBaseUrl, 'checkout-success', { session_id: '{CHECKOUT_SESSION_ID}' })
+            : `${returnBaseUrl}/settings?upgrade=success&session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = client === 'android_app'
+            ? buildMobileReturnUrl(returnBaseUrl, 'checkout-cancel')
+            : `${returnBaseUrl}/pricing?upgrade=canceled`;
+
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
             mode: 'subscription',
