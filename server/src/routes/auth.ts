@@ -355,9 +355,9 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
             user: {
                 id: user.id,
                 email: user.email,
-                tier: user.email === 'josephtoba29@gmail.com' ? 'God Mode' : user.subscription_tier,
+                tier: user.role === 'admin' ? 'God Mode' : user.subscription_tier,
                 storageUsed: user.storage_used_bytes,
-                storageQuota: user.email === 'josephtoba29@gmail.com' ? 10 * 1024 * 1024 * 1024 * 1024 : user.storage_quota_bytes,
+                storageQuota: user.role === 'admin' ? 10 * 1024 * 1024 * 1024 * 1024 : user.storage_quota_bytes,
                 role: user.role
             },
             // Return keys so frontend can unlock vault
@@ -393,8 +393,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const isGodMode = user.email === 'josephtoba29@gmail.com';
-        if (isGodMode) {
+        if (user.role === 'admin') {
             user.tier = 'God Mode';
             user.storageQuota = 10 * 1024 * 1024 * 1024 * 1024;
         }

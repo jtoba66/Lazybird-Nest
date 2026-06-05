@@ -94,7 +94,7 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const isGodMode = req.user?.email === 'josephtoba29@gmail.com';
+        const isGodMode = req.user?.role === 'admin';
 
         if (!isGodMode) {
             const TWO_GB = 2 * 1024 * 1024 * 1024;
@@ -930,7 +930,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         // Quota Logic
-        const isGodMode = req.user?.email === 'josephtoba29@gmail.com';
+        const isGodMode = req.user?.role === 'admin';
         if (!isGodMode && (user.storage_used_bytes || 0) + file_size > (user.storage_quota_bytes || 0)) {
             return res.status(413).json({ error: 'Storage quota exceeded' });
         }

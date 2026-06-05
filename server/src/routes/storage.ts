@@ -18,7 +18,8 @@ router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
             storage_used_bytes: users.storage_used_bytes,
             storage_quota_bytes: users.storage_quota_bytes,
             subscription_tier: users.subscription_tier,
-            email: users.email
+            email: users.email,
+            role: users.role
         })
             .from(users)
             .where(eq(users.id, userId))
@@ -42,7 +43,7 @@ router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
             logger.info(`[Storage Quota] Auto-corrected quota for Max user ${userId} to 500GB`);
         }
 
-        const isGodMode = user.email === 'josephtoba29@gmail.com';
+        const isGodMode = user.role === 'admin';
 
         const response: any = {
             used: user.storage_used_bytes || 0,
