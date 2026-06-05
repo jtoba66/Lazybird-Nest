@@ -11,8 +11,8 @@ export interface SubscriptionStatus {
 }
 
 export const billingAPI = {
-    async createCheckoutSession(): Promise<{ url: string; sessionId: string }> {
-        const { data } = await api.post('/billing/create-checkout-session');
+    async createCheckoutSession(tier: 'pro' | 'max' = 'pro', interval: 'monthly' | 'yearly' = 'monthly'): Promise<{ url: string; sessionId: string }> {
+        const { data } = await api.post('/billing/create-checkout-session', { tier, interval });
         return data;
     },
 

@@ -72,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const response = await authAPI.getMetadata();
 
             if (response && response.encryptedMetadata && response.encryptedMetadataNonce) {
-                const { decryptMetadataBlob, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                const { decryptMetadataBlob, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
                 const meta = decryptMetadataBlob(
                     fromBase64(response.encryptedMetadata),
                     fromBase64(response.encryptedMetadataNonce),
@@ -126,7 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const stored = sessionStorage.getItem('nest_master_key');
                 if (stored) {
                     try {
-                        const { fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                        const { fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
                         const mk = fromBase64(stored.replace('---B64---', ''));
                         setMasterKey(mk);
                     } catch (e) {
@@ -223,7 +225,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     if (response && response.encryptedMetadata && response.encryptedMetadataNonce) {
                         console.log('[AUTH] Metadata received, decrypting...');
-                        const { decryptMetadataBlob, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                        const { decryptMetadataBlob, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
                         const meta = decryptMetadataBlob(
                             fromBase64(response.encryptedMetadata),
                             fromBase64(response.encryptedMetadataNonce),
@@ -270,7 +273,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const { salt, kdfParams } = await authAPI.getSalt(credentials.email);
 
                 // B. Import Crypto
-                const { deriveRootKey, deriveAuthHash, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                const { deriveRootKey, deriveAuthHash, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
 
                 // C. Derive Root Key & Auth Hash
                 // Note: This is CPU intensive
@@ -294,7 +298,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // We do this BEFORE setting the token to avoid tripping the session lock useEffect
         if (rootKey && response.encryptedMasterKey && response.encryptedMasterKeyNonce) {
             try {
-                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob, toBase64 } = await import('@lazybird-inc/nest-crypto');
+                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob, toBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
 
                 const wrappingKey = deriveWrappingKey(rootKey);
                 mk = decryptMasterKey(
@@ -354,8 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const signup = async (credentials: SignupCredentials) => {
         // 1. Generate Client-Side ZK Parameters
-        const {
-            deriveRootKey,
+        const { deriveRootKey,
             deriveAuthHash,
             deriveWrappingKey,
             generateSalt,
@@ -364,8 +368,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             encryptMetadataBlob,
             generateFolderKey,
             encryptFolderKey,
-            toBase64
-        } = await import('@lazybird-inc/nest-crypto');
+            toBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
 
         const salt = generateSalt();
         const kdfParams = { algorithm: 'argon2id' as const, memoryCost: 65536, timeCost: 3, parallelism: 4 };
@@ -422,7 +426,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const currentData = await authAPI.getMetadata();
             const currentVersion = currentData.metadata_version || 1;
 
-            const { encryptMetadataBlob, toBase64 } = await import('@lazybird-inc/nest-crypto');
+            const { encryptMetadataBlob, toBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
             const encrypted = encryptMetadataBlob(newMetadata, masterKey);
 
             try {
@@ -454,7 +459,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // Reload metadata from server
                     const freshData = await authAPI.getMetadata();
                     if (freshData?.encryptedMetadata && freshData?.encryptedMetadataNonce) {
-                        const { decryptMetadataBlob, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                        const { decryptMetadataBlob, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
                         const freshMetadata = decryptMetadataBlob(
                             fromBase64(freshData.encryptedMetadata),
                             fromBase64(freshData.encryptedMetadataNonce),

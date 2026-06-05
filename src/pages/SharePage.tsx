@@ -169,7 +169,8 @@ export const SharePage = () => {
                 }
 
                 // For monolithic files, we still use the old decrypt (rare in V3, but kept for compat)
-                const { decryptFile } = await import('@lazybird-inc/nest-crypto');
+                const { decryptFile, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
                 // Note: Monolithic files have the nonce embedded or handled by decryptFile logic usually
                 // In V2/V3 transition, we pass null as nonce for monolithic
                 const decryptedBytes = await decryptFile(blob!, null, fileKey);

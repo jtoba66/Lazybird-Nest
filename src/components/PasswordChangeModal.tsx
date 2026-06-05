@@ -38,16 +38,15 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
 
         try {
             // Import crypto utilities dynamically
-            const {
-                deriveRootKey,
+            const { deriveRootKey,
                 deriveWrappingKey,
                 deriveAuthHash,
                 decryptMasterKey,
                 generateSalt,
                 toBase64,
                 fromBase64,
-                encryptMasterKey
-            } = await import('@lazybird-inc/nest-crypto');
+                encryptMasterKey, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
             // 1. Fetch current ZK params (Salt & Encrypted MK) from server
             setProgress('Fetching current security parameters...');

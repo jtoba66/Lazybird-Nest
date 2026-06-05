@@ -1,0 +1,1582 @@
+diff --git a/index.html b/index.html
+index b8ff221..668cfa9 100644
+--- a/index.html
++++ b/index.html
+@@ -5,6 +5,7 @@
+   <meta charset="UTF-8" />
+   <link rel="icon" type="image/png" href="/favicon.png" />
+   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://nest.lazybird.io wss://nest.lazybird.io http://localhost:* ws://localhost:*;" />
+   <title>Nest | Secure Cloud Storage & Private File Sharing</title>
+ 
+   <!-- SEO & Social Sharing -->
+@@ -27,6 +28,9 @@
+   <meta property="twitter:title" content="Nest | Secure Cloud Storage & Private File Sharing" />
+   <meta property="twitter:description" content="Store with confidence. Nest ensures only you can access your data." />
+   <meta property="twitter:image" content="/og-image.png" />
++
++  <!-- VERIFIABLE ZERO-KNOWLEDGE CRYPTO ENGINE -->
++  <script src="https://unpkg.com/@lazybird-inc/nest-crypto@1.0.1/dist/index.umd.js" integrity="sha384-s8bhpNNA3Q58qPRUpXOGufi/IVfP282701UHO2tzsJhPTGEawpqW9bfWcLHz3NJo" crossorigin="anonymous"></script>
+ </head>
+ 
+ <body>
+diff --git a/package-lock.json b/package-lock.json
+index eb3f13a..ab59d6a 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -36,6 +36,7 @@
+       },
+       "devDependencies": {
+         "@eslint/js": "^9.39.1",
++        "@lazybird-inc/nest-crypto": "^1.0.1",
+         "@prerenderer/renderer-puppeteer": "^1.2.4",
+         "@types/node": "^24.10.1",
+         "@types/react": "^19.2.5",
+@@ -1095,6 +1096,34 @@
+         "@jridgewell/sourcemap-codec": "^1.4.14"
+       }
+     },
++    "node_modules/@lazybird-inc/nest-crypto": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/@lazybird-inc/nest-crypto/-/nest-crypto-1.0.1.tgz",
++      "integrity": "sha512-1s0SZ6gDOBSwwxraSe8rszQ4Q9f142sbB49jrxclxIe1pgbBYifCRSI9EMG2qHvgz17mrwj6jnlVL82xeBL1+A==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hash-wasm": "^4.11.0",
++        "libsodium-wrappers": "^0.7.15"
++      }
++    },
++    "node_modules/@lazybird-inc/nest-crypto/node_modules/libsodium": {
++      "version": "0.7.16",
++      "resolved": "https://registry.npmjs.org/libsodium/-/libsodium-0.7.16.tgz",
++      "integrity": "sha512-3HrzSPuzm6Yt9aTYCDxYEG8x8/6C0+ag655Y7rhhWZM9PT4NpdnbqlzXhGZlDnkgR6MeSTnOt/VIyHLs9aSf+Q==",
++      "dev": true,
++      "license": "ISC"
++    },
++    "node_modules/@lazybird-inc/nest-crypto/node_modules/libsodium-wrappers": {
++      "version": "0.7.16",
++      "resolved": "https://registry.npmjs.org/libsodium-wrappers/-/libsodium-wrappers-0.7.16.tgz",
++      "integrity": "sha512-Gtr/WBx4dKjvRL1pvfwZqu7gO6AfrQ0u9vFL+kXihtHf6NfkROR8pjYWn98MFDI3jN19Ii1ZUfPR9afGiPyfHg==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "libsodium": "^0.7.16"
++      }
++    },
+     "node_modules/@mediapipe/tasks-vision": {
+       "version": "0.10.17",
+       "resolved": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-0.10.17.tgz",
+diff --git a/package.json b/package.json
+index d7e749c..0f6d75d 100644
+--- a/package.json
++++ b/package.json
+@@ -38,6 +38,7 @@
+   },
+   "devDependencies": {
+     "@eslint/js": "^9.39.1",
++    "@lazybird-inc/nest-crypto": "^1.0.1",
+     "@prerenderer/renderer-puppeteer": "^1.2.4",
+     "@types/node": "^24.10.1",
+     "@types/react": "^19.2.5",
+diff --git a/server/src/cleanup-test.ts b/server/src/cleanup-test.ts
+new file mode 100644
+index 0000000..f6fb7c8
+--- /dev/null
++++ b/server/src/cleanup-test.ts
+@@ -0,0 +1,17 @@
++import obsideoProvider from './storage/obsideoProvider';
++
++async function run() {
++    // The key generated during the test
++    const objectKey = 'test_uploads/speed_test_1780239725457';
++    
++    console.log(`Deleting ${objectKey} from Obsideo...`);
++    const success = await obsideoProvider.delete(objectKey);
++    
++    if (success) {
++        console.log('✅ File successfully deleted from Obsideo network.');
++    } else {
++        console.log('❌ Failed to delete file from Obsideo network.');
++    }
++}
++
++run().catch(console.error);
+diff --git a/server/src/test-obsideo-upload.ts b/server/src/test-obsideo-upload.ts
+new file mode 100644
+index 0000000..55cf2a6
+--- /dev/null
++++ b/server/src/test-obsideo-upload.ts
+@@ -0,0 +1,57 @@
++import fs from 'fs';
++import path from 'path';
++import crypto from 'crypto';
++import { performance } from 'perf_hooks';
++import obsideoProvider from './storage/obsideoProvider';
++
++async function run() {
++    const fileSizeMB = 1200; // 1.2 GB
++    const filePath = path.join(__dirname, '../../uploads/test_upload_1.2gb.tmp');
++    const objectKey = `test_uploads/speed_test_${Date.now()}`;
++
++    console.log(`Generating a ${fileSizeMB}MB dummy file at ${filePath}...`);
++    
++    const dir = path.dirname(filePath);
++    if (!fs.existsSync(dir)) {
++        fs.mkdirSync(dir, { recursive: true });
++    }
++    
++    // Generate a 1.2GB file using a stream with random bytes to mimic ciphertext entropy
++    const writeStream = fs.createWriteStream(filePath);
++    const chunkSize = 1024 * 1024; // 1MB chunk
++    
++    for (let i = 0; i < fileSizeMB; i++) {
++        writeStream.write(crypto.randomBytes(chunkSize));
++    }
++    writeStream.end();
++    
++    await new Promise<void>((resolve) => writeStream.on('finish', () => resolve()));
++    console.log(`File generation complete. Starting upload to Obsideo as ${objectKey}...`);
++
++    try {
++        const start = performance.now();
++        
++        // This will call fs.promises.readFile internally in obsideoProvider.ts
++        // which might use a lot of RAM, but we'll see if it survives.
++        const result = await obsideoProvider.upload(filePath, objectKey);
++        
++        const end = performance.now();
++        const totalTime = end - start;
++        const speedMBps = fileSizeMB / (totalTime / 1000);
++
++        console.log(`\n=== UPLOAD COMPLETE ===`);
++        console.log(`Merkle Root / ID: ${result.merkle_root || result.id}`);
++        console.log(`Total Upload Time: ${(totalTime / 1000).toFixed(2)} seconds`);
++        console.log(`Average Upload Speed: ${speedMBps.toFixed(2)} MB/s`);
++    } catch (err) {
++        console.error('\n❌ Upload Failed:', err);
++    } finally {
++        // Clean up the dummy file
++        if (fs.existsSync(filePath)) {
++            console.log('\nCleaning up dummy file...');
++            fs.unlinkSync(filePath);
++        }
++    }
++}
++
++run().catch(console.error);
+diff --git a/server/src/test-obsideo.ts b/server/src/test-obsideo.ts
+new file mode 100644
+index 0000000..b607f74
+--- /dev/null
++++ b/server/src/test-obsideo.ts
+@@ -0,0 +1,52 @@
++import { db } from './db';
++import { fileChunks, files } from './db/schema';
++import obsideoProvider from './storage/obsideoProvider';
++import { eq } from 'drizzle-orm';
++import { performance } from 'perf_hooks';
++import { Writable } from 'stream';
++
++async function run() {
++    const objectKey = 'test_uploads/speed_test_1780587002973';
++    console.log(`Using hardcoded 1.2GB file key: ${objectKey}`);
++    
++    const start = performance.now();
++    const stream = await obsideoProvider.getStream!(objectKey);
++    const ttfb = performance.now() - start;
++    console.log(`Time to get stream object (Metadata + Headers): ${ttfb.toFixed(2)}ms`);
++
++    if (!stream) {
++        console.log('Stream is null');
++        process.exit(1);
++    }
++
++    let bytes = 0;
++    let firstByteTime = 0;
++    let lastLogBytes = 0;
++    
++    stream.on('data', (chunk) => {
++        if (bytes === 0) {
++            firstByteTime = performance.now() - start;
++            console.log(`Time to First Byte (Data): ${firstByteTime.toFixed(2)}ms`);
++        }
++        bytes += chunk.length;
++        
++        if (bytes - lastLogBytes > 10 * 1024 * 1024) {
++            console.log(`Downloaded ${(bytes / 1024 / 1024).toFixed(2)} MB...`);
++            lastLogBytes = bytes;
++        }
++    });
++
++    stream.on('end', () => {
++        const totalTime = performance.now() - start;
++        console.log(`Total Download Time: ${totalTime.toFixed(2)}ms for ${(bytes / 1024 / 1024).toFixed(2)} MB`);
++        console.log(`Speed: ${((bytes / 1024 / 1024) / (totalTime / 1000)).toFixed(2)} MB/s`);
++        process.exit(0);
++    });
++
++    stream.on('error', (err) => {
++        console.error('Stream Error:', err);
++        process.exit(1);
++    });
++}
++
++run().catch(console.error);
+diff --git a/src/App.tsx b/src/App.tsx
+index dc422c5..0393e6f 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -23,6 +23,7 @@ const RecoverySetupPage = lazy(() => import('./pages/RecoverySetupPage').then(mo
+ const TrashPage = lazy(() => import('./pages/TrashPage').then(module => ({ default: module.TrashPage })));
+ const TermsPage = lazy(() => import('./pages/TermsPage').then(module => ({ default: module.TermsPage })));
+ const PricingPage = lazy(() => import('./pages/PricingPage').then(module => ({ default: module.PricingPage })));
++const SecurityPage = lazy(() => import('./pages/SecurityPage').then(module => ({ default: module.SecurityPage })));
+ const LandingPage = lazy(() => import('./pages/LandingPage').then(module => ({ default: module.LandingPage })));
+ 
+ 
+@@ -65,6 +66,7 @@ const App = () => {
+                       <Route path="/s/:shareToken" element={<SharePage />} />
+                       <Route path="/terms" element={<TermsPage />} />
+                       <Route path="/privacy" element={<TermsPage />} />
++                      <Route path="/security" element={<SecurityPage />} />
+ 
+                       <Route
+                         path="/recovery-setup"
+diff --git a/src/components/FileGrid.tsx b/src/components/FileGrid.tsx
+index bae24bf..d65f435 100644
+--- a/src/components/FileGrid.tsx
++++ b/src/components/FileGrid.tsx
+@@ -4,7 +4,7 @@ import { filesAPI } from '../api/files';
+ import { foldersAPI } from '../api/folders';
+ import { CreateFolderModal } from '../components/CreateFolderModal';
+ import { ShareSuccessModal } from '../components/ShareSuccessModal';
+-import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey, decryptFolderKey, encryptFileKey, fromBase64 } from '../crypto/v2';
++import { encryptFile, generateFileKey, toBase64, generateFolderKey, encryptFolderKey, decryptFolderKey, encryptFileKey, fromBase64 } from '@lazybird-inc/nest-crypto';
+ import { useAuth } from '../contexts/AuthContext';
+ import { useUpload } from '../contexts/UploadContext';
+ import { useToast } from '../contexts/ToastContext';
+diff --git a/src/components/PasswordChangeModal.tsx b/src/components/PasswordChangeModal.tsx
+index 7cc6826..607b668 100644
+--- a/src/components/PasswordChangeModal.tsx
++++ b/src/components/PasswordChangeModal.tsx
+@@ -47,7 +47,7 @@ export const PasswordChangeModal = ({ isOpen, onClose, userEmail }: PasswordChan
+                 toBase64,
+                 fromBase64,
+                 encryptMasterKey
+-            } = await import('../crypto/v2');
++            } = await import('@lazybird-inc/nest-crypto');
+ 
+             // 1. Fetch current ZK params (Salt & Encrypted MK) from server
+             setProgress('Fetching current security parameters...');
+diff --git a/src/contexts/AuthContext.tsx b/src/contexts/AuthContext.tsx
+index 00084be..5803792 100644
+--- a/src/contexts/AuthContext.tsx
++++ b/src/contexts/AuthContext.tsx
+@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
+ import type { ReactNode } from 'react';
+ import { authAPI } from '../api/auth';
+ import type { LoginCredentials, SignupCredentials } from '../api/auth';
+-import type { MetadataBlob } from '../crypto/v2';
++import type { MetadataBlob } from '@lazybird-inc/nest-crypto';
+ 
+ interface User {
+     email: string;
+@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+             const response = await authAPI.getMetadata();
+ 
+             if (response && response.encryptedMetadata && response.encryptedMetadataNonce) {
+-                const { decryptMetadataBlob, fromBase64 } = await import('../crypto/v2');
++                const { decryptMetadataBlob, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                 const meta = decryptMetadataBlob(
+                     fromBase64(response.encryptedMetadata),
+                     fromBase64(response.encryptedMetadataNonce),
+@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+                 const stored = sessionStorage.getItem('nest_master_key');
+                 if (stored) {
+                     try {
+-                        const { fromBase64 } = await import('../crypto/v2');
++                        const { fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                         const mk = fromBase64(stored.replace('---B64---', ''));
+                         setMasterKey(mk);
+                     } catch (e) {
+@@ -223,7 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+ 
+                     if (response && response.encryptedMetadata && response.encryptedMetadataNonce) {
+                         console.log('[AUTH] Metadata received, decrypting...');
+-                        const { decryptMetadataBlob, fromBase64 } = await import('../crypto/v2');
++                        const { decryptMetadataBlob, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                         const meta = decryptMetadataBlob(
+                             fromBase64(response.encryptedMetadata),
+                             fromBase64(response.encryptedMetadataNonce),
+@@ -270,7 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+                 const { salt, kdfParams } = await authAPI.getSalt(credentials.email);
+ 
+                 // B. Import Crypto
+-                const { deriveRootKey, deriveAuthHash, fromBase64 } = await import('../crypto/v2');
++                const { deriveRootKey, deriveAuthHash, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+                 // C. Derive Root Key & Auth Hash
+                 // Note: This is CPU intensive
+@@ -294,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+         // We do this BEFORE setting the token to avoid tripping the session lock useEffect
+         if (rootKey && response.encryptedMasterKey && response.encryptedMasterKeyNonce) {
+             try {
+-                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob, toBase64 } = await import('../crypto/v2');
++                const { decryptMasterKey, deriveWrappingKey, fromBase64, decryptMetadataBlob, toBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+                 const wrappingKey = deriveWrappingKey(rootKey);
+                 mk = decryptMasterKey(
+@@ -365,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+             generateFolderKey,
+             encryptFolderKey,
+             toBase64
+-        } = await import('../crypto/v2');
++        } = await import('@lazybird-inc/nest-crypto');
+ 
+         const salt = generateSalt();
+         const kdfParams = { algorithm: 'argon2id' as const, memoryCost: 65536, timeCost: 3, parallelism: 4 };
+@@ -422,7 +422,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+             const currentData = await authAPI.getMetadata();
+             const currentVersion = currentData.metadata_version || 1;
+ 
+-            const { encryptMetadataBlob, toBase64 } = await import('../crypto/v2');
++            const { encryptMetadataBlob, toBase64 } = await import('@lazybird-inc/nest-crypto');
+             const encrypted = encryptMetadataBlob(newMetadata, masterKey);
+ 
+             try {
+@@ -454,7 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+                     // Reload metadata from server
+                     const freshData = await authAPI.getMetadata();
+                     if (freshData?.encryptedMetadata && freshData?.encryptedMetadataNonce) {
+-                        const { decryptMetadataBlob, fromBase64 } = await import('../crypto/v2');
++                        const { decryptMetadataBlob, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                         const freshMetadata = decryptMetadataBlob(
+                             fromBase64(freshData.encryptedMetadata),
+                             fromBase64(freshData.encryptedMetadataNonce),
+diff --git a/src/contexts/UploadContext.tsx b/src/contexts/UploadContext.tsx
+index 968ffa4..fe7f6d6 100644
+--- a/src/contexts/UploadContext.tsx
++++ b/src/contexts/UploadContext.tsx
+@@ -180,7 +180,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
+ 
+         try {
+             // Load Crypto Libs
+-            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey } = await import('../crypto/v2');
++            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey } = await import('@lazybird-inc/nest-crypto');
+             const { foldersAPI } = await import('../api/folders');
+ 
+             // Get Master Key from Auth Context (via closure from component level)
+diff --git a/src/crypto-loader.ts b/src/crypto-loader.ts
+new file mode 100644
+index 0000000..0f6c916
+--- /dev/null
++++ b/src/crypto-loader.ts
+@@ -0,0 +1,30 @@
++const crypto = (window as any).NestCrypto;
++
++if (!crypto) {
++    throw new Error('NestCrypto is not loaded. Ensure the SRI script tag is present in index.html.');
++}
++
++export const init = crypto.init;
++export const encryptFile = crypto.encryptFile;
++export const generateFileKey = crypto.generateFileKey;
++export const encryptFileKey = crypto.encryptFileKey;
++export const encryptFolderKey = crypto.encryptFolderKey;
++export const toBase64 = crypto.toBase64;
++export const fromBase64 = crypto.fromBase64;
++export const encryptChunk = crypto.encryptChunk;
++export const decryptFolderKey = crypto.decryptFolderKey;
++export const decryptFileKey = crypto.decryptFileKey;
++export const decryptFile = crypto.decryptFile;
++export const deriveRootKey = crypto.deriveRootKey;
++export const deriveAuthHash = crypto.deriveAuthHash;
++export const decryptMasterKey = crypto.decryptMasterKey;
++export const deriveWrappingKey = crypto.deriveWrappingKey;
++export const decryptMetadataBlob = crypto.decryptMetadataBlob;
++export const encryptMetadataBlob = crypto.encryptMetadataBlob;
++export const generateFolderKey = crypto.generateFolderKey;
++export const decryptChunk = crypto.decryptChunk;
++export const generateMasterKey = crypto.generateMasterKey;
++export const encryptMasterKey = crypto.encryptMasterKey;
++export const generateSalt = crypto.generateSalt;
++export const createDecryptionStream = crypto.createDecryptionStream;
++export const createEncryptionStream = crypto.createEncryptionStream;
+diff --git a/src/crypto/v2.ts b/src/crypto/v2.ts
+deleted file mode 100644
+index 57aab12..0000000
+--- a/src/crypto/v2.ts
++++ /dev/null
+@@ -1,793 +0,0 @@
+-import sodium from 'libsodium-wrappers';
+-
+-await sodium.ready;
+-
+-// ============================================================================
+-// Types
+-// ============================================================================
+-
+-export interface KDFParams {
+-    algorithm: 'argon2id' | 'pbkdf2';
+-    memoryCost?: number;
+-    timeCost?: number;
+-    parallelism?: number;
+-    iterations?: number;
+-}
+-
+-export interface MetadataBlob {
+-    v: number;
+-    folders: {
+-        [folderId: string]: {
+-            name: string;
+-            created_at: string;
+-        };
+-    };
+-    files: {
+-        [fileId: string]: {
+-            filename: string;
+-            mime_type: string;
+-            folder_id: string | null;
+-        };
+-    };
+-}
+-
+-// ============================================================================
+-// Zero-Knowledge Primitives (Key Derivation & Wrapping)
+-// ============================================================================
+-
+-/**
+- * Derive Root Key from password using Argon2id
+- * This key is NEVER sent to the server. It is used to derive:
+- * 1. Auth Hash (for login)
+- * 2. Wrapping Key (to decrypt the Master Key)
+- */
+-export async function deriveRootKey(
+-    password: string,
+-    salt: Uint8Array,
+-    params: KDFParams
+-): Promise<Uint8Array> {
+-    console.log('[v2-crypto] Deriving Root Key...');
+-    console.time('[v2-crypto] Root Key derivation');
+-
+-    try {
+-        if (params.algorithm === 'argon2id') {
+-            const { argon2id } = await import('hash-wasm');
+-
+-            const result = await argon2id({
+-                password: password,
+-                salt: salt as any,
+-                parallelism: params.parallelism || 4,
+-                iterations: params.timeCost || 3,
+-                memorySize: params.memoryCost || 65536,
+-                hashLength: 32,
+-                outputType: 'binary'
+-            });
+-
+-            console.timeEnd('[v2-crypto] Root Key derivation');
+-            return result as Uint8Array;
+-        } else {
+-            // PBKDF2 fallback
+-            const encoder = new TextEncoder();
+-            const key = await crypto.subtle.importKey(
+-                'raw',
+-                encoder.encode(password),
+-                'PBKDF2',
+-                false,
+-                ['deriveBits']
+-            );
+-            const derivedBits = await crypto.subtle.deriveBits(
+-                {
+-                    name: 'PBKDF2',
+-                    salt: salt as BufferSource,
+-                    iterations: params.iterations || 600000,
+-                    hash: 'SHA-256',
+-                },
+-                key,
+-                256
+-            );
+-            console.timeEnd('[v2-crypto] Root Key derivation');
+-            return new Uint8Array(derivedBits);
+-        }
+-    } catch (error) {
+-        console.error('[v2-crypto] ❌ Root Key derivation failed:', error);
+-        throw new Error('Failed to derive Root Key');
+-    }
+-}
+-
+-/**
+- * Derive Auth Hash from Root Key (sent to server for login)
+- * Uses BLAKE2b(RootKey, 'AUTH')
+- */
+-export function deriveAuthHash(rootKey: Uint8Array): string {
+-    const input = new Uint8Array([...new TextEncoder().encode('auth_'), ...rootKey]);
+-    const authHash = sodium.crypto_generichash(32, input, null);
+-    return toHex(authHash as Uint8Array);
+-}
+-
+-/**
+- * Derive Wrapping Key from Root Key (used to decrypt Master Key)
+- * Uses BLAKE2b(RootKey, 'WRAP')
+- */
+-export function deriveWrappingKey(rootKey: Uint8Array): Uint8Array {
+-    const input = new Uint8Array([...new TextEncoder().encode('wrap_'), ...rootKey]);
+-    return sodium.crypto_generichash(32, input, null) as Uint8Array;
+-}
+-
+-/**
+- * Generate a random salt (32 bytes)
+- */
+-export function generateSalt(): Uint8Array {
+-    return sodium.randombytes_buf(32) as Uint8Array;
+-}
+-
+-/**
+- * Generate a random Master Key (32 bytes)
+-
+- * This is the actual key that encrypts user data.
+- */
+-export function generateMasterKey(): Uint8Array {
+-    return sodium.randombytes_buf(32) as Uint8Array;
+-}
+-
+-/**
+- * Encrypt Master Key with Wrapping Key
+- * Stored on server to allow multi-device sync.
+- */
+-export function encryptMasterKey(
+-    masterKey: Uint8Array,
+-    wrappingKey: Uint8Array
+-): { encrypted: Uint8Array; nonce: Uint8Array } {
+-    const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES) as Uint8Array;
+-    const encrypted = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+-        masterKey,
+-        null,
+-        null,
+-        nonce,
+-        wrappingKey
+-    ) as Uint8Array;
+-    return { encrypted, nonce };
+-}
+-
+-/**
+- * Decrypt Master Key with Wrapping Key
+- */
+-export function decryptMasterKey(
+-    encryptedMasterKey: Uint8Array,
+-    nonce: Uint8Array,
+-    wrappingKey: Uint8Array
+-): Uint8Array {
+-    try {
+-        return sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+-            null,
+-            encryptedMasterKey,
+-            null,
+-            nonce,
+-            wrappingKey
+-        ) as Uint8Array;
+-    } catch {
+-        throw new Error('Invalid Password (failed to decrypt Master Key)');
+-    }
+-}
+-
+-
+-// ============================================================================
+-// Master Key Encryption/Decryption
+-// ============================================================================
+-
+-/**
+- * Encrypt data with Master Key using XChaCha20-Poly1305
+- */
+-export function encryptWithMasterKey(
+-    data: Uint8Array | string,
+-    masterKey: Uint8Array
+-): { encrypted: Uint8Array; nonce: Uint8Array } {
+-    console.log('[v2-crypto] Encrypting with Master Key');
+-
+-    const dataBuffer = typeof data === 'string'
+-        ? new TextEncoder().encode(data)
+-        : data;
+-
+-    const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES) as Uint8Array;
+-
+-    const encrypted = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+-        dataBuffer,
+-        null,
+-        null,
+-        nonce,
+-        masterKey
+-    ) as Uint8Array;
+-
+-    console.log(`[v2-crypto] ✅ Encrypted ${dataBuffer.length} bytes with Master Key`);
+-    return { encrypted, nonce };
+-}
+-
+-/**
+- * Decrypt data with Master Key
+- */
+-export function decryptWithMasterKey(
+-    encrypted: Uint8Array,
+-    nonce: Uint8Array,
+-    masterKey: Uint8Array
+-): Uint8Array {
+-    console.log('[v2-crypto] Decrypting with Master Key');
+-
+-    try {
+-        const decrypted = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+-            null,
+-            encrypted,
+-            null,
+-            nonce,
+-            masterKey
+-        ) as Uint8Array;
+-
+-        console.log(`[v2-crypto] ✅ Decrypted ${decrypted.length} bytes`);
+-        return decrypted;
+-    } catch (error) {
+-        console.error('[v2-crypto] ❌ Decryption failed:', error);
+-        throw new Error('Failed to decrypt with Master Key');
+-    }
+-}
+-
+-// ============================================================================
+-// Folder Key Management
+-// ============================================================================
+-
+-/**
+- * Generate random Folder Key
+- */
+-export function generateFolderKey(): Uint8Array {
+-    console.log('[v2-crypto] Generating Folder Key');
+-    return sodium.randombytes_buf(32) as Uint8Array;
+-}
+-
+-/**
+- * Encrypt Folder Key with Master Key
+- */
+-export function encryptFolderKey(
+-    folderKey: Uint8Array,
+-    masterKey: Uint8Array
+-): { encrypted: Uint8Array; nonce: Uint8Array } {
+-    console.log('[v2-crypto] Encrypting Folder Key with Master Key');
+-    return encryptWithMasterKey(folderKey, masterKey);
+-}
+-
+-/**
+- * Decrypt Folder Key with Master Key
+- */
+-export function decryptFolderKey(
+-    encrypted: Uint8Array,
+-    nonce: Uint8Array,
+-    masterKey: Uint8Array
+-): Uint8Array {
+-    console.log('[v2-crypto] Decrypting Folder Key with Master Key');
+-    return decryptWithMasterKey(encrypted, nonce, masterKey);
+-}
+-
+-// ============================================================================
+-// File Key Management
+-// ============================================================================
+-
+-/**
+- * Generate random File Key
+- */
+-export function generateFileKey(): Uint8Array {
+-    console.log('[v2-crypto] Generating File Key');
+-    return sodium.randombytes_buf(32) as Uint8Array;
+-}
+-
+-/**
+- * Encrypt File Key with Folder Key
+- */
+-export function encryptFileKey(
+-    fileKey: Uint8Array,
+-    folderKey: Uint8Array
+-): { encrypted: Uint8Array; nonce: Uint8Array } {
+-    console.log('[v2-crypto] Encrypting File Key with Folder Key');
+-
+-    const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES) as Uint8Array;
+-
+-    const encrypted = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+-        fileKey,
+-        null,
+-        null,
+-        nonce,
+-        folderKey
+-    ) as Uint8Array;
+-
+-    console.log('[v2-crypto] ✅ File Key encrypted');
+-    return { encrypted, nonce };
+-}
+-
+-/**
+- * Decrypt File Key with Folder Key
+- */
+-export function decryptFileKey(
+-    encrypted: Uint8Array,
+-    nonce: Uint8Array,
+-    folderKey: Uint8Array
+-): Uint8Array {
+-    console.log('[v2-crypto] Decrypting File Key with Folder Key');
+-
+-    try {
+-        const decrypted = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+-            null,
+-            encrypted,
+-            null,
+-            nonce,
+-            folderKey
+-        ) as Uint8Array;
+-
+-        console.log('[v2-crypto] ✅ File Key decrypted');
+-        return decrypted;
+-    } catch (error) {
+-        console.error('[v2-crypto] ❌ File Key decryption failed:', error);
+-        throw new Error('Failed to decrypt File Key');
+-    }
+-}
+-
+-// ============================================================================
+-// Metadata Blob Management
+-// ============================================================================
+-
+-/**
+- * Encrypt metadata blob
+- */
+-export function encryptMetadataBlob(
+-    metadata: MetadataBlob,
+-    masterKey: Uint8Array
+-): { encrypted: Uint8Array; nonce: Uint8Array } {
+-    console.log(`[v2-crypto] Encrypting metadata blob (folders: ${Object.keys(metadata.folders).length}, files: ${Object.keys(metadata.files).length})`);
+-
+-    const json = JSON.stringify(metadata);
+-    return encryptWithMasterKey(json, masterKey);
+-}
+-
+-/**
+- * Decrypt metadata blob
+- */
+-export function decryptMetadataBlob(
+-    encrypted: Uint8Array,
+-    nonce: Uint8Array,
+-    masterKey: Uint8Array
+-): MetadataBlob {
+-    console.log('[v2-crypto] Decrypting metadata blob');
+-
+-    const decrypted = decryptWithMasterKey(encrypted, nonce, masterKey);
+-    const json = new TextDecoder().decode(decrypted);
+-    const metadata = JSON.parse(json);
+-
+-    console.log(`[v2-crypto] ✅ Metadata blob decrypted (folders: ${Object.keys(metadata.folders).length}, files: ${Object.keys(metadata.files).length})`);
+-    return metadata;
+-}
+-
+-// ============================================================================
+-// File Encryption/Decryption
+-// ============================================================================
+-
+-/**
+- * Encrypt file with File Key
+- */
+-
+-/**
+- * Encrypt a single chunk independently (for Sharding/Resume Support)
+- */
+-export async function encryptChunk(
+-    chunkBlob: Blob,
+-    fileKey: Uint8Array
+-): Promise<{ encryptedChunk: Blob; nonce: Uint8Array }> {
+-    console.log(`[v2-crypto] Encrypting chunk (${chunkBlob.size} bytes)`);
+-
+-    // 1. Init Push (Generates Header/Nonce)
+-    const pushState = sodium.crypto_secretstream_xchacha20poly1305_init_push(fileKey);
+-    const header = typeof pushState.header === 'string'
+-        ? fromBase64(pushState.header as unknown as string)
+-        : pushState.header;
+-
+-    console.log(`[v2-crypto] > Chunk Header (Nonce): ${toHex(header)}`);
+-
+-    // 2. Encrypt Data in 64MB blocks (Standard)
+-    const encryptedParts: Uint8Array[] = [];
+-    const CHUNK_SIZE = 64 * 1024 * 1024;
+-
+-    let offset = 0;
+-    let subChunkIndex = 0;
+-
+-    while (offset < chunkBlob.size) {
+-        const end = Math.min(offset + CHUNK_SIZE, chunkBlob.size);
+-        const isLast = end >= chunkBlob.size;
+-
+-        // Yield to browser event loop between sub-blocks (prevents UI freeze)
+-        if (subChunkIndex > 0) await new Promise(r => setTimeout(r, 0));
+-
+-        // Slice safely
+-        const slice = chunkBlob.slice(offset, end);
+-        const chunkData = new Uint8Array(await slice.arrayBuffer());
+-
+-        const encrypted = sodium.crypto_secretstream_xchacha20poly1305_push(
+-            pushState.state,
+-            chunkData,
+-            null,
+-            isLast ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE
+-        );
+-        encryptedParts.push(encrypted as Uint8Array);
+-
+-        if (subChunkIndex % 5 === 0) console.log(`[v2-crypto] >> Sub-chunk ${subChunkIndex}: ${chunkData.length} bytes -> ${encrypted.length} bytes (Last: ${isLast})`);
+-
+-        offset = end;
+-        subChunkIndex++;
+-    }
+-
+-    // 3. Construct Blob (Ciphertext Only - Header is returned separately as 'nonce' for DB)
+-    const encryptedChunk = new Blob(encryptedParts as any, { type: 'application/octet-stream' });
+-    console.log(`[v2-crypto] ✅ Chunk encrypted. Total size: ${encryptedChunk.size}`);
+-
+-    return { encryptedChunk, nonce: header };
+-}
+-
+-/**
+- * Decrypt a single chunk
+- */
+-export async function decryptChunk(
+-    encryptedChunkBlob: Blob,
+-    nonce: Uint8Array, // Header
+-    fileKey: Uint8Array
+-): Promise<Blob> {
+-    // 1. Init Pull
+-    const statePull = sodium.crypto_secretstream_xchacha20poly1305_init_pull(nonce, fileKey);
+-
+-    // 2. Decrypt
+-    const arrayBuffer = await encryptedChunkBlob.arrayBuffer();
+-    const chunkData = new Uint8Array(arrayBuffer);
+-
+-    const result = sodium.crypto_secretstream_xchacha20poly1305_pull(
+-        statePull,
+-        chunkData,
+-        null
+-    );
+-
+-    if (!result || !('message' in result)) {
+-        throw new Error('Chunk decryption failed');
+-    }
+-
+-    return new Blob([result.message as any], { type: 'application/octet-stream' });
+-}
+-/**
+- * Encrypt file with File Key using chunked processing to save memory (Streaming)
+- */
+-export async function encryptFile(
+-    file: File,
+-    fileKey: Uint8Array
+-): Promise<{ encryptedBlob: Blob; nonce: Uint8Array }> {
+-    console.log(`[v2-crypto] Encrypting file: ${file.name} (${file.size} bytes)`);
+-    console.time('[v2-crypto] File encryption');
+-
+-    const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
+-
+-    // Initialize streaming encryption
+-    const pushState = sodium.crypto_secretstream_xchacha20poly1305_init_push(fileKey);
+-    const state = pushState.state;
+-    // Ensure header is Uint8Array
+-    const header = typeof pushState.header === 'string'
+-        ? fromBase64(pushState.header as unknown as string)
+-        : pushState.header;
+-
+-    // Cast header to BlobPart since we know it's a Uint8Array
+-    const encryptedParts: BlobPart[] = [header as unknown as BlobPart];
+-
+-    let offset = 0;
+-    let chunkIndex = 0;
+-
+-    try {
+-        while (offset < file.size) {
+-            const chunk = file.slice(offset, offset + CHUNK_SIZE);
+-            const arrayBuffer = await chunk.arrayBuffer();
+-            const chunkData = new Uint8Array(arrayBuffer);
+-
+-            const isLast = (offset + CHUNK_SIZE) >= file.size;
+-            const tag = isLast
+-                ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+-                : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE;
+-
+-            const encryptedChunk = sodium.crypto_secretstream_xchacha20poly1305_push(
+-                state,
+-                chunkData,
+-                null, // additional data
+-                tag
+-            );
+-
+-            // Cast to BlobPart
+-            encryptedParts.push(encryptedChunk as unknown as BlobPart);
+-
+-            offset += CHUNK_SIZE;
+-            chunkIndex++;
+-
+-            if (chunkIndex % 5 === 0) console.log(`[v2-crypto] Encrypted ${(offset / 1024 / 1024).toFixed(0)}MB...`);
+-        }
+-    } catch (e) {
+-        console.error('[v2-crypto] Streaming encryption failed:', e);
+-        throw e;
+-    }
+-
+-    const encryptedBlob = new Blob(encryptedParts, { type: 'application/octet-stream' });
+-
+-    console.timeEnd('[v2-crypto] File encryption');
+-    console.log(`[v2-crypto] ✅ File encrypted (streamed). Total size: ${encryptedBlob.size}`);
+-
+-    // Return header as nonce
+-    return { encryptedBlob, nonce: header as Uint8Array };
+-}
+-
+-/**
+- * Decrypt file with File Key using chunked processing (Streaming)
+- */
+-export async function decryptFile(
+-    encryptedBlob: Blob,
+-    providedChunksOrNonce: any[] | Uint8Array | null,
+-    fileKey: Uint8Array
+-): Promise<Uint8Array> {
+-    console.log(`[v2-crypto] Decrypting file (${encryptedBlob.size} bytes)`);
+-    console.time('[v2-crypto] File decryption');
+-
+-    const headerSize = sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES;
+-    const CRYPTO_OVERHEAD = sodium.crypto_secretstream_xchacha20poly1305_ABYTES;
+-    const PLAIN_CHUNK_SIZE = 64 * 1024 * 1024;
+-    const STANDARD_ENCRYPTED_CHUNK = PLAIN_CHUNK_SIZE + CRYPTO_OVERHEAD;
+-
+-    const decryptedParts: Uint8Array[] = [];
+-    let offset = 0;
+-
+-    // Detect if we are using the Segmented Stream Protocol (SSP) OR Metadata-based segmentation
+-    const isSegmented = Array.isArray(providedChunksOrNonce) && providedChunksOrNonce.length > 0;
+-
+-    // Track current chunk index if segmented
+-    let chunkIndex = 0;
+-
+-    // Diagnostic State
+-    let pullState: any;
+-    let currentHeader: Uint8Array | undefined;
+-
+-    try {
+-        while (offset < encryptedBlob.size) {
+-            let currentSegmentSize = 0;
+-
+-            if (isSegmented) {
+-                // METADATA SEGMENTATION: Use the size and nonce provided in the chunks array
+-                const chunks = providedChunksOrNonce as any[];
+-                if (chunkIndex >= chunks.length) break; // Should not happen if sizes match
+-
+-                const chunkMeta = chunks[chunkIndex];
+-                currentSegmentSize = chunkMeta.size;
+-
+-                // Ensure nonce is Uint8Array
+-                const nonceValue = chunkMeta.nonce;
+-                currentHeader = nonceValue instanceof Uint8Array ? nonceValue : fromBase64(nonceValue as string);
+-
+-                console.log(`[v2-crypto] Decrypting Segmented Chunk ${chunkMeta.index}`);
+-                console.log(`[v2-crypto] > Header (Nonce): ${toHex(currentHeader)}`);
+-
+-                // Re-init for each segment in metadata mode
+-                pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(currentHeader, fileKey);
+-                chunkIndex++;
+-            } else {
+-                // MONOLITHIC / STREAM SEGMENTATION
+-                if (offset === 0) {
+-                    if (encryptedBlob.size < headerSize) {
+-                        throw new Error('File too small to contain header');
+-                    }
+-
+-                    const headerSlice = encryptedBlob.slice(0, headerSize);
+-                    currentHeader = new Uint8Array(await headerSlice.arrayBuffer());
+-                    offset += headerSize;
+-                    console.log(`[v2-crypto] Initialized monolithic stream with header: ${toHex(currentHeader)}`);
+-                    console.log(`[v2-crypto] Using File Key (start): ${toHex(fileKey.slice(0, 8))}...`);
+-
+-                    pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(currentHeader, fileKey);
+-                } else if (!pullState) {
+-                    throw new Error("Unexpected state: Monolithic loop iteration without header/state");
+-                }
+-            }
+-
+-            // 3. Decrypt this segment
+-            let segmentFinished = false;
+-            let segmentBytesRead = 0;
+-
+-            // Special Case: If using embedded headers (monolithic), the header was just read from offset.
+-            // But currentSegmentSize is not defined for monolithic (it runs until stream end/tag).
+-
+-            while (offset < encryptedBlob.size && !segmentFinished) {
+-                let nextPullSize: number;
+-
+-                if (isSegmented) {
+-                    // Start of Chunk: We haven't read any ciphertext yet.
+-                    // currentSegmentSize is the TOTAL size of the stored chunk (which usually includes overhead?)
+-                    // Actually, 'size' in DB from 'fileChunks' is the file size on disk.
+-                    // The 'encryptChunk' output is stored directly.
+-                    // So 'currentSegmentSize' IS the amount of bytes we need to read from blob.
+-
+-                    nextPullSize = currentSegmentSize - segmentBytesRead;
+-
+-                    // Cap at standard chunk size if needed, but usually we pull the whole chunk if memory allows?
+-                    // Let's pull in 64MB blocks to be safe if chunks are huge.
+-                    nextPullSize = Math.min(nextPullSize, STANDARD_ENCRYPTED_CHUNK);
+-
+-                    if (nextPullSize <= 0) {
+-                        segmentFinished = true;
+-                        break;
+-                    }
+-                } else {
+-                    // Pull standard 64MB blocks
+-                    const remainingInBlob = encryptedBlob.size - offset;
+-                    nextPullSize = Math.min(STANDARD_ENCRYPTED_CHUNK, remainingInBlob);
+-                }
+-
+-                if (nextPullSize <= 0) break;
+-
+-                const chunkSlice = encryptedBlob.slice(offset, offset + nextPullSize);
+-                const chunkData = new Uint8Array(await chunkSlice.arrayBuffer());
+-
+-                // console.log(`[v2-crypto] Pulling block at offset ${offset} (size: ${chunkData.length})`);
+-                const result = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, chunkData, null);
+-
+-                if (!result) {
+-                    console.error(`[v2-crypto] ❌ Pull failed at offset ${offset}. ChunkData len: ${chunkData.length}. Type: ${isSegmented ? 'Meta' : 'Stream'}`);
+-                    console.error(`[v2-crypto] Current Key (start): ${toHex(fileKey.slice(0, 8))}...`);
+-                    console.error(`[v2-crypto] Current Header: ${currentHeader ? toHex(currentHeader) : 'None'}`);
+-                    throw new Error('Decryption failed: Tag/Ciphertext mismatch or stream corruption');
+-                }
+-
+-                decryptedParts.push(result.message as Uint8Array);
+-                offset += nextPullSize;
+-                segmentBytesRead += nextPullSize;
+-
+-                if (result.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL) {
+-                    segmentFinished = true;
+-                }
+-            }
+-        }
+-    } catch (e) {
+-        console.error('[v2-crypto] Decryption error:', e);
+-        throw e;
+-    }
+-
+-    // Merge results
+-    const totalLength = decryptedParts.reduce((acc, part) => acc + part.length, 0);
+-    const result = new Uint8Array(totalLength);
+-    let resultOffset = 0;
+-    for (const part of decryptedParts) {
+-        result.set(part, resultOffset);
+-        resultOffset += part.length;
+-    }
+-
+-    console.timeEnd('[v2-crypto] File decryption');
+-    console.log(`[v2-crypto] ✅ Decryption complete. Output size: ${result.length}`);
+-    return result;
+-}
+-
+-/**
+- * Decrypt a stream of data (SSP or monolithic) without holding it all in memory.
+- * Uses TransformStream for zero-copy-ish processing.
+- */
+-export function createDecryptionStream(fileKey: Uint8Array, header: Uint8Array): TransformStream<Uint8Array, Uint8Array> {
+-    const CRYPTO_OVERHEAD = sodium.crypto_secretstream_xchacha20poly1305_ABYTES;
+-    const PLAIN_CHUNK_SIZE = 64 * 1024 * 1024;
+-    const STANDARD_ENCRYPTED_CHUNK = PLAIN_CHUNK_SIZE + CRYPTO_OVERHEAD;
+-
+-    let pullState: any = null;
+-    let buffer = new Uint8Array(0);
+-    let bytesProcessed = 0;
+-    let chunkCount = 0;
+-
+-    console.log(`[v2-crypto] 🚀 Stream Decrypt Init. Header (Hex): ${toHex(header)} (Length: ${header.length}B)`);
+-    console.log(`[v2-crypto] > File Key (start): ${toHex(fileKey.slice(0, 8))}...`);
+-
+-    return new TransformStream({
+-        start() {
+-            try {
+-                if (header.length !== sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES) {
+-                    throw new Error(`Invalid header length: expected ${sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES}, got ${header.length}`);
+-                }
+-                pullState = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, fileKey);
+-            } catch (e) {
+-                console.error('[v2-crypto] ❌ Stream Init Pull Failed:', e);
+-                throw e;
+-            }
+-        },
+-        transform(chunk, controller) {
+-            // Buffer incoming bytes until we have a full crypto block
+-            const newBuffer = new Uint8Array(buffer.length + chunk.length);
+-            newBuffer.set(buffer);
+-            newBuffer.set(chunk, buffer.length);
+-            buffer = newBuffer;
+-
+-            // Process chunks of STANDARD_ENCRYPTED_CHUNK size
+-            while (buffer.length >= STANDARD_ENCRYPTED_CHUNK) {
+-                const toProcess = buffer.subarray(0, STANDARD_ENCRYPTED_CHUNK);
+-                // Use slice for the remaining buffer as it creates a fresh copy, allowing the old large buffer to be GC'd
+-                buffer = buffer.slice(STANDARD_ENCRYPTED_CHUNK);
+-
+-                try {
+-                    const result = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, toProcess, null);
+-                    if (!result) {
+-                        throw new Error(`Decryption failed: Tag/Ciphertext mismatch at segment offset ${bytesProcessed} (Block Index ${chunkCount})`);
+-                    }
+-                    controller.enqueue(result.message as Uint8Array);
+-                    bytesProcessed += toProcess.length;
+-                    chunkCount++;
+-
+-                    if (chunkCount % 5 === 0) {
+-                        console.log(`[v2-crypto] >> Decrypted Block ${chunkCount} (Total: ${(bytesProcessed / 1024 / 1024).toFixed(0)} MB)`);
+-                    }
+-
+-                    if (result.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL && buffer.length > 0) {
+-                        console.warn(`[v2-crypto] ⚠️ Received TAG_FINAL but buffer still has ${buffer.length} bytes! Stream might be corrupted or combined incorrectly.`);
+-                    }
+-                } catch (e) {
+-                    console.error(`[v2-crypto] ❌ Stream block decryption failed:`, {
+-                        offset: bytesProcessed,
+-                        blockIndex: chunkCount,
+-                        blockSize: toProcess.length,
+-                        bufferRemaining: buffer.length,
+-                        error: e
+-                    });
+-                    controller.error(e);
+-                    return;
+-                }
+-            }
+-        },
+-        flush(controller) {
+-            // Process any remaining bytes (the final smaller chunk)
+-            if (buffer.length > 0) {
+-                try {
+-                    console.log(`[v2-crypto] 🏁 Stream Flush: processing final ${buffer.length} bytes at offset ${bytesProcessed}`);
+-
+-                    if (buffer.length < CRYPTO_OVERHEAD) {
+-                        throw new Error(`Final block too small: expected at least ${CRYPTO_OVERHEAD} bytes, got ${buffer.length}. The file might be truncated.`);
+-                    }
+-
+-                    const result = sodium.crypto_secretstream_xchacha20poly1305_pull(pullState, buffer, null);
+-                    if (!result) throw new Error('Decryption failed on final block (Mismatch)');
+-
+-                    controller.enqueue(result.message as Uint8Array);
+-                    console.log(`[v2-crypto] ✅ Stream Flush Success.`);
+-                } catch (e) {
+-                    console.error('[v2-crypto] ❌ Stream Flush Failed:', e);
+-                    controller.error(e);
+-                }
+-            } else {
+-                console.log(`[v2-crypto] ✅ Stream Finished smoothly (no remaining bytes).`);
+-            }
+-        }
+-    });
+-}
+-
+-// ============================================================================
+-// Utility Functions
+-// ============================================================================
+-
+-/**
+- * Convert Uint8Array to base64
+- */
+-export function toBase64(data: Uint8Array): string {
+-    return sodium.to_base64(data, sodium.base64_variants.ORIGINAL);
+-}
+-
+-/**
+- * Convert base64 to Uint8Array
+- */
+-export function fromBase64(base64: string): Uint8Array {
+-    return sodium.from_base64(base64, sodium.base64_variants.ORIGINAL);
+-}
+-
+-/**
+- * Convert Uint8Array to hex
+- */
+-export function toHex(data: Uint8Array): string {
+-    return sodium.to_hex(data);
+-}
+-
+-/**
+- * Convert hex to Uint8Array
+- */
+-export function fromHex(hex: string): Uint8Array {
+-    return sodium.from_hex(hex);
+-}
+diff --git a/src/landing/components/Footer.tsx b/src/landing/components/Footer.tsx
+index 3e5dec6..36da5af 100644
+--- a/src/landing/components/Footer.tsx
++++ b/src/landing/components/Footer.tsx
+@@ -55,6 +55,7 @@ const Footer = () => {
+                             <ul className="space-y-4 text-text-muted text-sm font-medium font-sans">
+                                 <li><Link to="/privacy" className="hover:text-primary transition-colors">Privacy</Link></li>
+                                 <li><Link to="/terms" className="hover:text-primary transition-colors">Terms</Link></li>
++                                <li><Link to="/security" className="hover:text-primary transition-colors">Security</Link></li>
+                             </ul>
+                         </div>
+                     </div>
+diff --git a/src/pages/CloudDrivePage.tsx b/src/pages/CloudDrivePage.tsx
+index cff6671..09c64d7 100644
+--- a/src/pages/CloudDrivePage.tsx
++++ b/src/pages/CloudDrivePage.tsx
+@@ -108,7 +108,7 @@ export const CloudDrivePage = () => {
+ 
+             console.log('[CloudDrive] ✅ File info received. Verified on Gateway:', is_gateway_verified);
+ 
+-            const { decryptFile, decryptChunk, fromBase64 } = await import('../crypto/v2');
++            const { decryptFile, decryptChunk, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+             const fileKey = fromBase64(file_key);
+ 
+             let decryptedBlob: Blob;
+diff --git a/src/pages/FoldersPage.tsx b/src/pages/FoldersPage.tsx
+index 9dbef02..ea2038a 100644
+--- a/src/pages/FoldersPage.tsx
++++ b/src/pages/FoldersPage.tsx
+@@ -196,7 +196,7 @@ export const FoldersPage = () => {
+         if (!metadata || !masterKey) return;
+         try {
+             // 1. Generate & Encrypt Folder Key locally
+-            const { generateFolderKey, encryptFolderKey, toBase64 } = await import('../crypto/v2');
++            const { generateFolderKey, encryptFolderKey, toBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+             const folderKey = generateFolderKey();
+             const { encrypted, nonce } = encryptFolderKey(folderKey, masterKey);
+@@ -268,7 +268,7 @@ export const FoldersPage = () => {
+     const handleShare = async (file: FileItem) => {
+         try {
+             // Import crypto functions
+-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+             // Get Master Key from context
+             if (!masterKey) {
+@@ -338,7 +338,7 @@ export const FoldersPage = () => {
+             }
+ 
+             // Import crypto functions
+-            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+             toastId = showToast('Starting download...', 'info', Infinity);
+ 
+             // 1. Fetch encrypted keys and file metadata from server
+@@ -498,7 +498,7 @@ export const FoldersPage = () => {
+ 
+         try {
+             // Import crypto functions
+-            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+             // 1. Get the file's current encrypted keys from the server
+             const downloadInfo = await api.get(`/files/download/${fileId}`);
+diff --git a/src/pages/LoginPage.tsx b/src/pages/LoginPage.tsx
+index c4ecd33..e2d88ed 100644
+--- a/src/pages/LoginPage.tsx
++++ b/src/pages/LoginPage.tsx
+@@ -27,7 +27,7 @@ export const LoginPage = () => {
+                 deriveRootKey,
+                 deriveAuthHash,
+                 fromBase64
+-            } = await import('../crypto/v2');
++            } = await import('@lazybird-inc/nest-crypto');
+             const { authAPI } = await import('../api/auth');
+ 
+             // 1. Get Salt from Server
+diff --git a/src/pages/NestPage.tsx b/src/pages/NestPage.tsx
+index 8496957..b9f567d 100644
+--- a/src/pages/NestPage.tsx
++++ b/src/pages/NestPage.tsx
+@@ -35,7 +35,7 @@ export const NestPage = () => {
+     const handleShare = async (file: FileItem) => {
+         try {
+             // Import crypto functions
+-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+             // Get Master Key from context
+             if (!masterKey) {
+@@ -121,7 +121,7 @@ export const NestPage = () => {
+             toastId = showToast('Preparing download...', 'info', Infinity);
+ 
+             // Import crypto functions
+-            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+             // 1. Fetch encrypted keys and file metadata from server
+             const downloadInfo = await api.get(`/files/download/${file.id}`);
+@@ -235,7 +235,7 @@ export const NestPage = () => {
+ 
+         try {
+             // Import crypto functions and foldersAPI
+-            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+             const { foldersAPI } = await import('../api/folders');
+ 
+             // 1. Get the file's current encrypted keys from the server
+diff --git a/src/pages/RecoverySetupPage.tsx b/src/pages/RecoverySetupPage.tsx
+index 873e2e1..bb6a353 100644
+--- a/src/pages/RecoverySetupPage.tsx
++++ b/src/pages/RecoverySetupPage.tsx
+@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import { useAuth } from '../contexts/AuthContext';
+ import { ShieldCheck, DownloadSimple, CheckCircle, Warning, ArrowRight, LockKey } from '@phosphor-icons/react';
+-import { toBase64 } from '../crypto/v2';
++import { toBase64 } from '@lazybird-inc/nest-crypto';
+ 
+ export const RecoverySetupPage = () => {
+     const { user, masterKey, login } = useAuth();
+diff --git a/src/pages/ResetPasswordPage.tsx b/src/pages/ResetPasswordPage.tsx
+index bc79ab4..cf0b438 100644
+--- a/src/pages/ResetPasswordPage.tsx
++++ b/src/pages/ResetPasswordPage.tsx
+@@ -35,7 +35,7 @@ export const ResetPasswordPage = () => {
+                 encryptFolderKey,
+                 fromBase64,
+                 toBase64,
+-            } = await import('../crypto/v2');
++            } = await import('@lazybird-inc/nest-crypto');
+ 
+             // 1. Derive NEW Key Materials from NEW Password
+             const salt = window.crypto.getRandomValues(new Uint8Array(32));
+diff --git a/src/pages/SecurityPage.tsx b/src/pages/SecurityPage.tsx
+new file mode 100644
+index 0000000..b0dfce2
+--- /dev/null
++++ b/src/pages/SecurityPage.tsx
+@@ -0,0 +1,136 @@
++import { useEffect } from 'react';
++import { motion } from 'framer-motion';
++import { ShieldCheck, FileCode, MagnifyingGlass, BookOpen } from '@phosphor-icons/react';
++import Navbar from '../landing/components/Navbar';
++import Footer from '../landing/components/Footer';
++
++const SecurityPage = () => {
++    useEffect(() => {
++        window.scrollTo(0, 0);
++    }, []);
++
++    return (
++        <div className="min-h-screen bg-slate-50 font-sans selection:bg-primary selection:text-white">
++            <Navbar />
++
++            {/* Hero Section */}
++            <section className="pt-32 pb-20 px-6 max-w-4xl mx-auto text-center">
++                <motion.div
++                    initial={{ opacity: 0, y: 20 }}
++                    animate={{ opacity: 1, y: 0 }}
++                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-semibold mb-8"
++                >
++                    <ShieldCheck weight="fill" size={18} />
++                    Nest Security Center
++                </motion.div>
++                <motion.h1
++                    initial={{ opacity: 0, y: 20 }}
++                    animate={{ opacity: 1, y: 0 }}
++                    transition={{ delay: 0.1 }}
++                    className="text-4xl md:text-6xl font-display font-bold text-slate-900 tracking-tight mb-6"
++                >
++                    Radical Transparency.<br />Zero Compromises.
++                </motion.h1>
++                <motion.p
++                    initial={{ opacity: 0, y: 20 }}
++                    animate={{ opacity: 1, y: 0 }}
++                    transition={{ delay: 0.2 }}
++                    className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed"
++                >
++                    Trust isn't given; it's proven. We've open-sourced our entire zero-knowledge cryptography engine so you never have to take our word for it.
++                </motion.p>
++            </section>
++
++            {/* Content Sections */}
++            <section className="px-6 py-12 max-w-4xl mx-auto space-y-24">
++                
++                {/* 1. Open Source Crypto */}
++                <div className="grid md:grid-cols-2 gap-12 items-center">
++                    <div>
++                        <div className="h-12 w-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mb-6">
++                            <FileCode size={24} weight="fill" />
++                        </div>
++                        <h2 className="text-2xl font-bold font-display text-slate-900 mb-4">Open-Source Engine</h2>
++                        <p className="text-slate-600 mb-6 leading-relaxed">
++                            The heart of Nest is <code className="px-1.5 py-0.5 rounded bg-slate-200 text-sm">@lazybird-inc/nest-crypto</code>. It handles key derivation, file encryption, and master key wrapping using Argon2id and XChaCha20-Poly1305.
++                        </p>
++                        <p className="text-slate-600 mb-6 leading-relaxed">
++                            We load this exact engine in your browser directly from a public CDN using Subresource Integrity (SRI) hashes. This mathematically proves that the engine running in your browser matches the public, auditable source code exactly.
++                        </p>
++                        <a 
++                            href="https://github.com/Lazybird-inc/nest-crypto" 
++                            target="_blank" 
++                            rel="noreferrer"
++                            className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-medium transition-colors"
++                        >
++                            View Source Code
++                        </a>
++                    </div>
++                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
++                        <pre className="text-xs text-slate-500 overflow-x-auto">
++                            <code>
++{`<!-- Loaded in Nest's index.html -->
++<script 
++  src="https://unpkg.com/@lazybird-inc/nest-crypto" 
++  integrity="sha384-..."
++></script>`}
++                            </code>
++                        </pre>
++                    </div>
++                </div>
++
++                {/* 2. Private Auditor Program */}
++                <div className="bg-primary/5 border border-primary/20 rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden">
++                    <div className="relative z-10 max-w-2xl">
++                        <div className="h-12 w-12 rounded-2xl bg-white text-primary flex items-center justify-center shadow-sm mb-6">
++                            <MagnifyingGlass size={24} weight="bold" />
++                        </div>
++                        <h2 className="text-2xl md:text-3xl font-bold font-display text-slate-900 mb-4">Private Auditor Program</h2>
++                        <p className="text-slate-600 mb-6 leading-relaxed">
++                            While our cryptography engine is public, the frontend application (React, Tailwind, UI) remains closed-source. 
++                            To bridge the trust gap, we invite verified security researchers to audit the entire Nest frontend application under a Responsible Disclosure NDA.
++                        </p>
++                        <p className="text-slate-600 mb-8 font-medium">
++                            If you discover a vulnerability, please do not open a public issue. Email us directly.
++                        </p>
++                        <div className="flex flex-wrap gap-4">
++                            <a 
++                                href="mailto:admin@lazybird.io?subject=Security Audit Application" 
++                                className="inline-flex items-center justify-center h-12 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold transition-all"
++                            >
++                                Apply to Audit
++                            </a>
++                            <a 
++                                href="mailto:admin@lazybird.io?subject=Vulnerability Disclosure" 
++                                className="inline-flex items-center justify-center h-12 px-6 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold border border-slate-200 transition-all"
++                            >
++                                Report Vulnerability
++                            </a>
++                        </div>
++                    </div>
++                </div>
++
++                {/* 3. Published Audits */}
++                <div className="text-center max-w-2xl mx-auto">
++                    <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-slate-100 text-slate-500 mb-6">
++                        <BookOpen size={24} />
++                    </div>
++                    <h2 className="text-2xl font-bold font-display text-slate-900 mb-4">Published Audit Reports</h2>
++                    <p className="text-slate-600 mb-8">
++                        As third-party audits are completed by independent researchers, we will publish the executive summaries and technical findings here.
++                    </p>
++                    
++                    <div className="p-8 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
++                        No public audit reports have been published yet.
++                    </div>
++                </div>
++
++            </section>
++
++            <Footer />
++        </div>
++    );
++};
++
++export default SecurityPage;
++export { SecurityPage };
+diff --git a/src/pages/SettingsPage.tsx b/src/pages/SettingsPage.tsx
+index b4c40fd..e8a7c7f 100644
+--- a/src/pages/SettingsPage.tsx
++++ b/src/pages/SettingsPage.tsx
+@@ -525,7 +525,7 @@ const AccountDeletionModal = ({ isOpen, onClose }: ModalProps) => {
+         setError('');
+ 
+         try {
+-            const { deriveRootKey, deriveAuthHash, fromBase64 } = await import('../crypto/v2');
++            const { deriveRootKey, deriveAuthHash, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+             const { authAPI } = await import('../api/auth');
+ 
+             if (!user?.email) throw new Error('User email not found');
+diff --git a/src/pages/SharePage.tsx b/src/pages/SharePage.tsx
+index 04db661..39d25d3 100644
+--- a/src/pages/SharePage.tsx
++++ b/src/pages/SharePage.tsx
+@@ -10,7 +10,7 @@ import {
+     MusicNotes,
+     FileText,
+ } from '@phosphor-icons/react';
+-import { fromBase64 } from '../crypto/v2';
++import { fromBase64 } from '@lazybird-inc/nest-crypto';
+ import { StreamingDownloader } from '../utils/StreamingDownloader';
+ import nestLogo from '../assets/nest-logo.png';
+ 
+@@ -169,7 +169,7 @@ export const SharePage = () => {
+                 }
+ 
+                 // For monolithic files, we still use the old decrypt (rare in V3, but kept for compat)
+-                const { decryptFile } = await import('../crypto/v2');
++                const { decryptFile } = await import('@lazybird-inc/nest-crypto');
+                 // Note: Monolithic files have the nonce embedded or handled by decryptFile logic usually
+                 // In V2/V3 transition, we pass null as nonce for monolithic
+                 const decryptedBytes = await decryptFile(blob!, null, fileKey);
+diff --git a/src/pages/SharedLinksPage.tsx b/src/pages/SharedLinksPage.tsx
+index 4b9f9c3..fa0266c 100644
+--- a/src/pages/SharedLinksPage.tsx
++++ b/src/pages/SharedLinksPage.tsx
+@@ -115,7 +115,7 @@ export const SharedLinksPage = () => {
+             }
+ 
+             // Import crypto functions
+-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('../crypto/v2');
++            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+ 
+             // 1. Get encrypted keys
+             const downloadInfo = await api.get(`/files/download/${file.id}`);
+diff --git a/src/utils/StreamingDownloader.ts b/src/utils/StreamingDownloader.ts
+index ca062a8..52cef73 100644
+--- a/src/utils/StreamingDownloader.ts
++++ b/src/utils/StreamingDownloader.ts
+@@ -1,5 +1,5 @@
+ import API_BASE_URL from '../config/api';
+-import { createDecryptionStream, fromBase64 } from '../crypto/v2';
++import { createDecryptionStream, fromBase64 } from '@lazybird-inc/nest-crypto';
+ import streamSaver from 'streamsaver';
+ 
+ // Use local MITM to bypass SES (e.g. from crypto extensions like Keplr/MetaMask) 
+diff --git a/src/utils/StreamingExport.ts b/src/utils/StreamingExport.ts
+index b5c5f11..00e7ee4 100644
+--- a/src/utils/StreamingExport.ts
++++ b/src/utils/StreamingExport.ts
+@@ -4,7 +4,7 @@ import * as fflate from 'fflate';
+ import { filesAPI, type File } from '../api/files';
+ import API_BASE_URL from '../config/api';
+ 
+-import type { MetadataBlob } from '../crypto/v2';
++import type { MetadataBlob } from '@lazybird-inc/nest-crypto';
+ 
+ // Use the default MITM to support browsers without Service Worker stream support
+ // Use the default MITM to support browsers without Service Worker stream support
+@@ -51,7 +51,7 @@ export const streamExport = async (
+             fromBase64,
+             decryptFileKey,
+             decryptFolderKey
+-        } = await import('../crypto/v2');
++        } = await import('@lazybird-inc/nest-crypto');
+ 
+         // 3. Add Metadata JSON
+         const metadataFile = new fflate.ZipPassThrough('account_info.json');
+diff --git a/vite.config.ts b/vite.config.ts
+index cfd9b53..ae07d9d 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -2,9 +2,15 @@ import { defineConfig } from 'vite'
+ import react from '@vitejs/plugin-react'
+ import wasm from 'vite-plugin-wasm'
+ import topLevelAwait from 'vite-plugin-top-level-await'
++import path from 'path'
+ 
+ // https://vite.dev/config/
+ export default defineConfig({
++  resolve: {
++    alias: {
++      '@lazybird-inc/nest-crypto': path.resolve(__dirname, './src/crypto-loader.ts'),
++    },
++  },
+   plugins: [
+     react(),
+     wasm(),

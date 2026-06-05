@@ -24,8 +24,7 @@ export const ResetPasswordPage = () => {
 
         try {
             // Import crypto dynamically
-            const {
-                deriveRootKey,
+            const { deriveRootKey,
                 deriveAuthHash,
                 deriveWrappingKey,
                 encryptMasterKey,
@@ -35,7 +34,9 @@ export const ResetPasswordPage = () => {
                 encryptFolderKey,
                 fromBase64,
                 toBase64,
+                init
             } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
             // 1. Derive NEW Key Materials from NEW Password
             const salt = window.crypto.getRandomValues(new Uint8Array(32));

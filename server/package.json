@@ -1,6 +1,6 @@
 {
     "name": "nest-server",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Zero-knowledge encrypted cloud storage backend",
     "main": "src/server.ts",
     "scripts": {

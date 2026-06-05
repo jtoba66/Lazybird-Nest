@@ -12,6 +12,7 @@ export interface UploadItem {
     size: number;
     progress: number;
     status: 'uploading' | 'completed' | 'failed' | 'queued';
+    type?: 'upload' | 'download';
     backendFileId?: number;
     folderId?: number; // Target folder ID
     error?: string;
@@ -20,6 +21,7 @@ export interface UploadItem {
 interface UploadContextType {
     uploads: UploadItem[];
     addUpload: (file: File, folderId?: number | null) => string;
+    addDownload: (filename: string, size: number) => string;
     updateProgress: (id: string, progress: number) => void;
     completeUpload: (id: string) => void;
     failUpload: (id: string, error: string) => void;
@@ -56,11 +58,26 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             size: file.size,
             progress: 0,
             status: 'queued',
+            type: 'upload',
             folderId: folderId ?? undefined,
         };
 
         fileRegistry.current.set(id, file);
         setUploads(prev => [...prev, uploadItem]);
+        return id;
+    };
+
+    const addDownload = (filename: string, size: number): string => {
+        const id = crypto.randomUUID();
+        const downloadItem: UploadItem = {
+            id,
+            filename,
+            size,
+            progress: 0,
+            status: 'uploading', // Actively processing immediately
+            type: 'download',
+        };
+        setUploads(prev => [...prev, downloadItem]);
         return id;
     };
 
@@ -131,8 +148,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             if (!masterKey) return; // Wait for master key before processing queue
             if (activeUploads >= MAX_CONCURRENT_UPLOADS) return;
 
-            // Fix Race Condition: Filter out items already marked as processing
-            const nextUpload = uploads.find(u => u.status === 'queued' && !processingRef.current.has(u.id));
+            // Fix Race Condition: Filter out items already marked as processing. Only pick uploads.
+            const nextUpload = uploads.find(u => (u.type === 'upload' || !u.type) && u.status === 'queued' && !processingRef.current.has(u.id));
 
             if (nextUpload) {
                 // Lock immediately
@@ -180,7 +197,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
         try {
             // Load Crypto Libs
-            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey } = await import('@lazybird-inc/nest-crypto');
+            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
             const { foldersAPI } = await import('../api/folders');
 
             // Get Master Key from Auth Context (via closure from component level)
@@ -423,6 +441,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             value={{
                 uploads,
                 addUpload,
+                addDownload,
                 updateProgress,
                 completeUpload,
                 failUpload,

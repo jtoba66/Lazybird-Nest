@@ -6,7 +6,8 @@ import {
     ShieldCheck,
     ShareNetwork,
     Headset,
-    ArrowRight
+    ArrowRight,
+    Lightning
 } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { billingAPI } from '../api/billing';
@@ -25,11 +26,13 @@ const FeatureItem = ({ label }: { label: string }) => (
 export const PricingPage = () => {
     const { showToast } = useToast();
     const [loading, setLoading] = useState<string | null>(null);
+    const [isYearly, setIsYearly] = useState(true);
 
-    const handleUpgrade = async () => {
+    const handleUpgrade = async (tier: 'pro' | 'max') => {
         try {
-            setLoading('pro');
-            const { url } = await billingAPI.createCheckoutSession();
+            setLoading(tier);
+            const interval = isYearly ? 'yearly' : 'monthly';
+            const { url } = await billingAPI.createCheckoutSession(tier, interval);
             window.location.href = url;
         } catch (error) {
             console.error('Upgrade failed:', error);
@@ -62,17 +65,50 @@ export const PricingPage = () => {
         >
             {/* Header - Compact */}
             <motion.div variants={itemVariants} className="text-center max-w-2xl mx-auto mb-8 md:mb-12">
-                <h1 className="text-3xl md:text-4xl font-bold text-text-main mb-2 tracking-tight">
+                <h1 className="text-3xl md:text-4xl font-bold text-text-main mb-4 tracking-tight">
                     Simple, Transparent <span className="text-primary italic">Pricing</span>
                 </h1>
-                <p className="text-text-muted text-sm md:text-base">
-                    All plans include industry standard zero knowledge encryption.
-                </p>
+                
+                {/* Billing Toggle */}
+                <div className="flex flex-col items-center justify-center gap-3 mb-4">
+                    <div className="relative flex items-center p-1 bg-slate-100 rounded-full border border-slate-200/60 shadow-inner">
+                        <div 
+                            className="absolute top-1 bottom-1 w-[100px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out"
+                            style={{ transform: isYearly ? 'translateX(100px)' : 'translateX(0)' }}
+                        />
+                        
+                        <button 
+                            onClick={() => setIsYearly(false)}
+                            className={clsx(
+                                "relative z-10 w-[100px] py-1.5 text-sm font-bold transition-colors", 
+                                !isYearly ? "text-text-main" : "text-text-muted hover:text-text-main"
+                            )}
+                        >
+                            Monthly
+                        </button>
+                        <button 
+                            onClick={() => setIsYearly(true)}
+                            className={clsx(
+                                "relative z-10 w-[100px] py-1.5 text-sm font-bold transition-colors", 
+                                isYearly ? "text-text-main" : "text-text-muted hover:text-text-main"
+                            )}
+                        >
+                            Yearly
+                        </button>
+                    </div>
+                    
+                    <div className={clsx(
+                        "bg-primary/10 text-primary text-[10px] px-3 py-1 rounded-full uppercase tracking-widest font-black transition-opacity duration-300",
+                        isYearly ? "opacity-100" : "opacity-0"
+                    )}>
+                        2 Months Free
+                    </div>
+                </div>
             </motion.div>
 
-            {/* Pricing Grid - Identical Card Sizes */}
+            {/* Pricing Grid - 3 Columns */}
             <div className="flex-1 flex items-start justify-center min-h-0 mb-8 md:mb-12">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 w-full max-w-5xl items-stretch">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 w-full max-w-6xl items-stretch">
                     {/* Free Tier */}
                     <motion.div
                         variants={itemVariants}
@@ -86,7 +122,7 @@ export const PricingPage = () => {
                             <h3 className="text-xl font-bold text-text-main mb-1">Free</h3>
                             <div className="flex items-baseline gap-1">
                                 <span className="text-3xl sm:text-4xl font-black text-text-main">$0</span>
-                                <span className="text-text-muted text-xs font-medium">/ month</span>
+                                <span className="text-text-muted text-xs font-medium">/ forever</span>
                             </div>
                         </div>
 
@@ -109,11 +145,11 @@ export const PricingPage = () => {
                     <motion.div
                         variants={itemVariants}
                         whileHover={{ y: -5 }}
-                        className="glass-panel p-6 lg:p-8 flex flex-col h-full relative border-2 border-primary/20 shadow-xl shadow-primary/5 hover:border-primary/40 hover:shadow-primary/20 transition-all duration-300"
+                        className="glass-panel p-6 lg:p-8 flex flex-col h-full relative border-2 border-primary/20 shadow-xl shadow-primary/5 hover:border-primary/40 hover:shadow-primary/20 transition-all duration-300 bg-white"
                     >
                         {/* Badge */}
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-secondary text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg z-10">
-                            Recommended
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-secondary text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg z-10 whitespace-nowrap">
+                            Most Popular
                         </div>
 
                         <div className="mb-6">
@@ -122,8 +158,10 @@ export const PricingPage = () => {
                             </div>
                             <h3 className="text-xl font-bold text-text-main mb-1">Pro</h3>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-3xl sm:text-4xl font-black text-text-main">$2.99</span>
-                                <span className="text-text-muted text-xs font-medium">/ month</span>
+                                <span className="text-3xl sm:text-4xl font-black text-text-main">
+                                    ${isYearly ? '29.99' : '2.99'}
+                                </span>
+                                <span className="text-text-muted text-xs font-medium">/ {isYearly ? 'year' : 'month'}</span>
                             </div>
                         </div>
 
@@ -137,8 +175,8 @@ export const PricingPage = () => {
                         <motion.button
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={handleUpgrade}
-                            disabled={loading === 'pro'}
+                            onClick={() => handleUpgrade('pro')}
+                            disabled={loading !== null}
                             className={clsx(
                                 "w-full py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 group mt-auto relative overflow-hidden",
                                 loading === 'pro' && "opacity-70 cursor-wait"
@@ -149,7 +187,55 @@ export const PricingPage = () => {
                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    <span className="relative z-10">Upgrade to Pro</span>
+                                    <span className="relative z-10">Start 7 Day Free Trial</span>
+                                    <ArrowRight size={16} weight="bold" className="group-hover:translate-x-1 transition-transform relative z-10" />
+                                </>
+                            )}
+                        </motion.button>
+                    </motion.div>
+                    
+                    {/* Max Tier */}
+                    <motion.div
+                        variants={itemVariants}
+                        whileHover={{ y: -5 }}
+                        className="glass-panel p-6 lg:p-8 flex flex-col h-full relative border-2 border-text-main/10 shadow-xl shadow-text-main/5 hover:border-text-main/30 hover:shadow-text-main/10 transition-all duration-300"
+                    >
+                        <div className="mb-6">
+                            <div className="w-12 h-12 rounded-2xl bg-text-main/10 flex items-center justify-center text-text-main mb-4 shadow-inner">
+                                <Lightning size={24} weight="duotone" />
+                            </div>
+                            <h3 className="text-xl font-bold text-text-main mb-1">Max</h3>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-3xl sm:text-4xl font-black text-text-main">
+                                    ${isYearly ? '129.99' : '12.99'}
+                                </span>
+                                <span className="text-text-muted text-xs font-medium">/ {isYearly ? 'year' : 'month'}</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 mb-8 flex-1">
+                            <FeatureItem label="500GB Encrypted Storage" />
+                            <FeatureItem label="Zero Knowledge Encryption" />
+                            <FeatureItem label="Unlimited File Sharing" />
+                            <FeatureItem label="VIP Support" />
+                        </div>
+
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleUpgrade('max')}
+                            disabled={loading !== null}
+                            className={clsx(
+                                "w-full py-3.5 rounded-xl bg-text-main text-white font-bold text-sm shadow-lg shadow-text-main/20 transition-all flex items-center justify-center gap-2 group mt-auto relative overflow-hidden",
+                                loading === 'max' && "opacity-70 cursor-wait"
+                            )}
+                        >
+                            <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out"></div>
+                            {loading === 'max' ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <>
+                                    <span className="relative z-10">Start 7 Day Free Trial</span>
                                     <ArrowRight size={16} weight="bold" className="group-hover:translate-x-1 transition-transform relative z-10" />
                                 </>
                             )}
@@ -159,7 +245,7 @@ export const PricingPage = () => {
             </div>
 
             {/* Trust Badges - More Compact */}
-            <motion.div variants={itemVariants} className="max-w-5xl mx-auto w-full pt-6 border-t border-text-muted/10">
+            <motion.div variants={itemVariants} className="max-w-6xl mx-auto w-full pt-6 border-t border-text-muted/10">
                 <div className="grid grid-cols-3 gap-4">
                     <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center text-center group cursor-default">
                         <ShieldCheck size={24} weight="duotone" className="text-primary mb-2 opacity-80 group-hover:opacity-100 transition-opacity" />

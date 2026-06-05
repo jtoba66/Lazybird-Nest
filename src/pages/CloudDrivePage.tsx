@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import API_BASE_URL from '../config/api';
 import { useToast } from '../contexts/ToastContext';
 import { CloudArrowUp, MagnifyingGlass, SortAscending } from '@phosphor-icons/react';
 import { FileGrid } from '../components/FileGrid';
@@ -7,11 +6,16 @@ import { FileTable } from '../components/FileTable';
 import { filesAPI } from '../api/files';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
 import { PageLoader } from '../components/PageLoader';
+import { useAuth } from '../contexts/AuthContext';
+import { useUpload } from '../contexts/UploadContext';
+import api from '../lib/api';
 
 type SortOption = 'newest' | 'oldest' | 'name' | 'size';
 
 export const CloudDrivePage = () => {
     const { showToast } = useToast();
+    const { masterKey } = useAuth();
+    const { addDownload, updateProgress, completeUpload, failUpload } = useUpload();
     const [files, setFiles] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -78,124 +82,120 @@ export const CloudDrivePage = () => {
         }
     };
 
-    const handleDownload = async (fileId: number, filename: string) => {
-        console.log('[CloudDrive] Starting download for file:', fileId);
-        showToast(`Downloading "${filename}"...`, 'info');
+    const handleDownload = async (file: any) => {
+        if (!masterKey) {
+            showToast('Please log in again to download files', 'error');
+            return;
+        }
+
+        const downloadId = addDownload(file.filename, file.file_size);
+        let fakeProgress = 0;
+        let fakeProgressInterval: NodeJS.Timeout | undefined;
 
         try {
-            // Step 1: Get File Key and Metadata
-            const keyResponse = await fetch(`${API_BASE_URL}/files/download/${fileId}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('nest_token')}`,
-                },
-            });
+            // Import crypto functions
+            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
-            if (!keyResponse.ok) {
-                const err = await keyResponse.json();
-                throw new Error(err.error || 'Failed to get file info');
-            }
+            // Start Feedback Fake Progress (0-5%)
+            fakeProgressInterval = setInterval(() => {
+                if (fakeProgress < 5) {
+                    fakeProgress += 0.5;
+                    updateProgress(downloadId, fakeProgress);
+                }
+            }, 200);
 
-            const {
-                file_key,
-                file_key_nonce,
-                filename: serverFilename,
-                mime_type,
-                jackal_fid,
-                merkle_hash,
-                is_chunked,
-                is_gateway_verified
-            } = await keyResponse.json();
+            // 1. Fetch encrypted keys and file metadata from server
+            const downloadInfo = await api.get(`/files/download/${file.id}`);
 
-            console.log('[CloudDrive] ✅ File info received. Verified on Gateway:', is_gateway_verified);
+            // 2. Decrypt Keys (moved up to support StreamingDownloader)
+            const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
+            const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
+            const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
+            const folderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
 
-            const { decryptFile, decryptChunk, fromBase64 } = await import('@lazybird-inc/nest-crypto');
-            const fileKey = fromBase64(file_key);
+            const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
+            const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
 
-            let decryptedBlob: Blob;
+            // NEW: Use StreamingDownloader for chunked files (universal via StreamSaver.js)
+            const isLargeFile = file.file_size > 128 * 1024 * 1024;
+            const token = localStorage.getItem('nest_token');
 
-            if (is_chunked) {
-                // CHUNKED DOWNLOAD
-                showToast(`Downloading chunked file "${filename}"...`, 'info');
+            if (isLargeFile && token && downloadInfo.data.chunks?.length > 0) {
+                // Map chunks to DownloadChunk format
+                const downloadChunks = downloadInfo.data.chunks.map((c: any) => ({
+                    index: c.index,
+                    size: c.size,
+                    nonce: c.nonce,
+                    jackal_merkle: c.jackal_merkle,
+                    status: (c.jackal_merkle && c.jackal_merkle !== 'pending' && c.jackal_merkle !== 'pending-chunks') ? 'cloud' : 'local'
+                }));
 
-                // 1. Get Manifest
-                const { chunks } = await filesAPI.getManifest(fileId);
-                console.log(`[CloudDrive] Found ${chunks.length} chunks`);
+                const { StreamingDownloader } = await import('../utils/StreamingDownloader');
 
-                const parts: Blob[] = [];
-
-                // 2. Download & Decrypt Sequentially
-                for (let i = 0; i < chunks.length; i++) {
-                    const chunk = chunks[i];
-
-                    // Determine Source: Gateway or Local Proxy
-                    let chunkUrl = '';
-                    if (chunk.is_gateway_verified) {
-                        chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
-                    } else {
-                        chunkUrl = `${API_BASE_URL}/files/chunks/raw/${chunk.id}`;
+                await StreamingDownloader.download({
+                    fileKey,
+                    filename: file.filename,
+                    chunks: downloadChunks,
+                    fileId: file.id,
+                    authToken: token,
+                    onProgress: (p) => {
+                        clearInterval(fakeProgressInterval);
+                        updateProgress(downloadId, Math.max(5, p));
                     }
-
-                    const chunkResp = await fetch(chunkUrl, {
-                        headers: chunk.is_gateway_verified ? {} : { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` }
-                    });
-
-                    if (!chunkResp.ok) throw new Error(`Failed to download chunk ${i}`);
-
-                    const encryptedChunkBlob = await chunkResp.blob();
-
-                    // Decrypt
-                    const chunkNonce = fromBase64(chunk.nonce);
-                    const decryptedPart = await decryptChunk(encryptedChunkBlob, chunkNonce, fileKey);
-
-                    parts.push(decryptedPart);
-
-                    if (i % 5 === 0) console.log(`[CloudDrive] Processed chunk ${i + 1}/${chunks.length}`);
-                }
-
-                decryptedBlob = new Blob(parts, { type: mime_type });
-
-            } else {
-                // MONOLITHIC DOWNLOAD
-                let downloadUrl = '';
-                if (is_gateway_verified) {
-                    downloadUrl = `https://gateway.lazybird.io/file/${jackal_fid || merkle_hash}`;
-                    console.log('[CloudDrive] Downloading from Jackal Gateway');
-                } else {
-                    downloadUrl = `${API_BASE_URL}/files/raw/${fileId}`;
-                    console.log('[CloudDrive] Downloading from Local Proxy');
-                }
-
-                const blobResponse = await fetch(downloadUrl, {
-                    headers: is_gateway_verified ? {} : { 'Authorization': `Bearer ${localStorage.getItem('nest_token')}` }
                 });
 
-                if (!blobResponse.ok) throw new Error('Failed to download encrypted file');
-
-                const encryptedBlob = await blobResponse.blob();
-
-                // Decrypt
-                const nonce = fromBase64(file_key_nonce || '');
-                const decryptedBytes = await decryptFile(encryptedBlob, nonce, fileKey);
-                decryptedBlob = new Blob([decryptedBytes as any], { type: mime_type });
+                clearInterval(fakeProgressInterval);
+                completeUpload(downloadId);
+                return;
             }
 
-            // Step 4: Trigger browser download
-            const url = window.URL.createObjectURL(decryptedBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', serverFilename || filename);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+            // FALLBACK: Legacy Blob Download (for monolithic/small files)
 
+            // 3. Fetch Raw Encrypted Content
+            const contentResponse = await api.get(`/files/raw/${file.id}`, {
+                responseType: 'blob',
+                onDownloadProgress: (progressEvent) => {
+                    clearInterval(fakeProgressInterval);
+                    const total = progressEvent.total || file.file_size;
+                    const percent = (progressEvent.loaded / total) * 100;
+                    updateProgress(downloadId, Math.max(5, percent * 0.9));
+                }
+            });
+            const encryptedBlob = contentResponse.data;
+
+            updateProgress(downloadId, 95);
+
+            // 4. Decrypt Content
+            // Allow UI to update before heavy crypto
+            await new Promise(r => setTimeout(r, 50));
+
+            const headerNonce = fileKeyNonce;
+            const chunks = downloadInfo.data.chunks;
+
+            const decryptedBytes = await decryptFile(encryptedBlob, (chunks && chunks.length > 0) ? chunks : headerNonce, fileKey);
+
+            // 5. Trigger Browser Download
+            const blob = new Blob([decryptedBytes as unknown as BlobPart], { type: file.mime_type });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = file.filename;
+            document.body.appendChild(a);
+            a.click();
+
+            // Cleanup
             window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
 
-            console.log('[CloudDrive] ✅ Download complete');
-            showToast(`"${filename}" downloaded successfully!`, 'success');
+            clearInterval(fakeProgressInterval);
+            completeUpload(downloadId);
 
         } catch (error: any) {
-            console.error('[CloudDrive] ❌ Download failed:', error);
-            showToast(`Failed to download "${filename}": ${error.message}`, 'error');
+            console.error('Download failed:', error);
+            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+            failUpload(downloadId, error.message || 'Download failed');
         }
     };
 
@@ -293,7 +293,7 @@ export const CloudDrivePage = () => {
                         size: file.file_size,
                         createdAt: file.created_at,
                         folderId: file.folder_id,
-                        onDownload: () => handleDownload(file.id, file.filename),
+                        onDownload: () => handleDownload(file),
                         onShare: () => handleShare(file),
                         onMove: (fId: number | null) => handleMove(file.id, fId),
                         onDelete: () => handleDelete(file.id)

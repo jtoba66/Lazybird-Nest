@@ -32,6 +32,12 @@ if (env.NODE_ENV === 'production' && FRONTEND_URL.includes('localhost')) {
 router.post('/create-checkout-session', authenticateToken, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.userId;
+        const { tier = 'pro', interval = 'monthly' } = req.body;
+
+        if (!['pro', 'max'].includes(tier) || !['monthly', 'yearly'].includes(interval)) {
+            return res.status(400).json({ error: 'Invalid tier or interval' });
+        }
+
         const [user] = await db.select({
             email: users.email,
             stripe_customer_id: users.stripe_customer_id,
@@ -40,9 +46,9 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
 
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        if (user.subscription_tier === 'pro' && user.stripe_customer_id &&
+        if (user.subscription_tier !== 'free' && user.stripe_customer_id &&
             !['GRANDFATHERED', 'GOD_MODE'].includes(user.stripe_customer_id)) {
-            return res.status(400).json({ error: 'Already subscribed to Pro' });
+            return res.status(400).json({ error: 'Already subscribed. Please use the Billing Portal to upgrade or change plans.' });
         }
 
         let customerId = user.stripe_customer_id;
@@ -77,11 +83,12 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
             returnBaseUrl = 'https://nest.lazybird.io';
         }
 
+        const priceId = (PRICING as any)[tier][interval].priceId;
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
             mode: 'subscription',
             payment_method_types: ['card'],
-            line_items: [{ price: PRICING.pro.monthly.priceId, quantity: 1 }],
+            line_items: [{ price: priceId, quantity: 1 }],
             subscription_data: {
                 trial_period_days: 7,
                 metadata: { userId: String(userId) }
@@ -174,6 +181,7 @@ router.post('/sync-subscription', authenticateToken, async (req: AuthRequest, re
         }
 
         // 3. Update User (Mimic Webhook Logic)
+        let tier = 'pro';
         if (session.subscription) {
             const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
 
@@ -182,18 +190,25 @@ router.post('/sync-subscription', authenticateToken, async (req: AuthRequest, re
             // Let's fetch the subscription to be safe and accurate.
             const subscription = await stripe.subscriptions.retrieve(subId);
 
+            // Determine tier from price ID
+            const priceId = subscription.items.data[0]?.price.id;
+            if (priceId === env.STRIPE_MAX_MONTHLY_PRICE_ID || priceId === env.STRIPE_MAX_YEARLY_PRICE_ID) {
+                tier = 'max';
+            }
+
             await db.update(users).set({
-                subscription_tier: 'pro',
+                subscription_tier: tier,
                 subscription_status: subscription.status,
                 stripe_subscription_id: subId,
                 trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
                 subscription_expires_at: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
-                storage_quota_bytes: PRICING.pro.storage,
+                storage_quota_bytes: (PRICING as any)[tier].storage,
                 stripe_customer_id: session.customer as string
             }).where(eq(users.id, userId));
         }
 
-        res.json({ success: true, tier: 'pro' });
+        // Return the derived tier so the frontend knows what just happened
+        res.json({ success: true, tier });
 
     } catch (e: any) {
         console.error('Sync subscription failed:', e);
@@ -226,14 +241,20 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
                     // Fetch subscription to get accurate trial_end
                     const subscription = await stripe.subscriptions.retrieve(subId);
+                    const priceId = subscription.items.data[0]?.price.id;
+                    let tier = 'pro';
+                    if (priceId === env.STRIPE_MAX_MONTHLY_PRICE_ID || priceId === env.STRIPE_MAX_YEARLY_PRICE_ID) {
+                        tier = 'max';
+                    }
+
                     await db.update(users).set({
-                        subscription_tier: 'pro',
+                        subscription_tier: tier,
                         subscription_status: subscription.status,
                         stripe_subscription_id: subId,
                         stripe_customer_id: session.customer as string,
                         trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
                         subscription_expires_at: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
-                        storage_quota_bytes: PRICING.pro.storage
+                        storage_quota_bytes: (PRICING as any)[tier].storage
                     }).where(eq(users.id, parseInt(userId)));
 
                     // Defensive email sending
@@ -256,13 +277,19 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 const expiresAt = (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000) : null;
                 const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000) : null;
 
+                const priceId = sub.items.data[0]?.price.id;
+                let tier = 'pro';
+                if (priceId === env.STRIPE_MAX_MONTHLY_PRICE_ID || priceId === env.STRIPE_MAX_YEARLY_PRICE_ID) {
+                    tier = 'max';
+                }
+
                 await db.update(users).set({
-                    subscription_tier: 'pro',
+                    subscription_tier: tier,
                     subscription_status: status,
                     subscription_expires_at: expiresAt,
                     trial_ends_at: trialEnd,
                     stripe_subscription_id: sub.id,
-                    storage_quota_bytes: PRICING.pro.storage
+                    storage_quota_bytes: (PRICING as any)[tier].storage
                 }).where(eq(users.stripe_customer_id, sub.customer as string));
                 logger.info(`[BILLING-WEBHOOK] Subscription updated: status=${status}`);
                 break;

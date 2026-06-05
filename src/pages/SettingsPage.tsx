@@ -525,7 +525,8 @@ const AccountDeletionModal = ({ isOpen, onClose }: ModalProps) => {
         setError('');
 
         try {
-            const { deriveRootKey, deriveAuthHash, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+            const { deriveRootKey, deriveAuthHash, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
             const { authAPI } = await import('../api/auth');
 
             if (!user?.email) throw new Error('User email not found');

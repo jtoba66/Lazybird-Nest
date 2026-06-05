@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useUpload } from '../contexts/UploadContext';
-import { CheckCircle, XCircle, ArrowClockwise, X, CaretDown, CaretUp } from '@phosphor-icons/react';
+import { CheckCircle, XCircle, ArrowClockwise, X, CaretDown, CaretUp, UploadSimple, DownloadSimple } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -57,7 +57,7 @@ export const UploadProgress = () => {
                 <div className="p-3 border-b border-white/20 bg-white/10 backdrop-blur-md flex items-center justify-between cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <h3 className="font-bold text-text-main text-sm flex items-center gap-2">
-                            {isMinimized ? 'Uploads' : 'Upload Queue'}
+                            Queue
                         </h3>
                         {activeCount > 0 && (
                             <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full border border-primary/20 font-bold">
@@ -119,7 +119,10 @@ export const UploadProgress = () => {
                                                     <XCircle size={24} weight="fill" className="text-red-500 drop-shadow-sm" />
                                                 )}
                                                 {(upload.status === 'uploading' || upload.status === 'queued') && (
-                                                    <div className="w-6 h-6 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                                    <div className="relative w-6 h-6 flex items-center justify-center">
+                                                        <div className="absolute inset-0 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                                        {(upload.type === 'download') ? <DownloadSimple size={12} className="text-primary" weight="bold" /> : <UploadSimple size={12} className="text-primary" weight="bold" />}
+                                                    </div>
                                                 )}
                                             </div>
 
@@ -167,7 +170,7 @@ export const UploadProgress = () => {
                                                 <button
                                                     onClick={() => removeUpload(upload.id)}
                                                     className="p-1.5 hover:bg-red-500/10 rounded-md text-text-muted hover:text-red-500 transition-colors"
-                                                    title="Remove"
+                                                    title={upload.type === 'download' ? "Remove Download" : "Remove Upload"}
                                                 >
                                                     <X size={16} weight="bold" />
                                                 </button>

@@ -22,8 +22,8 @@ graph TD
     
     subgraph "Trust Boundary (Client Side)"
         Client
-        KeyDerivation[Argon2id KDF]
-        Encryption[AES-256-GCM]
+        KeyDerivation[Argon2id + BLAKE2b]
+        Encryption[XChaCha20-Poly1305]
     end
 
     subgraph "Zero-Knowledge Zone (Server)"
@@ -36,7 +36,7 @@ graph TD
     Client -- "3. Derive Key & Unlock Vault" --> KeyDerivation
     Client -- "4. Encrypt File" --> Encryption
     Encryption -- "5. Upload Encrypted Blob" --> Server
-    Server -- "6. Proxy to Storage" --> Jackal
+    Server -- "6. Proxy to Storage" --> Obsideo
 ```
 
 ### Data Retrieval & Decryption Flow
@@ -45,7 +45,7 @@ graph TD
 graph TD
     subgraph "Untrusted Zone (Cloud)"
         API[API Server]
-        Storage[Jackal Network]
+        Storage[Obsideo Network]
     end
 
     subgraph "Trusted Zone (Your Device)"
@@ -79,9 +79,9 @@ graph TD
 *   **Master Key Architecture:** A derived Master Key unlocks Folder Keys, which in turn unlock File Keys. This hierarchical key management allows for secure and distinct sharing scopes.
 
 ### 💾 Decentralized Storage
-*   **Jackal Protocol Integration:** Files are stored on the Jackal decentralized storage network, ensuring high availability and censorship resistance.
+*   **Obsideo Protocol Integration:** Files are stored on the Obsideo decentralized storage network, ensuring high availability and censorship resistance.
 *   **Chunking & Resiliency:** Large files are split into encrypted chunks, allowing for resumable uploads and handling files up to **10GB**.
-*   **Redundancy:** Files are verified on the Jackal gateway to insure durability.
+*   **Redundancy:** Files are verified on the Obsideo gateway to insure durability.
 
 ### ⚡ Enterprise Capabilities
 *   **Secure Sharing:** Create time-bound, encrypted share links. External users decrypt files locally using a hash fragment key (never sent to the server).
@@ -98,14 +98,14 @@ graph TD
 *   **Build Tool:** [Vite](https://vitejs.dev/)
 *   **Language:** TypeScript
 *   **Styling:** TailwindCSS + Phosphor Icons
-*   **Encryption:** `libsodium-wrappers` (WASM), `hash-wasm`
+*   **Encryption:** [`@lazybird-inc/nest-crypto`](https://github.com/lazybird-inc/nest-crypto) (Open-Source WASM Engine)
 *   **State Management:** React Context + Optimistic UI updates
 
 ### Backend (Server)
 *   **Runtime:** Node.js (Express)
 *   **Database:** PostgreSQL (via [Drizzle ORM](https://orm.drizzle.team/))
 *   **Authentication:** JWT + Argon2id (for password hashing)
-*   **Storage:** Jackal.js SDK
+*   **Storage:** Obsideo.js SDK
 *   **Security:** Helmet, CORS, Rate Limiting (Express-Rate-Limit)
 *   **Logging:** Winston (Structured logging)
 
@@ -171,13 +171,16 @@ Nest is built on the principle that the server is **untrusted**.
  This isolation ensures that even if the database is completely compromised, attacker obtains only useless, high-entropy random data.
 
 ### 🔐 Cryptography Suite
+
+> **Open-Source & Auditable:** Our core cryptographic engine has been entirely decoupled into a standalone, open-source library ([@lazybird-inc/nest-crypto](https://github.com/lazybird-inc/nest-crypto)). This guarantees absolute transparency and enables public security auditing of all client-side encryption logic.
+
 Nest utilizes a hybrid encryption scheme to balance security and performance:
 
 | Component | Algorithm | Purpose |
 | :--- | :--- | :--- |
 | **Key Management** | **XChaCha20-Poly1305** | Used for wrapping Master Keys, Folder Keys, and Filenames. Chosen for its nonce-misuse resistance and 192-bit nonces. |
-| **File Encryption** | **AES-256-GCM** | Used for high-throughput stream encryption of file blobs. Provides authenticated encryption with hardware acceleration. |
-| **Identity** | **Argon2id** | Memory-hard password hashing function used to derive the authentication hash and master key from the user's password. |
+| **File Encryption** | **XChaCha20-Poly1305 (SecretStream)** | Used for high-throughput stream encryption of file chunks. Prevents out-of-memory errors on large files while guaranteeing chunk integrity. |
+| **Identity & Hashing** | **Argon2id & BLAKE2b** | Argon2id is used to securely derive the Root Key from the user's password. BLAKE2b is used to derive the AuthHash and WrappingKey from the Root Key. |
 
 ---
 

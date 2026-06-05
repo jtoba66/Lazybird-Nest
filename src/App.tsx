@@ -6,6 +6,7 @@ import { StorageProvider } from './contexts/StorageContext';
 import { RefreshProvider } from './contexts/RefreshContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AdminRoute } from './components/AdminRoute';
 import { DashboardLayout } from './layouts/DashboardLayout';
 
 // Lazy load pages
@@ -152,9 +153,9 @@ const App = () => {
                       <Route
                         path="/admin"
                         element={
-                          <ProtectedRoute>
+                          <AdminRoute>
                             <AdminPage />
-                          </ProtectedRoute>
+                          </AdminRoute>
                         }
                       />
 

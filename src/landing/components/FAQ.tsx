@@ -63,7 +63,7 @@ const FAQ = () => {
         },
         {
             question: "What if I forget my password?",
-            answer: "Nest is built so we don’t have access to your decryption keys on the server. That means if you lose your credentials (and haven't set up recovery), we will not be able to restore access to your encrypted data."
+            answer: "By design, Nest has absolutely zero access to your decryption keys. Because of this strict security model, if you lose your credentials and have not configured account recovery, your encrypted data cannot be recovered."
         }
     ];
 

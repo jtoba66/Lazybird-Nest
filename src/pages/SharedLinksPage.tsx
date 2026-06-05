@@ -115,7 +115,8 @@ export const SharedLinksPage = () => {
             }
 
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
             // 1. Get encrypted keys
             const downloadInfo = await api.get(`/files/download/${file.id}`);

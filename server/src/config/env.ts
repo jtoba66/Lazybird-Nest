@@ -36,6 +36,9 @@ const envSchema = z.object({
     STRIPE_SECRET_KEY: z.string().min(1, "STRIPE_SECRET_KEY is required"),
     STRIPE_WEBHOOK_SECRET: z.string().min(1, "STRIPE_WEBHOOK_SECRET is required"),
     STRIPE_PRO_PRICE_ID: z.string().optional(),
+    STRIPE_PRO_YEARLY_PRICE_ID: z.string().optional(),
+    STRIPE_MAX_MONTHLY_PRICE_ID: z.string().optional(),
+    STRIPE_MAX_YEARLY_PRICE_ID: z.string().optional(),
 
     // Email
     SMTP_HOST: z.string().optional(),

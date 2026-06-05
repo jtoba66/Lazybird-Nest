@@ -25,12 +25,12 @@ const Navbar = () => {
         >
             <div className="container mx-auto px-6 flex items-center justify-between">
                 {/* Brand Logo */}
-                <div className="flex items-center gap-3 group cursor-pointer">
+                <Link to="/" className="flex items-center gap-3 group cursor-pointer hover:opacity-80 transition-opacity">
                     <img src="/nest-logo.png" alt="Nest - Private Cloud Storage" className="h-10 w-auto drop-shadow-sm" />
                     <span className="text-2xl font-display font-bold tracking-tight text-text-main mt-1">
                         LazyBird's Nest
                     </span>
-                </div>
+                </Link>
 
                 {/* Desktop Menu */}
                 <div className="hidden md:flex items-center gap-10">
@@ -48,6 +48,12 @@ const Navbar = () => {
                         className="text-sm font-semibold text-text-muted hover:text-text-main transition-colors duration-300 font-display uppercase tracking-wide"
                     >
                         Documentation
+                    </Link>
+                    <Link
+                        to="/security"
+                        className="text-sm font-semibold text-text-muted hover:text-text-main transition-colors duration-300 font-display uppercase tracking-wide"
+                    >
+                        Transparency
                     </Link>
                     <Link to="/login" className="bg-text-main hover:bg-slate-800 text-white px-7 py-3 rounded-full font-bold transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 font-display text-sm">
                         Launch App
@@ -110,6 +116,13 @@ const Navbar = () => {
                                 onClick={() => setIsMobileMenuOpen(false)}
                             >
                                 Documentation
+                            </Link>
+                            <Link
+                                to="/security"
+                                className="text-lg font-display font-bold text-text-main hover:text-primary"
+                                onClick={() => setIsMobileMenuOpen(false)}
+                            >
+                                Transparency
                             </Link>
                             <Link to="/login" className="bg-text-main text-white px-5 py-4 rounded-xl font-bold transition-all text-center shadow-md">
                                 Launch App

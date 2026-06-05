@@ -28,12 +28,18 @@ router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Self-healing: If user is Pro but quota is incorrect (less than 100GB), fix it
+        // Self-healing: If user is Pro or Max but quota is incorrect, fix it
         const PRO_QUOTA = 100 * 1024 * 1024 * 1024;
+        const MAX_QUOTA = 500 * 1024 * 1024 * 1024;
+
         if (user.subscription_tier === 'pro' && (user.storage_quota_bytes || 0) < PRO_QUOTA) {
             await db.update(users).set({ storage_quota_bytes: PRO_QUOTA }).where(eq(users.id, userId));
             user.storage_quota_bytes = PRO_QUOTA;
             logger.info(`[Storage Quota] Auto-corrected quota for Pro user ${userId} to 100GB`);
+        } else if (user.subscription_tier === 'max' && (user.storage_quota_bytes || 0) < MAX_QUOTA) {
+            await db.update(users).set({ storage_quota_bytes: MAX_QUOTA }).where(eq(users.id, userId));
+            user.storage_quota_bytes = MAX_QUOTA;
+            logger.info(`[Storage Quota] Auto-corrected quota for Max user ${userId} to 500GB`);
         }
 
         const isGodMode = user.email === 'josephtoba29@gmail.com';
@@ -47,7 +53,7 @@ router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
 
         if (isGodMode) {
             response.tier = 'God Mode';
-            response.quota = 100 * 1024 * 1024 * 1024;
+            response.quota = 10 * 1024 * 1024 * 1024 * 1024; // 10TB for God Mode
             response.percentage = ((user.storage_used_bytes || 0) / response.quota) * 100;
         }
 

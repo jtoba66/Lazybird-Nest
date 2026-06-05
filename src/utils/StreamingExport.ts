@@ -46,12 +46,11 @@ export const streamExport = async (
 
     try {
         // Import Crypto Utilities dynamically
-        const {
-            decryptChunk,
+        const { decryptChunk,
             fromBase64,
             decryptFileKey,
-            decryptFolderKey
-        } = await import('@lazybird-inc/nest-crypto');
+            decryptFolderKey, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
         // 3. Add Metadata JSON
         const metadataFile = new fflate.ZipPassThrough('account_info.json');

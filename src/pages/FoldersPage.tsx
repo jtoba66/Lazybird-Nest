@@ -24,13 +24,13 @@ interface FileItem {
 }
 
 export const FoldersPage = () => {
-    const { showToast, updateToast, dismissToast } = useToast();
+    const { showToast } = useToast();
     const navigate = useNavigate();
     const location = useLocation();
     const { fileListVersion, triggerFileRefresh } = useRefresh();
     const { refreshQuota } = useStorage();
     const { metadata, saveMetadata, masterKey, checkMetadataVersion } = useAuth();
-    const { addUpload } = useUpload();
+    const { addUpload, addDownload, updateProgress, completeUpload, failUpload } = useUpload();
 
     // URL State Management
     const searchParams = new URLSearchParams(location.search);
@@ -196,7 +196,8 @@ export const FoldersPage = () => {
         if (!metadata || !masterKey) return;
         try {
             // 1. Generate & Encrypt Folder Key locally
-            const { generateFolderKey, encryptFolderKey, toBase64 } = await import('@lazybird-inc/nest-crypto');
+            const { generateFolderKey, encryptFolderKey, toBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
             const folderKey = generateFolderKey();
             const { encrypted, nonce } = encryptFolderKey(folderKey, masterKey);
@@ -268,7 +269,8 @@ export const FoldersPage = () => {
     const handleShare = async (file: FileItem) => {
         try {
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
             // Get Master Key from context
             if (!masterKey) {
@@ -330,16 +332,27 @@ export const FoldersPage = () => {
     };
 
     const handleDownload = async (file: FileItem) => {
-        let toastId: string | undefined;
-        try {
-            if (!masterKey) {
-                showToast('Please log in again to download files', 'error');
-                return;
-            }
+        if (!masterKey) {
+            showToast('Please log in again to download files', 'error');
+            return;
+        }
 
+        const downloadId = addDownload(file.filename, file.file_size);
+        let fakeProgress = 0;
+        let fakeProgressInterval: NodeJS.Timeout | undefined;
+
+        try {
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64 } = await import('@lazybird-inc/nest-crypto');
-            toastId = showToast('Starting download...', 'info', Infinity);
+            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
+
+            // Start Feedback Fake Progress (0-5%)
+            fakeProgressInterval = setInterval(() => {
+                if (fakeProgress < 5) {
+                    fakeProgress += 0.5;
+                    updateProgress(downloadId, fakeProgress);
+                }
+            }, 200);
 
             // 1. Fetch encrypted keys and file metadata from server
             const downloadInfo = await api.get(`/files/download/${file.id}`);
@@ -358,8 +371,6 @@ export const FoldersPage = () => {
             const token = localStorage.getItem('nest_token');
 
             if (isLargeFile && token && downloadInfo.data.chunks?.length > 0) {
-                if (toastId) updateToast(toastId, 'Starting streaming download...', 'info');
-
                 // Map chunks to DownloadChunk format
                 const downloadChunks = downloadInfo.data.chunks.map((c: any) => ({
                     index: c.index,
@@ -371,7 +382,6 @@ export const FoldersPage = () => {
 
                 const { StreamingDownloader } = await import('../utils/StreamingDownloader');
 
-                let lastUpdate = 0;
                 await StreamingDownloader.download({
                     fileKey,
                     filename: file.filename,
@@ -379,23 +389,13 @@ export const FoldersPage = () => {
                     fileId: file.id,
                     authToken: token,
                     onProgress: (p) => {
-                        // Log first few updates to debug
-                        if (p < 5 || p > 95 || Math.floor(p) % 10 === 0) console.log(`[UI-DL] Progress: ${p.toFixed(2)}%`);
-
-                        // Throttle updates to every 200ms to allow React to render
-                        const now = Date.now();
-                        if (now - lastUpdate > 200 || p === 100) {
-                            if (toastId) updateToast(toastId, `Downloading... ${p.toFixed(0)}%`, 'info');
-                            lastUpdate = now;
-                        }
+                        clearInterval(fakeProgressInterval);
+                        updateProgress(downloadId, Math.max(5, p));
                     }
                 });
 
-                // Dismiss progress toast
-                if (toastId) dismissToast(toastId);
-
-                // Show distinct success toast
-                setTimeout(() => showToast('Download complete! File saved.', 'success'), 500);
+                clearInterval(fakeProgressInterval);
+                completeUpload(downloadId);
                 return;
             }
 
@@ -405,14 +405,15 @@ export const FoldersPage = () => {
             const contentResponse = await api.get(`/files/raw/${file.id}`, {
                 responseType: 'blob',
                 onDownloadProgress: (progressEvent) => {
+                    clearInterval(fakeProgressInterval);
                     const total = progressEvent.total || file.file_size;
                     const percent = (progressEvent.loaded / total) * 100;
-                    if (toastId) updateToast(toastId, `Downloading... ${percent.toFixed(0)}%`, 'info');
+                    updateProgress(downloadId, Math.max(5, percent * 0.9));
                 }
             });
             const encryptedBlob = contentResponse.data;
 
-            if (toastId) updateToast(toastId, 'Decrypting locally... (Do not close)', 'info');
+            updateProgress(downloadId, 95);
 
             // 4. Decrypt Content
             // Allow UI to update before heavy crypto
@@ -437,13 +438,13 @@ export const FoldersPage = () => {
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
-            if (toastId) dismissToast(toastId);
-            showToast('Download complete', 'success');
+            clearInterval(fakeProgressInterval);
+            completeUpload(downloadId);
 
         } catch (error: any) {
             console.error('Download failed:', error);
-            if (toastId) dismissToast(toastId);
-            showToast(`Download failed: ${error.message}`, 'error');
+            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+            failUpload(downloadId, error.message || 'Download failed');
         }
     };
 
@@ -498,7 +499,8 @@ export const FoldersPage = () => {
 
         try {
             // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
 
             // 1. Get the file's current encrypted keys from the server
             const downloadInfo = await api.get(`/files/download/${fileId}`);

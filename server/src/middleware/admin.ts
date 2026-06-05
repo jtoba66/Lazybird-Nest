@@ -16,7 +16,7 @@ export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFu
             .where(eq(users.id, req.user.userId))
             .limit(1);
 
-        if (user && (user.role === 'admin' || user.email === 'josephtoba29@gmail.com')) {
+        if (user && user.role === 'admin') {
             next();
         } else {
             res.status(403).json({ error: 'Admin access required' });
