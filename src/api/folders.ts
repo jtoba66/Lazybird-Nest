@@ -8,6 +8,7 @@ export interface Folder {
     file_count?: number;
     subfolder_count?: number;
     folder_size?: number;
+    deleted_at?: string;
 }
 
 export const foldersAPI = {
@@ -22,10 +23,13 @@ export const foldersAPI = {
         return data; // returns { key, nonce }
     },
 
-    async list(parentId?: number | null): Promise<{ folders: Folder[] }> {
+    async list(parentId?: number | null, includeSystem?: boolean): Promise<{ folders: Folder[] }> {
         const params: any = {};
         if (parentId !== undefined) {
             params.parentId = parentId === null ? 'null' : parentId;
+        }
+        if (includeSystem) {
+            params.includeSystem = 'true';
         }
         const { data } = await api.get('/folders/list', { params });
         return data;
@@ -38,6 +42,21 @@ export const foldersAPI = {
 
     async rename(folderId: number, name: string): Promise<{ success: boolean; name: string }> {
         const { data } = await api.put(`/folders/${folderId}/rename`, { name });
+        return data;
+    },
+
+    async getTrash(): Promise<{ folders: Folder[] }> {
+        const { data } = await api.get('/folders/trash');
+        return data;
+    },
+
+    async restore(folderId: number): Promise<{ success: boolean; message: string }> {
+        const { data } = await api.post(`/folders/restore/${folderId}`);
+        return data;
+    },
+
+    async deleteForever(folderId: number): Promise<{ success: boolean; message: string }> {
+        const { data } = await api.delete(`/folders/${folderId}/permanent`);
         return data;
     }
 };

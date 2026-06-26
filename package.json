@@ -7,7 +7,8 @@
     "dev": "doppler run -- vite",
     "build": "npx puppeteer browsers install chrome && tsc -b && vite build && node prerender.js",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -30,6 +31,7 @@
     "react-dom": "^19.2.0",
     "react-dropzone": "^14.3.8",
     "react-helmet-async": "^2.0.5",
+    "react-qr-code": "^2.0.21",
     "react-router-dom": "^7.12.0",
     "recharts": "^3.7.0",
     "streamsaver": "^2.0.6",
@@ -38,7 +40,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@lazybird-inc/nest-crypto": "^1.0.1",
+    "@lazybird-inc/nest-crypto": "file:../nest-crypto-sharing",
+    "@playwright/test": "^1.60.0",
     "@prerenderer/renderer-puppeteer": "^1.2.4",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
@@ -50,6 +53,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "postcss": "^8.5.6",
+    "postgres": "^3.4.9",
     "puppeteer": "^24.36.1",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",

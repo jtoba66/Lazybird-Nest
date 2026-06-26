@@ -1,0 +1,1 @@
+ALTER TABLE "folders" ADD COLUMN "encrypted_folder_name" text;

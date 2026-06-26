@@ -3,6 +3,7 @@ import { filesAPI } from '../api/files';
 import { useStorage } from './StorageContext';
 import { useRefresh } from './RefreshContext';
 import { useAuth } from './AuthContext';
+import API_BASE_URL from '../config/api';
 // Dynamic imports for crypto to load lazily
 // We'll import them inside the worker function
 
@@ -16,11 +17,14 @@ export interface UploadItem {
     backendFileId?: number;
     folderId?: number; // Target folder ID
     error?: string;
+    collabToken?: string;
+    collabKey?: Uint8Array;
+    uploadSessionId?: string;
 }
 
 interface UploadContextType {
     uploads: UploadItem[];
-    addUpload: (file: File, folderId?: number | null) => string;
+    addUpload: (file: File, folderId?: number | null, collabToken?: string, collabKey?: Uint8Array, uploadSessionId?: string) => string;
     addDownload: (filename: string, size: number) => string;
     updateProgress: (id: string, progress: number) => void;
     completeUpload: (id: string) => void;
@@ -44,13 +48,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     const [activeUploads, setActiveUploads] = useState<number>(0);
     const { refreshQuota } = useStorage();
     const { triggerFileRefresh } = useRefresh();
-    const { masterKey, metadata, setMetadata, saveMetadata } = useAuth();
+    const { masterKey, token: authToken,setMetadata, saveMetadata, getLatestMetadata } = useAuth();
     const fileRegistry = useRef<Map<string, File>>(new Map());
 
     // Max 1 concurrent upload to protect efficient bandwidth usage
     const MAX_CONCURRENT_UPLOADS = 1;
 
-    const addUpload = (file: File, folderId?: number | null): string => {
+    const addUpload = (file: File, folderId?: number | null, collabToken?: string, collabKey?: Uint8Array, uploadSessionId?: string): string => {
         const id = crypto.randomUUID();
         const uploadItem: UploadItem = {
             id,
@@ -60,6 +64,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             status: 'queued',
             type: 'upload',
             folderId: folderId ?? undefined,
+            collabToken,
+            collabKey,
+            uploadSessionId,
         };
 
         fileRegistry.current.set(id, file);
@@ -197,8 +204,166 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
         try {
             // Load Crypto Libs
-            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey, init } = await import('@lazybird-inc/nest-crypto');
+            const { encryptFile, generateFileKey, encryptFileKey, encryptFolderKey, toBase64, fromBase64, encryptChunk, decryptFolderKey, init, encryptFileWithCollabKey, encryptWithMasterKey } = await import('@lazybird-inc/nest-crypto');
             await init();
+
+            const nextUpload = uploads.find(u => u.id === uploadId);
+
+            if (nextUpload && nextUpload.collabToken && nextUpload.collabKey) {
+                // === COLLABORATIVE UPLOAD ===
+                const collabToken = nextUpload.collabToken;
+                const collabKey = nextUpload.collabKey;
+
+                const CHUNK_THRESHOLD = 128 * 1024 * 1024; // 128MB
+                const CHUNK_SIZE = 128 * 1024 * 1024;      // 128MB
+
+                // 1. Generate unique file key
+                const fileKey = generateFileKey();
+
+                // 2. Re-encrypt the file key with the Collab Key
+                const encryptedFileKey = encryptFileKey(fileKey, collabKey);
+
+                // Helper for symmetric encryption of metadata
+                const encryptSymmetricMetadata = (text: string, key: Uint8Array): string => {
+                    const { encrypted, nonce } = encryptWithMasterKey(text, key);
+                    return JSON.stringify({
+                        encrypted: toBase64(encrypted),
+                        nonce: toBase64(nonce)
+                    });
+                };
+
+                // 3. Encrypt filename and mime-type symmetrically using collabKey
+                const encryptedFilename = encryptSymmetricMetadata(file.name, collabKey);
+                const encryptedMime = encryptSymmetricMetadata(file.type || 'application/octet-stream', collabKey);
+
+                if (file.size >= CHUNK_THRESHOLD) {
+                    // === CHUNKED COLLAB UPLOAD ===
+                    const sessionId = nextUpload.uploadSessionId || crypto.randomUUID();
+
+                    const initResult = await filesAPI.initCollabUpload(collabToken, {
+                        file_size: file.size,
+                        folder_id: nextUpload.folderId,
+                        encrypted_file_key: toBase64(encryptedFileKey.encrypted),
+                        file_key_nonce: toBase64(encryptedFileKey.nonce),
+                        sessionId
+                    });
+
+                    const fileId = initResult.file_id;
+                    setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, backendFileId: fileId } : u));
+
+                    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+                    for (let i = 0; i < totalChunks; i++) {
+                        const start = i * CHUNK_SIZE;
+                        const end = Math.min(start + CHUNK_SIZE, file.size);
+                        const chunkBlob = file.slice(start, end);
+
+                        const { encryptedChunk, nonce: chunkNonce } = await encryptChunk(chunkBlob, fileKey);
+                        const chunkNonceBase64 = toBase64(chunkNonce);
+
+                        let retryCount = 0;
+                        const maxRetries = 3;
+                        let success = false;
+
+                        while (retryCount < maxRetries && !success) {
+                            try {
+                                const result = await filesAPI.uploadCollabChunk(
+                                    collabToken,
+                                    fileId,
+                                    i,
+                                    encryptedChunk,
+                                    chunkNonceBase64,
+                                    encryptedChunk.size,
+                                    (chunkPercent) => {
+                                        const totalPercent = ((i * 100) + chunkPercent) / totalChunks;
+                                        updateProgress(uploadId, totalPercent);
+                                    }
+                                );
+
+                                if (!result.success) throw new Error(`Chunk ${i} failed`);
+                                success = true;
+                            } catch (err: any) {
+                                retryCount++;
+                                console.warn(`[COLLAB-CHUNK-UP] Chunk ${i} failed (attempt ${retryCount}/${maxRetries}):`, err.message);
+                                if (retryCount >= maxRetries) throw err;
+                                await sleep(2000 * retryCount);
+                            }
+                        }
+                        updateProgress(uploadId, ((i + 1) / totalChunks) * 100);
+                    }
+
+                    await filesAPI.finishCollabChunkedUpload(collabToken, fileId, encryptedFilename, encryptedMime);
+
+                    completeUpload(uploadId);
+                    triggerFileRefresh();
+                    return;
+
+                } else {
+                    // === MONOLITHIC COLLAB UPLOAD ===
+                    const fileBytes = new Uint8Array(await file.arrayBuffer());
+                    const encryptedData = encryptFileWithCollabKey(fileBytes, fileKey);
+
+                    // 4. Build FormData
+                    const formData = new FormData();
+                    const encryptedFileBlob = new Blob([encryptedData.encryptedFile as any], { type: 'application/octet-stream' });
+                    formData.append('file', encryptedFileBlob, 'encrypted-collab');
+                    formData.append('encrypted_file_key', toBase64(encryptedFileKey.encrypted));
+                    formData.append('file_key_nonce', toBase64(encryptedFileKey.nonce));
+                    formData.append('file_size', file.size.toString());
+                    formData.append('encrypted_filename', encryptedFilename);
+                    formData.append('encrypted_mime_type', encryptedMime);
+                    if (nextUpload.folderId) {
+                        formData.append('folder_id', nextUpload.folderId.toString());
+                    }
+
+                    // 5. Post request using XMLHttpRequest for progress tracking
+                    const headers: Record<string, string> = {};
+                    if (authToken) {
+                        headers['Authorization'] = `Bearer ${authToken}`;
+                    }
+
+                    const uploadUrl = `${API_BASE_URL}/collab/${collabToken}/upload`;
+                    const xhr = new XMLHttpRequest();
+
+                    const promise = new Promise<void>((resolve, reject) => {
+                        xhr.upload.addEventListener('progress', (event) => {
+                            if (event.lengthComputable) {
+                                const percent = (event.loaded / event.total) * 100;
+                                updateProgress(uploadId, percent);
+                            }
+                        });
+
+                        xhr.addEventListener('load', () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                resolve();
+                            } else {
+                                try {
+                                    const errResponse = JSON.parse(xhr.responseText);
+                                    reject(new Error(errResponse.error || `Upload failed with status ${xhr.status}`));
+                                } catch {
+                                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                                }
+                            }
+                        });
+
+                        xhr.addEventListener('error', () => {
+                            reject(new Error('Network error during upload'));
+                        });
+
+                        xhr.open('POST', uploadUrl);
+                        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+                        xhr.send(formData);
+                    });
+
+                    await promise;
+
+                    completeUpload(uploadId);
+                    triggerFileRefresh();
+                    return;
+                }
+            }
+
             const { foldersAPI } = await import('../api/folders');
 
             // Get Master Key from Auth Context (via closure from component level)
@@ -214,8 +379,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 rootFolderId = targetFolderIdFromUpload;
                 console.log('[UPLOAD] Using specific target folder:', rootFolderId);
             } else {
-                const rootFolderResponse = await foldersAPI.list(null);
-                const rootFolder = rootFolderResponse.folders?.find((f: any) => f.parent_id === null);
+                const rootFolderResponse = await foldersAPI.list(null, true);
+                const rootFolder = rootFolderResponse.folders?.find((f: any) => f.parent_id === null && !f.path_hash?.startsWith('collab_') && !f.path_hash?.startsWith('dropzone_'));
 
                 if (!rootFolder?.id) {
                     console.warn('[UPLOAD] Root folder missing! Initializing self-healing root...');
@@ -230,8 +395,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                     );
 
                     rootFolderId = createRes.folder_id;
-                    if (metadata) {
-                        const updatedMetadata = { ...metadata };
+                    const currentMeta = getLatestMetadata();
+                    if (currentMeta) {
+                        const updatedMetadata = { ...currentMeta };
                         updatedMetadata.folders[rootFolderId.toString()] = {
                             name: 'Root',
                             created_at: new Date().toISOString()
@@ -264,7 +430,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 // === CHUNKED UPLOAD ===
 
                 // Generate unique session ID for this upload attempt
-                const sessionId = crypto.randomUUID();
+                const sessionId = nextUpload?.uploadSessionId || crypto.randomUUID();
 
                 // Init (Quota Check & DB Record)
                 // 1. Step 1: Initialize record on server (Get ID)
@@ -352,9 +518,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 await filesAPI.finishChunkedUpload(fileId);
 
                 // 4. Step 4: Save Metadata to Vault (After Success)
-                if (metadata) {
+                const currentMetaChunked = getLatestMetadata();
+                if (currentMetaChunked) {
                     console.log('[UPLOAD] Upload complete. Securing metadata in vault for file:', fileId, file.name);
-                    const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+                    const updatedMetadata = JSON.parse(JSON.stringify(currentMetaChunked));
                     updatedMetadata.files[fileId.toString()] = {
                         filename: file.name,
                         mime_type: file.type || 'application/octet-stream',
@@ -376,7 +543,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 const { encryptedBlob } = await encryptFile(file, fileKey);
 
                 // Generate unique session ID for this upload attempt
-                const sessionId = crypto.randomUUID();
+                const sessionId = nextUpload?.uploadSessionId || crypto.randomUUID();
 
                 // 1. Step 1: Initialize
                 const initRes = await filesAPI.initUpload({
@@ -397,9 +564,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 await filesAPI.upload(fileId, encryptedBlob, (p) => updateProgress(uploadId, p));
 
                 // 4. Step 4: Save Metadata (After Success)
-                if (metadata) {
+                const currentMetaMonolithic = getLatestMetadata();
+                if (currentMetaMonolithic) {
                     console.log('[UPLOAD] Upload complete. Securing metadata in vault for file:', fileId, file.name);
-                    const updatedMetadata = JSON.parse(JSON.stringify(metadata));
+                    const updatedMetadata = JSON.parse(JSON.stringify(currentMetaMonolithic));
                     updatedMetadata.files[fileId.toString()] = {
                         filename: file.name,
                         mime_type: file.type || 'application/octet-stream',

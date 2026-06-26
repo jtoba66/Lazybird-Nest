@@ -18,6 +18,6 @@ Sentry.init({
     tracesSampleRate: 1.0,
     // Set sampling rate for profiling - this is relative to tracesSampleRate
     profilesSampleRate: 1.0,
-    sendDefaultPii: true,
+    sendDefaultPii: false, // don't attach client IP / user identifiers to events
     environment: process.env.NODE_ENV || 'development',
 });

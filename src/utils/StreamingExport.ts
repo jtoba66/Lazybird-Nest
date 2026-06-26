@@ -6,10 +6,10 @@ import API_BASE_URL from '../config/api';
 
 import type { MetadataBlob } from '@lazybird-inc/nest-crypto';
 
-// Use the default MITM to support browsers without Service Worker stream support
-// Use the default MITM to support browsers without Service Worker stream support
-// This is critical for production environments (non-localhost) or if the SW fails to register.
-streamSaver.mitm = 'https://jimmywarting.github.io/StreamSaver.js/mitm.html?version=2.0.0';
+// Use the self-hosted MITM (served from public/mitm.html) for the Service-Worker
+// stream fallback. Matches StreamingDownloader, keeps downloads same-origin (so they
+// work under the CSP), and avoids routing exports through a third-party iframe.
+streamSaver.mitm = '/mitm.html';
 
 interface ExportMetadata {
     user: any;

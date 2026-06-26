@@ -1,344 +1,208 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileTable } from '../components/FileTable';
+
+import { RecentActivityFeed } from '../components/RecentActivityFeed';
 import { filesAPI } from '../api/files';
-import { useToast } from '../contexts/ToastContext';
-import { useUpload } from '../contexts/UploadContext';
-import { useStorage } from '../contexts/StorageContext';
 import { useRefresh } from '../contexts/RefreshContext';
 import { useAuth } from '../contexts/AuthContext';
-import api from '../lib/api';
 import { ShareSuccessModal } from '../components/ShareSuccessModal';
 import { PageLoader } from '../components/PageLoader';
+import { useFileCryptoActions } from '../hooks/useFileCryptoActions';
+import api from '../lib/api';
 
-interface FileItem {
+export interface FileItem {
     id: number;
     filename: string;
     mime_type: string;
     file_size: number;
     created_at: string;
     share_token: string | null;
+    upload_session_id: string | null;
+    folder_id: number | null;
 }
 
+import { useUpload } from '../contexts/UploadContext';
+
 export const NestPage = () => {
-    const { showToast } = useToast();
-    const { addUpload, addDownload, updateProgress, completeUpload, failUpload } = useUpload();
-    const { refreshQuota } = useStorage();
+    const { addUpload } = useUpload();
     const { fileListVersion } = useRefresh();
-    const { masterKey, metadata, saveMetadata, checkMetadataVersion } = useAuth();
+    const { metadata, checkMetadataVersion, masterKey } = useAuth();
+    const [dropZones, setDropZones] = useState<any[]>([]);
     const [files, setFiles] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [shareModal, setShareModal] = useState<{ isOpen: boolean; link: string; name: string }>({ isOpen: false, link: '', name: '' });
+    
+    // Pagination state
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(false);
+    const LIMIT = 50;
 
-    const handleShare = async (file: FileItem) => {
-        try {
-            // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
-            await init();
+    // Search and Sort State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [sortBy, setSortBy] = useState('date');
+    const [order, setOrder] = useState('desc');
 
-            // Get Master Key from context
-            if (!masterKey) {
-                showToast('Please log in again to create share links', 'error');
-                return;
-            }
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
-            let shareToken = file.share_token;
-
-            // Step 1: Create share token if it doesn't exist
-            if (!shareToken) {
-                const response = await filesAPI.createShare(Number(file.id));
-                shareToken = response.share_token;
-            }
-
-            // Step 2: Fetch encrypted file keys (server returns snake_case with folder keys included)
-            const downloadInfo = await api.get(`/files/download/${file.id}`);
-            const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
-            const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
-            const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
-            const folderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
-
-            // Step 3: Decrypt folder key with Master Key
-            const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
-
-            // Step 4: Decrypt file key with folder key
-            const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
-
-            // Step 5: Get file metadata
-            const filename = metadata?.files[file.id.toString()]?.filename || 'file';
-            const mimeType = metadata?.files[file.id.toString()]?.mime_type || 'application/octet-stream';
-
-            // Step 6: Build share URL with decrypted file key in fragment
-            const fileKeyBase64 = toBase64(fileKey);
-            // Ensure no spaces in the URL construction
-            const origin = window.location.origin.trim();
-            const token = shareToken.trim();
-            const shareUrl = `${origin}/s/${token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
-
-            // Step 7: Copy to clipboard (or fallback)
+    useEffect(() => {
+        if (!masterKey) return;
+        const loadDropZones = async () => {
             try {
-                if (navigator.clipboard) {
-                    await navigator.clipboard.writeText(shareUrl);
-                    showToast('Share link copied to clipboard!', 'success');
-                } else {
-                    throw new Error('Clipboard API unavailable');
+                const res = await api.get('/drop-zones');
+                if (res.data && res.data.success) {
+                    const { decryptDropPrivateKey, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                    await init();
+                    const sodium = (await import('libsodium-wrappers')).default;
+                    await sodium.ready;
+
+                    const decryptedDZs = res.data.drop_zones.map((dz: any) => {
+                        try {
+                            const privateKey = decryptDropPrivateKey(
+                                fromBase64(dz.encrypted_private_key),
+                                fromBase64(dz.private_key_nonce),
+                                masterKey
+                            );
+                            const publicKey = sodium.crypto_scalarmult_base(privateKey);
+                            return { ...dz, privateKey, publicKey };
+                        } catch (err) {
+                            return dz;
+                        }
+                    });
+                    setDropZones(decryptedDZs);
                 }
-            } catch (clipboardError) {
-                console.warn('[SHARE] Clipboard write failed (likely browser restriction):', clipboardError);
-                // Fallback: Open Modal for manual copy
-                setShareModal({
-                    isOpen: true,
-                    link: shareUrl,
-                    name: filename
-                });
+            } catch (err) {
+                console.error('Failed to load drop zones:', err);
             }
+        };
+        loadDropZones();
+    }, [masterKey]);
 
-            // Reload to update UI if it was a new share
-            if (!file.share_token) {
-                loadFiles();
-            }
-
-        } catch (error) {
-            console.error('Share creation failed:', error);
-            showToast('Failed to create share link', 'error');
+    const loadFiles = async (reset = false) => {
+        if (reset) {
+            setLoading(true);
+            setOffset(0);
         }
-    };
-
-    const handleDownload = async (file: FileItem) => {
-        if (!masterKey) {
-            showToast('Please log in again to download files', 'error');
-            return;
-        }
-
-        const downloadId = addDownload(file.filename, file.file_size);
-        let fakeProgress = 0;
-        let fakeProgressInterval: NodeJS.Timeout | undefined;
-
         try {
-            // Check if file is chunked (will use StreamingDownloader)
-            const isLargeFile = file.file_size > 128 * 1024 * 1024;
-            const token = localStorage.getItem('nest_token');
+            const currentOffset = reset ? 0 : offset;
+            let filesRes;
 
-            // Start Feedback Fake Progress (0-5%)
-            fakeProgressInterval = setInterval(() => {
-                if (fakeProgress < 5) {
-                    fakeProgress += 0.5;
-                    updateProgress(downloadId, fakeProgress);
-                }
-            }, 200);
+            const isClientQuery = debouncedSearch !== '' || sortBy === 'type' || sortBy === 'filename';
 
-            // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, decryptFile, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
-            await init();
+            if (isClientQuery) {
+                const pageIds = matchedIds.slice(currentOffset, currentOffset + LIMIT);
+                filesRes = await filesAPI.queryFiles(pageIds);
+                // We must re-order the returned files to match the pageIds array
+                const fileMap = new Map(filesRes.files.map((f: any) => [f.id, f]));
+                filesRes.files = pageIds.map(id => fileMap.get(id)).filter(Boolean);
+            } else {
+                filesRes = await filesAPI.getRecent(LIMIT, currentOffset, sortBy, order);
+            }
 
-            // 1. Fetch encrypted keys and file metadata from server
-            const downloadInfo = await api.get(`/files/download/${file.id}`);
+            if (filesRes.metadataVersion) {
+                checkMetadataVersion(filesRes.metadataVersion);
+            }
 
-            // 2. Decrypt Keys (moved here to support StreamingDownloader)
-            const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
-            const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
-            const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
-            const folderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
+            const mergedFiles = await Promise.all((filesRes.files || []).map(async (svrFile: any) => {
+                let filename = svrFile.filename || `File ${svrFile.id}`;
+                let mimeType = svrFile.mime_type;
 
-            const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
-            const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
+                const meta = metadata?.files[svrFile.id.toString()];
+                if (meta) {
+                    filename = meta.filename;
+                    mimeType = meta.mime_type;
+                } else if (svrFile.file_origin === 'drop_zone' && svrFile.encrypted_filename) {
+                    const dz = dropZones.find((d: any) => d.folderId === svrFile.folder_id);
+                    if (dz && dz.privateKey && dz.publicKey) {
+                        try {
+                            const { fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                            const sodium = (await import('libsodium-wrappers')).default;
+                            await sodium.ready;
 
-            // Use StreamingDownloader for chunked files (universal browser support via StreamSaver.js)
-            if (isLargeFile && token && downloadInfo.data.chunks?.length > 0) {
-                // Map chunks to DownloadChunk format
-                const downloadChunks = downloadInfo.data.chunks.map((c: any) => ({
-                    index: c.index, // Server aliased this to 'index'
-                    size: c.size,
-                    nonce: c.nonce,
-                    jackal_merkle: c.jackal_merkle,
-                    status: (c.jackal_merkle && c.jackal_merkle !== 'pending' && c.jackal_merkle !== 'pending-chunks') ? 'cloud' : 'local'
-                }));
+                            const encryptedBytes = fromBase64(svrFile.encrypted_filename);
+                            const decryptedBytes = sodium.crypto_box_seal_open(encryptedBytes as any, dz.publicKey as any, dz.privateKey as any);
+                            filename = sodium.to_string(decryptedBytes as any);
 
-                const { StreamingDownloader } = await import('../utils/StreamingDownloader');
-
-                await StreamingDownloader.download({
-                    fileKey,
-                    filename: file.filename,
-                    chunks: downloadChunks,
-                    fileId: file.id,
-                    authToken: token!,
-                    isGatewayVerified: downloadInfo.data.is_gateway_verified,
-                    onProgress: (p) => {
-                        clearInterval(fakeProgressInterval);
-                        updateProgress(downloadId, Math.max(5, p));
+                            if (svrFile.encrypted_mime_type) {
+                                const encMimeBytes = fromBase64(svrFile.encrypted_mime_type);
+                                const decMimeBytes = sodium.crypto_box_seal_open(encMimeBytes as any, dz.publicKey as any, dz.privateKey as any);
+                                mimeType = sodium.to_string(decMimeBytes as any);
+                            }
+                        } catch (e) {
+                            console.error('Failed to decrypt Drop Zone file metadata in feed:', e);
+                            filename = 'Decryption Error';
+                        }
                     }
-                });
-
-                clearInterval(fakeProgressInterval);
-                completeUpload(downloadId);
-                return;
-            }
-
-            // FALLBACK: Legacy Blob Download (for monolithic/small files)
-            const contentResponse = await api.get(`/files/raw/${file.id}`, {
-                responseType: 'blob',
-                onDownloadProgress: (progressEvent) => {
-                    clearInterval(fakeProgressInterval);
-                    const total = progressEvent.total || file.file_size;
-                    const percent = (progressEvent.loaded / total) * 100;
-                    updateProgress(downloadId, Math.max(5, percent * 0.9));
                 }
-            });
-            const encryptedBlob = contentResponse.data;
 
-            // Update Feedback
-            updateProgress(downloadId, 95);
-
-            // 3. Decrypt Content
-            const headerNonce = fileKeyNonce;
-            const chunks = downloadInfo.data.chunks;
-
-            // Allow UI to update before heavy crypto
-            await new Promise(r => setTimeout(r, 50));
-            const decryptedBytes = await decryptFile(encryptedBlob, (chunks && chunks.length > 0) ? chunks : headerNonce, fileKey);
-
-            // 5. Trigger Browser Download
-            const blob = new Blob([decryptedBytes as unknown as BlobPart], { type: file.mime_type });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = file.filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            clearInterval(fakeProgressInterval);
-            completeUpload(downloadId);
-
-        } catch (error: any) {
-            console.error('Download failed:', error);
-            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
-            failUpload(downloadId, error.message || 'Download failed');
-        }
-    };
-
-    const handleDelete = async (fileId: number) => {
-        try {
-            await filesAPI.delete(fileId);
-            refreshQuota(); // Update storage quota globally
-            loadFiles();
-        } catch (error) {
-            console.error('Delete failed:', error);
-            throw error;
-        }
-    };
-
-    const handleMove = async (fileId: number, targetFolderId: number | null) => {
-        if (!metadata || !masterKey) {
-            showToast('Authentication required to move files', 'error');
-            return;
-        }
-
-        try {
-            // Import crypto functions and foldersAPI
-            const { decryptFolderKey, decryptFileKey, encryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
-            await init();
-            const { foldersAPI } = await import('../api/folders');
-
-            // 1. Get the file's current encrypted keys from the server
-            const downloadInfo = await api.get(`/files/download/${fileId}`);
-
-            const currentFileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
-            const currentFileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
-            const currentFolderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
-            const currentFolderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
-
-            // 2. Decrypt the file key using the current folder's key
-            const currentFolderKey = decryptFolderKey(currentFolderKeyEncrypted, currentFolderKeyNonce, masterKey);
-            const fileKey = decryptFileKey(currentFileKeyEncrypted, currentFileKeyNonce, currentFolderKey);
-
-            // 3. Get the target folder's key (or root folder's key)
-            let targetFolderKey: Uint8Array;
-
-            if (targetFolderId === null) {
-                // Moving to root - get root folder's key
-                const rootFolderResponse = await foldersAPI.list(null);
-                const rootFolder = rootFolderResponse.folders?.find((f: any) => f.parent_id === null);
-                if (!rootFolder?.id) {
-                    throw new Error('Root folder not found');
-                }
-                const { key: folderKeyEncryptedBase64, nonce: folderKeyNonceBase64 } = await foldersAPI.getKey(rootFolder.id);
-                const folderKeyEncrypted = fromBase64(folderKeyEncryptedBase64);
-                const folderKeyNonce = fromBase64(folderKeyNonceBase64);
-                targetFolderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
+                return {
+                    ...svrFile,
+                    filename,
+                    mime_type: mimeType
+                };
+            }));
+            
+            if (reset) {
+                setFiles(mergedFiles);
             } else {
-                // Moving to a specific folder
-                const { key: folderKeyEncryptedBase64, nonce: folderKeyNonceBase64 } = await foldersAPI.getKey(targetFolderId);
-                const folderKeyEncrypted = fromBase64(folderKeyEncryptedBase64);
-                const folderKeyNonce = fromBase64(folderKeyNonceBase64);
-                targetFolderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
+                setFiles(prev => [...prev, ...mergedFiles]);
+            }
+            
+            const fetchedCount = (filesRes.files || []).length;
+            setHasMore(isClientQuery ? currentOffset + LIMIT < matchedIds.length : fetchedCount === LIMIT);
+            
+            if (!reset) {
+                setOffset(currentOffset + LIMIT);
+            } else if (fetchedCount === LIMIT) {
+                setOffset(LIMIT);
             }
 
-            // 4. Re-encrypt the file key with the target folder's key
-            const reencryptedFileKey = encryptFileKey(fileKey, targetFolderKey);
+        } catch (error) {
+            console.error('Failed to load files:', error);
+            if (reset) setFiles([]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-            // 5. Call the API with re-encrypted keys
-            await filesAPI.move(fileId, targetFolderId, {
-                fileKeyEncrypted: toBase64(reencryptedFileKey.encrypted),
-                fileKeyNonce: toBase64(reencryptedFileKey.nonce)
+    const { handleShare, handleDownload, handleDelete, handleMove, handleRename, shareModal, setShareModal } = useFileCryptoActions(() => {
+        loadFiles(true);
+    });
+
+    const matchedIds = useMemo(() => {
+        if (!metadata) return [];
+        let allFiles = Object.entries(metadata.files).map(([id, m]: [string, any]) => ({ id: Number(id), ...m }));
+
+        if (debouncedSearch) {
+            const lowerQuery = debouncedSearch.toLowerCase();
+            allFiles = allFiles.filter(f => f.filename?.toLowerCase().includes(lowerQuery));
+        }
+
+        if (sortBy === 'type') {
+            allFiles.sort((a, b) => {
+                const cmp = (a.mime_type || '').localeCompare(b.mime_type || '');
+                return order === 'asc' ? cmp : -cmp;
             });
-
-            // 6. Update metadata to reflect the new folder
-            const newMeta = { ...metadata };
-            if (newMeta.files[fileId.toString()]) {
-                newMeta.files[fileId.toString()].folder_id = targetFolderId?.toString() || null;
-                await saveMetadata(newMeta);
-            }
-
-            loadFiles();
-            showToast('File moved successfully', 'success');
-        } catch (error) {
-            console.error('Move failed:', error);
-            showToast('Failed to move file', 'error');
-            throw error;
+        } else if (sortBy === 'filename') {
+             allFiles.sort((a, b) => {
+                const cmp = (a.filename || '').localeCompare(b.filename || '');
+                return order === 'asc' ? cmp : -cmp;
+            });
         }
-    };
 
-    const handleRename = async (fileId: number, newName: string) => {
-        if (!metadata || !masterKey) {
-            showToast('Authentication required to rename files', 'error');
-            return;
-        }
-        try {
-            const updatedMetadata = JSON.parse(JSON.stringify(metadata));
-            let finalName = newName;
-
-            // Fix: Auto-append extension if user removed it (common mistake)
-            // Fix: Auto-append extension if user removed it
-            const oldName = updatedMetadata.files[fileId.toString()]?.filename || '';
-            if (oldName.includes('.')) {
-                const oldExt = '.' + oldName.split('.').pop();
-                if (oldExt && !newName.includes('.')) {
-                    finalName = newName + oldExt;
-                }
-            }
-
-            if (updatedMetadata.files[fileId.toString()]) {
-                updatedMetadata.files[fileId.toString()].filename = finalName;
-            } else {
-                updatedMetadata.files[fileId.toString()] = { filename: finalName };
-            }
-            await saveMetadata(updatedMetadata);
-            loadFiles(); // Trigger refresh for other components
-            showToast('File renamed', 'success');
-        } catch (error) {
-            console.error('Rename failed:', error);
-            showToast('Failed to rename file', 'error');
-        }
-    };
+        return allFiles.map(f => f.id);
+    }, [metadata, debouncedSearch, sortBy, order]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const file = e.target.files[0];
-            addUpload(file);
+            const sessionId = crypto.randomUUID();
+            Array.from(e.target.files).forEach(file => {
+                addUpload(file, undefined, undefined, undefined, sessionId);
+            });
         }
     };
 
@@ -355,49 +219,31 @@ export const NestPage = () => {
         e.preventDefault();
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            const file = e.dataTransfer.files[0];
-            addUpload(file);
+            const sessionId = crypto.randomUUID();
+            Array.from(e.dataTransfer.files).forEach(file => {
+                addUpload(file, undefined, undefined, undefined, sessionId);
+            });
         }
     };
 
-    const loadFiles = async () => {
-        setLoading(true);
-        try {
 
-            const filesRes = await filesAPI.list();
 
-            if (filesRes.metadataVersion) {
-                checkMetadataVersion(filesRes.metadataVersion);
-            }
 
-            // Merge metadata (filenames) with server data (stats)
 
-            const mergedFiles = (filesRes.files || []).map((svrFile: any) => {
-                const meta = metadata?.files[svrFile.id.toString()];
-                return {
-                    ...svrFile,
-                    filename: meta?.filename || svrFile.filename || `File ${svrFile.id}`,
-                    mime_type: meta?.mime_type || svrFile.mime_type
-                };
-            });
-            setFiles(mergedFiles);
-        } catch (error) {
-            console.error('Failed to load files:', error);
-            setFiles([]);
-        } finally {
-            setLoading(false);
+    const handleLoadMore = () => {
+        if (!loading && hasMore) {
+            loadFiles();
         }
     };
 
     useEffect(() => {
-        loadFiles();
+        loadFiles(true);
     }, [fileListVersion]);
 
-    // Fire exactly once when metadata first becomes available (login / session restore)
     const metadataReady = metadata !== null;
     useEffect(() => {
-        if (metadataReady) loadFiles();
-    }, [metadataReady]);
+        if (metadataReady) loadFiles(true);
+    }, [metadataReady, debouncedSearch, sortBy, order, dropZones]);
 
     return (
         <motion.div
@@ -421,10 +267,52 @@ export const NestPage = () => {
             />
 
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
-                {/* Header */}
-                <div className="mb-4 glass-panel p-3 rounded-xl">
-                    <h1 className="text-xl font-bold text-text-main">Nest</h1>
-                    <p className="text-sm text-text-muted">All your uploaded files in one place</p>
+                {/* Header and Toolbar */}
+                <div className="mb-4 glass-panel p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-xl font-bold text-text-main">Nest</h1>
+                        <p className="text-sm text-text-muted">All your uploaded files in one place</p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Search files..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-9 pr-4 py-2 bg-background/50 border border-border/50 rounded-lg text-sm text-text-main placeholder-text-muted focus:outline-none focus:border-primary w-48 sm:w-64"
+                            />
+                            <svg className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            className="bg-background/50 border border-border/50 rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary"
+                        >
+                            <option value="date">Date Added</option>
+                            <option value="filename">Name</option>
+                            <option value="size">Size</option>
+                            <option value="type">Type</option>
+                        </select>
+                        <button
+                            onClick={() => setOrder(order === 'desc' ? 'asc' : 'desc')}
+                            className="p-2 bg-background/50 border border-border/50 rounded-lg text-text-muted hover:text-text-main focus:outline-none focus:border-primary"
+                            title={order === 'desc' ? 'Descending' : 'Ascending'}
+                        >
+                            {order === 'desc' ? (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                                </svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                                </svg>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content List */}
@@ -479,21 +367,15 @@ export const NestPage = () => {
                         </motion.div>
                     ) : (
                         <div className="h-full overflow-auto custom-scrollbar">
-                            <FileTable
-                                items={files.map(file => ({
-                                    id: file.id,
-                                    name: file.filename,
-                                    type: 'file' as const,
-                                    mimeType: file.mime_type,
-                                    size: file.file_size,
-                                    createdAt: file.created_at,
-                                    folderId: null,
-                                    onDownload: () => handleDownload(file),
-                                    onShare: () => handleShare(file),
-                                    onRename: (newName: string) => handleRename(file.id, newName),
-                                    onMove: async (targetFolderId: number | null) => handleMove(file.id, targetFolderId),
-                                    onDelete: () => handleDelete(file.id),
-                                }))}
+                            <RecentActivityFeed
+                                files={files}
+                                onDownload={handleDownload}
+                                onShare={handleShare}
+                                onRename={handleRename}
+                                onMove={handleMove}
+                                onDelete={handleDelete}
+                                onLoadMore={handleLoadMore}
+                                hasMore={hasMore}
                             />
                         </div>
                     )}

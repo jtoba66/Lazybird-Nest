@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.lazybird.io wss://*.lazybird.io http://localhost:* ws://localhost:*;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.lazybird.io wss://*.lazybird.io http://localhost:* ws://localhost:*; base-uri 'self'; object-src 'none'; form-action 'self';" />
   <title>Nest | Secure Cloud Storage & Private File Sharing</title>
 
   <!-- SEO & Social Sharing -->
@@ -30,7 +30,13 @@
   <meta property="twitter:image" content="/og-image.png" />
 
   <!-- VERIFIABLE ZERO-KNOWLEDGE CRYPTO ENGINE -->
-  <script src="https://unpkg.com/@lazybird-inc/nest-crypto@1.0.1/dist/index.umd.js" integrity="sha384-s8bhpNNA3Q58qPRUpXOGufi/IVfP282701UHO2tzsJhPTGEawpqW9bfWcLHz3NJo" crossorigin="anonymous"></script>
+  <!-- SRI pins the exact crypto bundle — the trust anchor for the whole ZK product.
+       A tampered or swapped bundle fails the integrity check and refuses to load.
+       Regenerate this hash whenever public/nest-crypto.umd.js changes:
+         openssl dgst -sha384 -binary public/nest-crypto.umd.js | openssl base64 -A -->
+  <script src="/nest-crypto.umd.js"
+          integrity="sha384-JYbRdPJ8S4ktLdixrAiP7XDZiClrz3+FsrL0nF/Z3+ahfCqJVTIK/aV9iKnoa1FQ"
+          crossorigin="anonymous"></script>
 </head>
 
 <body>

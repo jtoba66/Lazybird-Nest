@@ -1,0 +1,21 @@
+# Security headers for the static frontend.
+# Read by Netlify and Cloudflare Pages from the publish root (Vite copies public/* to dist/).
+# Hosts that don't support a _headers file (e.g. Vercel) simply ignore it — harmless.
+#
+# Note: base-uri / object-src / form-action live in the index.html <meta> CSP (they work
+# there). frame-ancestors does NOT work via <meta> — it must be an HTTP header, which is
+# why the clickjacking protection lives here.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  # SAMEORIGIN, not DENY: StreamSaver downloads frame the same-origin /mitm.html.
+  X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy: frame-ancestors 'self'
+  # Report-Only trial of the NEXT tightening step. 'unsafe-inline' has already been
+  # removed from the enforced policy (validated via local end-to-end testing). This
+  # probe additionally drops 'unsafe-eval' and https://unpkg.com, keeping only
+  # 'wasm-unsafe-eval' for the crypto WASM. Local testing came back clean; this header
+  # confirms against real production traffic before flipping the enforced policy.
+  # Blocks nothing — violations log to the DevTools console. (Report-Only is header-only.)
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.lazybird.io wss://*.lazybird.io http://localhost:* ws://localhost:*; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self';

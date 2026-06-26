@@ -10,7 +10,7 @@ let _clientPromise: Promise<any> | null = null;
 async function getClient(): Promise<any> {
     if (_clientPromise) return _clientPromise;
 
-    _clientPromise = (async () => {
+    const attempt = (async () => {
         const { ObsideoClient, FilesystemBundleStore, ensureSodiumReady } = await import('@obsideo/sdk');
         await ensureSodiumReady();
 
@@ -57,7 +57,18 @@ async function getClient(): Promise<any> {
         return client;
     })();
 
-    return _clientPromise;
+    _clientPromise = attempt;
+
+    // If client init fails, drop it from the cache so the next call retries fresh —
+    // otherwise one transient failure (coordinator outage, sodium hiccup, etc.) would
+    // wedge ALL storage operations until a server restart. The .catch also marks the
+    // rejection handled so it can never surface as a process-killing unhandled rejection.
+    attempt.catch((err: any) => {
+        if (_clientPromise === attempt) _clientPromise = null;
+        logger.warn('[ObsideoProvider] Client init failed; cleared cache so the next call retries:', err?.message ?? err);
+    });
+
+    return attempt;
 }
 
 // Bucket name — all Nest files live under a single bucket.

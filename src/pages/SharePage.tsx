@@ -9,16 +9,21 @@ import {
     FilmStrip,
     MusicNotes,
     FileText,
+    Lock,
+    Warning,
+    Clock,
+    XCircle,
+    Prohibit
 } from '@phosphor-icons/react';
-import { fromBase64 } from '@lazybird-inc/nest-crypto';
+import { fromBase64, init as initCrypto } from '@lazybird-inc/nest-crypto';
 import { StreamingDownloader } from '../utils/StreamingDownloader';
 import nestLogo from '../assets/nest-logo.png';
+import { useToast } from '../contexts/ToastContext';
 
 // Custom Unique Icon Component - Protected Prism
 const ProtectedPrism = () => (
     <div className="relative w-28 h-28 flex items-center justify-center">
-        {/* Inner Core (The Nest Logo) */}
-        <img src={nestLogo} alt="Nest Logo" className="relative z-10 w-20 h-20 object-contain mix-blend-screen scale-125" />
+        <img src={nestLogo} alt="Nest Logo" className="relative z-10 w-16 h-16 object-contain" />
 
         {/* Outer Rotating Shield Ring 1 */}
         <motion.div
@@ -50,9 +55,18 @@ const ProtectedPrism = () => (
 export const SharePage = () => {
     const { shareToken } = useParams<{ shareToken: string }>();
     const navigate = useNavigate();
+    const { showToast } = useToast();
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [deadState, setDeadState] = useState<'revoked' | 'expired' | 'limit_reached' | null>(null);
+    const [passwordRequired, setPasswordRequired] = useState(false);
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState('');
+    
+    // Auth JWT token for password protected shares
+    const [passwordToken, setPasswordToken] = useState<string | null>(null);
+
     const [fileInfo, setFileInfo] = useState<any>(null);
     const [downloading, setDownloading] = useState(false);
     const [fileKey, setFileKey] = useState<Uint8Array | null>(null);
@@ -72,11 +86,21 @@ export const SharePage = () => {
     const shineY = useTransform(dy, [0, 600], ["0%", "100%"]);
 
     useEffect(() => {
-        loadShareLink();
+        // Retrieve cached password token if available
+        const cached = sessionStorage.getItem(`pw_token_${shareToken}`);
+        if (cached) {
+            setPasswordToken(cached);
+        }
     }, [shareToken]);
 
+    useEffect(() => {
+        loadShareLink();
+    }, [shareToken, passwordToken]);
+
     const loadShareLink = async () => {
+        if (!shareToken) return;
         try {
+            await initCrypto();
             const hash = window.location.hash.substring(1);
             if (!hash) {
                 setError('Invalid share link - missing decryption key');
@@ -101,7 +125,29 @@ export const SharePage = () => {
             setFilename(filenameFromUrl);
             setMimeType(mimeFromUrl);
 
-            const response = await fetch(`${API_BASE_URL}/files/share/${shareToken}`);
+            // Fetch public file share info
+            const headers: HeadersInit = {};
+            if (passwordToken) {
+                headers['Authorization'] = `Bearer ${passwordToken}`;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/shares/s/${shareToken}`, { headers });
+            
+            if (response.status === 401) {
+                setPasswordRequired(true);
+                setLoading(false);
+                return;
+            }
+
+            if (response.status === 410) {
+                const data = await response.json();
+                if (data.expired) setDeadState('expired');
+                else if (data.limit_reached) setDeadState('limit_reached');
+                else setDeadState('revoked');
+                setLoading(false);
+                return;
+            }
+
             if (!response.ok) {
                 const data = await response.json();
                 throw new Error(data.error || 'Share link not found');
@@ -109,10 +155,38 @@ export const SharePage = () => {
 
             const data = await response.json();
             setFileInfo(data);
+            setPasswordRequired(false);
             setLoading(false);
         } catch (err: any) {
             setError(err.message || 'Failed to load share link');
             setLoading(false);
+        }
+    };
+
+    const handleVerifyPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!password) return;
+        setPasswordError('');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/shares/s/${shareToken}/verify-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Incorrect password. Please try again.');
+            }
+
+            const data = await response.json();
+            if (data.success && data.token) {
+                sessionStorage.setItem(`pw_token_${shareToken}`, data.token);
+                setPasswordToken(data.token);
+            }
+        } catch (err: any) {
+            setPasswordError(err.message || 'Incorrect password. Please try again.');
         }
     };
 
@@ -126,15 +200,12 @@ export const SharePage = () => {
                 // Fallback for non-chunked files (legacy)
                 let blob: Blob | null = null;
 
-                // Smart Fallback Strategy:
-                // 1. Try Direct Gateway (Fastest, No Server Load)
-                // 2. Fallback to Server Proxy (Reliable, Auto-Hydration)
-
+                // Attempt Direct Gateway Download if verified
                 if (fileInfo.is_gateway_verified) {
                     try {
                         console.log('[SharePage] 🚀 Attempting Direct Gateway Download...');
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for gateway
+                        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
                         const res = await fetch(`https://gateway.lazybird.io/file/${fileInfo.merkle_hash}`, {
                             signal: controller.signal
@@ -142,24 +213,22 @@ export const SharePage = () => {
                         clearTimeout(timeoutId);
 
                         if (res.ok) {
-                            const contentType = res.headers.get('content-type');
-                            if (contentType && contentType.includes('text/html')) {
-                                throw new Error('Gateway returned HTML instead of file payload');
-                            }
                             blob = await res.blob();
                             console.log('[SharePage] ✅ Gateway Download Successful');
-                        } else {
-                            throw new Error(`Gateway returned ${res.status}`);
                         }
                     } catch (e) {
                         console.warn('[SharePage] ⚠️ Gateway failed, falling back to Server Proxy:', e);
                     }
                 }
 
-                // If Gateway failed or wasn't an option, try Server Proxy
+                // Server Proxy Download (Auto-Hydration)
                 if (!blob) {
                     console.log('[SharePage] 🔄 Attempting Server Proxy Download...');
-                    const res = await fetch(`${API_BASE_URL}/files/share/raw/${shareToken}`);
+                    // Send the password token via Authorization header (not query param)
+                    // to keep it out of server/proxy logs and browser history. The server
+                    // still accepts the legacy ?token= form, so existing links keep working.
+                    const url = `${API_BASE_URL}/shares/s/${shareToken}/raw`;
+                    const res = await fetch(url, passwordToken ? { headers: { Authorization: `Bearer ${passwordToken}` } } : undefined);
                     if (!res.ok) {
                         const errText = await res.text();
                         throw new Error(`Download failed: ${errText || res.statusText}`);
@@ -168,11 +237,8 @@ export const SharePage = () => {
                     console.log('[SharePage] ✅ Server Proxy Download Successful');
                 }
 
-                // For monolithic files, we still use the old decrypt (rare in V3, but kept for compat)
                 const { decryptFile, init } = await import('@lazybird-inc/nest-crypto');
-            await init();
-                // Note: Monolithic files have the nonce embedded or handled by decryptFile logic usually
-                // In V2/V3 transition, we pass null as nonce for monolithic
+                await init();
                 const decryptedBytes = await decryptFile(blob!, null, fileKey);
 
                 const fileBlob = new Blob([decryptedBytes as any], { type: mimeType });
@@ -188,6 +254,7 @@ export const SharePage = () => {
                 // V3 Streaming Download (Zero-Memory)
                 await StreamingDownloader.download({
                     shareToken: shareToken!,
+                    authToken: passwordToken || undefined,
                     fileKey,
                     filename,
                     chunks: fileInfo.chunks,
@@ -197,7 +264,7 @@ export const SharePage = () => {
             }
         } catch (err: any) {
             console.error('[SharePage] Download Error:', err);
-            setError('Download failed: ' + err.message);
+            showToast('Download failed: ' + err.message, 'error');
         } finally {
             setDownloading(false);
             setDownloadProgress(0);
@@ -220,38 +287,104 @@ export const SharePage = () => {
         mouseY.set(clientY - top);
     };
 
+    // 1. Loading screen
     if (loading) {
         return (
             <div className="min-h-[100dvh] flex items-center justify-center relative overflow-hidden bg-[#F2F4F8]">
                 <div className="absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-multiply" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}></div>
-                <div className="absolute top-[-20%] left-[-10%] w-[420px] h-[420px] sm:w-[800px] sm:h-[800px] bg-blue-200/40 rounded-full blur-[140px] mix-blend-multiply opacity-70 animate-pulse-slow" />
-                <div className="absolute bottom-[-10%] right-[-5%] w-[360px] h-[360px] sm:w-[600px] sm:h-[600px] bg-indigo-200/40 rounded-full blur-[120px] mix-blend-multiply opacity-60 animate-pulse-slow delay-1000" />
+                <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-blue-200/40 rounded-full blur-[140px] mix-blend-multiply opacity-70" />
+                <div className="absolute bottom-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-200/40 rounded-full blur-[120px] mix-blend-multiply opacity-60" />
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative z-10 text-center">
                     <div className="mb-6 flex justify-center opacity-60"><ProtectedPrism /></div>
-                    <h2 className="text-xl font-medium text-slate-500 mb-2 tracking-tight">Verifying...</h2>
+                    <h2 className="text-xl font-medium text-slate-500 mb-2 tracking-tight">Accessing Secure Vault...</h2>
                 </motion.div>
             </div>
         );
     }
 
-    if (error) {
+    // 2. Dead Link Screen (410 Friendly layouts)
+    if (deadState) {
         return (
             <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#F2F4F8]">
                 <div className="absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-multiply" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}></div>
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ ease: "easeOut", duration: 0.4 }} className="max-w-sm w-full relative z-10">
-                    <div className="backdrop-blur-3xl bg-white/40 rounded-[1.75rem] sm:rounded-[2rem] p-6 sm:p-8 text-center border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] ring-1 ring-white/40">
-                        <div className="w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center mx-auto mb-2 transform rotate-3 hover:rotate-6 transition-all duration-500 group">
-                            <img src={nestLogo} alt="Nest Logo" className="w-full h-full object-contain mix-blend-screen scale-150 group-hover:scale-[1.65] transition-transform duration-700" />
+                    <div className="backdrop-blur-3xl bg-white/40 rounded-[1.75rem] sm:rounded-[2rem] p-6 sm:p-8 text-center border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] ring-1 ring-white/40 flex flex-col items-center">
+                        <div className="w-16 h-16 rounded-2xl bg-error/10 text-error flex items-center justify-center mb-4">
+                            {deadState === 'expired' && <Clock size={32} weight="bold" />}
+                            {deadState === 'limit_reached' && <Prohibit size={32} weight="bold" />}
+                            {deadState === 'revoked' && <XCircle size={32} weight="bold" />}
                         </div>
-                        <h2 className="text-xl font-semibold text-slate-800 mb-3 tracking-tight">Link Invalid</h2>
-                        <p className="text-slate-500 mb-8 text-sm leading-relaxed">{error}</p>
-                        <button onClick={() => navigate('/')} className="w-full py-3.5 sm:py-4 rounded-xl bg-white/60 hover:bg-white/80 text-slate-700 font-medium transition-all border border-white/50 shadow-sm text-sm">Return Home</button>
+                        <h2 className="text-xl font-semibold text-slate-800 mb-2 tracking-tight">Link Unavailable</h2>
+                        <p className="text-slate-500 mb-8 text-sm leading-relaxed">
+                            {deadState === 'expired' && 'This share link has expired.'}
+                            {deadState === 'limit_reached' && 'This link is no longer available — the maximum number of downloads has been reached.'}
+                            {deadState === 'revoked' && 'This link has been revoked or expired.'}
+                        </p>
+                        <button onClick={() => navigate('/')} className="w-full py-3 bg-[#0F172A] text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors text-sm shadow-md">Return Home</button>
                     </div>
                 </motion.div>
             </div>
         );
     }
 
+    // 3. Password Gate Page
+    if (passwordRequired) {
+        return (
+            <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#F2F4F8]">
+                <div className="absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-multiply" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}></div>
+                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ ease: "easeOut", duration: 0.4 }} className="max-w-sm w-full relative z-10">
+                    <div className="backdrop-blur-3xl bg-white/40 rounded-[1.75rem] sm:rounded-[2rem] p-6 sm:p-8 text-center border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] ring-1 ring-white/40">
+                        <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4 mx-auto">
+                            <Lock size={32} weight="bold" />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-1 tracking-tight">Password Protected</h2>
+                        <p className="text-slate-500 mb-6 text-xs font-semibold uppercase tracking-wider">A password is required to unlock this file</p>
+                        
+                        <form onSubmit={handleVerifyPassword} className="flex flex-col gap-3">
+                            <input
+                                type="password"
+                                placeholder="Enter secure password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-white/60 border border-white/80 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-primary/50 text-center"
+                                required
+                            />
+                            {passwordError && (
+                                <p className="text-xs font-bold text-error text-center mt-1">{passwordError}</p>
+                            )}
+                            <button
+                                type="submit"
+                                className="w-full py-3.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl font-semibold transition-all text-sm shadow-md mt-2"
+                            >
+                                Unlock File
+                            </button>
+                        </form>
+                    </div>
+                </motion.div>
+            </div>
+        );
+    }
+
+    // 4. Default error fallback
+    if (error) {
+        return (
+            <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#F2F4F8]">
+                <div className="absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-multiply" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}></div>
+                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ ease: "easeOut", duration: 0.4 }} className="max-w-sm w-full relative z-10">
+                    <div className="backdrop-blur-3xl bg-white/40 rounded-[1.75rem] sm:rounded-[2rem] p-6 sm:p-8 text-center border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] ring-1 ring-white/40">
+                        <div className="w-16 h-16 rounded-2xl bg-error/10 text-error flex items-center justify-center mb-4 mx-auto">
+                            <Warning size={32} weight="bold" />
+                        </div>
+                        <h2 className="text-xl font-semibold text-slate-800 mb-2 tracking-tight">Access Error</h2>
+                        <p className="text-slate-500 mb-8 text-sm leading-relaxed">{error}</p>
+                        <button onClick={() => navigate('/')} className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold transition-all shadow-md text-sm">Return Home</button>
+                    </div>
+                </motion.div>
+            </div>
+        );
+    }
+
+    // 5. Normal Active Share Screen
     return (
         <div
             className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#F2F4F8]"
@@ -259,8 +392,8 @@ export const SharePage = () => {
         >
             {/* Ambient Background */}
             <div className="absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-multiply z-0" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}></div>
-            <div className="absolute top-[-10%] left-[20%] w-[420px] h-[420px] sm:w-[600px] sm:h-[600px] bg-blue-300/30 rounded-full blur-[120px] mix-blend-overlay opacity-80 animate-float" />
-            <div className="absolute bottom-[-10%] right-[20%] w-[420px] h-[420px] sm:w-[600px] sm:h-[600px] bg-indigo-300/30 rounded-full blur-[120px] mix-blend-overlay opacity-80 animate-float delay-2000" />
+            <div className="absolute top-[-10%] left-[20%] w-[600px] h-[600px] bg-blue-300/30 rounded-full blur-[120px] mix-blend-overlay opacity-80" />
+            <div className="absolute bottom-[-10%] right-[20%] w-[600px] h-[600px] bg-indigo-300/30 rounded-full blur-[120px] mix-blend-overlay opacity-80" />
 
             {/* Main Card */}
             <motion.div
@@ -269,7 +402,6 @@ export const SharePage = () => {
                 transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                 className="max-w-sm w-full relative z-10"
             >
-                {/* Ultra Glass Container */}
                 <div className="relative group overflow-hidden rounded-[1.75rem] sm:rounded-[2.5rem]">
                     {/* Dynamic Mouse Highlight */}
                     <motion.div
@@ -281,12 +413,11 @@ export const SharePage = () => {
 
                     {/* Main Glass Plane */}
                     <div className="backdrop-blur-[45px] bg-white/25 rounded-[1.75rem] sm:rounded-[2.5rem] p-1 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.15),inset_0_0_0_1px_rgba(255,255,255,0.4)] border border-white/30 relative">
-                        {/* Static Gloss Reflection */}
                         <div className="absolute inset-0 rounded-[1.75rem] sm:rounded-[2.5rem] bg-gradient-to-br from-white/30 to-transparent pointer-events-none" />
 
                         <div className="rounded-[1.5rem] sm:rounded-[2.25rem] bg-white/10 p-6 sm:p-8 flex flex-col items-center border border-white/10 shadow-[inset_0_2px_24px_rgba(255,255,255,0.4)] backdrop-blur-sm relative z-20">
                             {/* Header Section */}
-                            <div className="text-center mb-8 sm:mb-10 w-full relative">
+                            <div className="text-center mb-8 w-full relative">
                                 <div className="mb-6 flex justify-center scale-110 drop-shadow-2xl"><ProtectedPrism /></div>
                                 <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
                                     <h1 className="text-2xl font-semibold text-slate-800 tracking-tight drop-shadow-sm">Encrypted File</h1>
@@ -294,28 +425,18 @@ export const SharePage = () => {
                                 </motion.div>
                             </div>
 
-                            {/* File Preview Card - Super Frosty */}
-                            <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.5 }} className="w-full bg-white/35 rounded-2xl p-5 sm:p-6 mb-6 sm:mb-8 border border-white/40 text-center relative shadow-[0_8px_32px_0_rgba(31,38,135,0.04)] group/item backdrop-blur-xl overflow-hidden ring-1 ring-white/20">
+                            {/* File Preview Card */}
+                            <motion.div className="w-full bg-white/35 rounded-2xl p-5 mb-6 border border-white/40 text-center relative shadow-[0_8px_32px_0_rgba(31,38,135,0.04)] group/item backdrop-blur-xl overflow-hidden ring-1 ring-white/20">
                                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/50 opacity-40" />
                                 <div className="relative z-10">
                                     <div className="flex justify-center mb-4 text-primary group-hover/item:scale-105 transition-transform duration-500 ease-[0.16,1,0.3,1]">{getFileIcon()}</div>
-                                    <h3 className="text-lg font-semibold text-slate-800 mb-1 truncate px-2 leading-tight">{filename}</h3>
+                                    <h3 className="text-lg font-semibold text-slate-800 mb-1 truncate px-2 leading-tight" title={filename}>{filename}</h3>
                                     <p className="text-slate-600 font-medium text-sm">{(fileInfo.file_size / 1024 / 1024).toFixed(2)} MB</p>
                                 </div>
                             </motion.div>
 
-                            {/* Action Area */}
+                            {/* Action Button */}
                             <motion.button
-                                initial={{ opacity: 0, scale: 0.9, y: -80 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                transition={{
-                                    delay: 0.5,
-                                    type: "spring",
-                                    damping: 10,
-                                    stiffness: 180,
-                                    mass: 0.8,
-                                    restDelta: 0.001
-                                }}
                                 whileHover={{ scale: 1.01, backgroundColor: "rgba(15, 23, 42, 0.95)" }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={handleDownload}
@@ -324,38 +445,40 @@ export const SharePage = () => {
                             >
                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-150%] group-hover/btn:translate-x-[150%] transition-transform duration-1000 ease-in-out" />
                                 {downloading ? (
-                                    <>
-                                        <div className="flex flex-col items-center gap-2">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                <span>{downloadProgress > 0 ? `Streaming... ${downloadProgress.toFixed(0)}%` : 'Initializing...'}</span>
-                                            </div>
-                                            {downloadProgress > 0 && (
-                                                <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
-                                                    <motion.div
-                                                        className="h-full bg-white/60"
-                                                        initial={{ width: 0 }}
-                                                        animate={{ width: `${downloadProgress}%` }}
-                                                    />
-                                                </div>
-                                            )}
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            <span className="text-sm">
+                                                {downloadProgress > 0 ? `Streaming... ${downloadProgress.toFixed(0)}%` : 'Initializing...'}
+                                            </span>
                                         </div>
-                                    </>
+                                        {downloadProgress > 0 && (
+                                            <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-white/60 transition-all duration-300"
+                                                    style={{ width: `${downloadProgress}%` }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
                                 ) : (
-                                    <><Download size={20} weight="bold" /><span>Download File</span></>
+                                    <>
+                                        <Download size={20} weight="bold" />
+                                        <span>Download File</span>
+                                    </>
                                 )}
                             </motion.button>
 
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-8 text-center">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-8 text-center">
                                 <p className="text-[10px] text-slate-400 font-medium leading-relaxed max-w-[200px] mx-auto mix-blend-multiply">Zero-knowledge encryption.<br />Only you hold the key.</p>
                             </motion.div>
                         </div>
                     </div>
                 </div>
 
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="text-center mt-10">
+                <div className="text-center mt-10">
                     <a href="/" className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-[0.2em] flex items-center justify-center gap-1 mix-blend-multiply">Secured by Nest</a>
-                </motion.div>
+                </div>
             </motion.div>
         </div>
     );

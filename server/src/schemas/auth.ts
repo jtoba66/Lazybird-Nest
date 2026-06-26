@@ -15,6 +15,22 @@ export const signupSchema = z.object({
     })
 });
 
+export const migrateLegacySchema = z.object({
+    body: z.object({
+        email: z.string().email(),
+        password: z.string(),
+        authHash: z.string().min(10),
+        salt: z.string().min(10),
+        encryptedMasterKey: z.string().min(10),
+        encryptedMasterKeyNonce: z.string().min(10),
+        encryptedMetadata: z.string().min(10),
+        encryptedMetadataNonce: z.string().min(10),
+        rootFolderKeyEncrypted: z.string().min(10),
+        rootFolderKeyNonce: z.string().min(10),
+        kdfParams: z.string()
+    })
+});
+
 export const loginSchema = z.object({
     body: z.object({
         email: z.string().email(),

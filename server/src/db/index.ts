@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
+import '../config/env'; // Ensure env overrides are loaded first
 
 const connectionString = process.env.DATABASE_URL;
 

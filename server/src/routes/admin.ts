@@ -317,18 +317,18 @@ router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) =>
     const { id } = req.params;
     try {
         const userId = parseInt(id);
-        await db.delete(files).where(eq(files.userId, userId));
-        await db.delete(folders).where(eq(folders.userId, userId));
-        await db.delete(fileChunks).where(eq(fileChunks.fileId, sql`(select id from files where user_id = ${userId})`)); // This is a bit complex, actually onDelete cascade handles most
-        // Re-check: file_chunks has references to files.id which has references to users.id.
-        // If we delete from files, file_chunks will be deleted if ON DELETE CASCADE is set.
-        // Our schema.ts has onDelete: 'cascade' for files.userId and fileChunks.fileId.
-        // So deleting from users will cascade to everything.
-
-        await db.delete(users).where(eq(users.id, userId));
+        // Every user-referencing table is ON DELETE CASCADE (files, folders, user_crypto,
+        // refresh_tokens, drop_zones, collab_folders, shared_with_me, user_devices), and
+        // file_chunks cascade from files — so deleting the user row removes everything in a
+        // single atomic statement. (graveyard / analytics_events are intentionally retained:
+        // no FK, for audit history.) The previous manual deletes were redundant and the
+        // file_chunks subquery (eq against a multi-row select) was invalid SQL.
+        const deleted = await db.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
+        if (deleted.length === 0) return res.status(404).json({ error: 'User not found' });
         res.json({ message: 'User deleted' });
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        logger.error('[ADMIN-USER-DELETE] Failed:', err.message);
+        res.status(500).json({ error: 'Failed to delete user' });
     }
 });
 

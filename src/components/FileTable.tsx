@@ -17,7 +17,9 @@ import {
     DownloadSimple,
     DotsThreeVertical,
     Lock,
-    PencilSimple
+    PencilSimple,
+    UploadSimple,
+    UsersThree
 } from '@phosphor-icons/react';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { MoveFileModal } from './MoveFileModal';
@@ -32,6 +34,8 @@ export interface UnifiedItem {
     size?: number;     // Only for files
     createdAt: string;
     folderId?: number | null;
+    isDropZone?: boolean;
+    isCollab?: boolean;
 
     // Actions
     onNavigate?: () => void; // For folders
@@ -282,7 +286,11 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                             <AnimatePresence>
                                 {items.map((item) => {
                                     const isFolder = item.type === 'folder';
-                                    const Icon = isFolder ? FolderIcon : getFileIcon(item.mimeType || '');
+                                    let Icon = isFolder ? FolderIcon : getFileIcon(item.mimeType || '');
+                                    if (isFolder && item.isDropZone) Icon = UploadSimple;
+                                    if (isFolder && item.isCollab) Icon = UsersThree;
+                                    
+                                    const folderColorClass = item.isDropZone ? 'bg-amber-500/10 text-amber-500' : item.isCollab ? 'bg-indigo-500/10 text-indigo-500' : 'bg-primary/20 text-primary';
 
                                     return (
                                         <motion.tr
@@ -301,7 +309,7 @@ export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
                                         >
                                             <td className="px-2 md:px-4 py-2">
                                                 <div className="flex items-center gap-3 min-w-0 w-full">
-                                                    <div className={`p-1.5 sm:p-1.5 rounded-md shadow-sm border border-white/20 ${isFolder ? 'bg-primary/20 text-primary' : 'bg-white/40 text-text-main'}`}>
+                                                    <div className={`p-1.5 sm:p-1.5 rounded-md shadow-sm border border-white/20 ${isFolder ? folderColorClass : 'bg-white/40 text-text-main'}`}>
                                                         <Icon size={16} className="sm:hidden" weight={isFolder ? "fill" : "duotone"} />
                                                         <Icon size={18} className="hidden sm:block" weight={isFolder ? "fill" : "duotone"} />
                                                     </div>

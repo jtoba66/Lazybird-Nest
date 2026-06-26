@@ -2,7 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { db } from '../db';
-import { users } from '../db/schema';
+import { users, processedStripeEvents } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { PRICING } from '../config/pricing';
 import { env } from '../config/env';
@@ -21,6 +21,15 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
     apiVersion: '2024-11-20.acacia' as any,
     typescript: true
 });
+
+// Explicit price-id → tier mapping. Returns null for an unknown/misconfigured price so
+// callers can skip rather than silently default a Max (or unknown) subscription to 'pro'.
+function priceToTier(priceId: string | undefined | null): 'pro' | 'max' | null {
+    if (!priceId) return null;
+    if (priceId === env.STRIPE_PRO_PRICE_ID || priceId === env.STRIPE_PRO_YEARLY_PRICE_ID) return 'pro';
+    if (priceId === env.STRIPE_MAX_MONTHLY_PRICE_ID || priceId === env.STRIPE_MAX_YEARLY_PRICE_ID) return 'max';
+    return null;
+}
 
 let FRONTEND_URL = env.FRONTEND_URL.split(',')[0].trim();
 
@@ -231,6 +240,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
+    // Idempotency: Stripe delivers at-least-once and retries on any non-2xx, so skip
+    // events we've already processed. The event id is recorded only AFTER successful
+    // processing below — so a transient failure (500) still gets retried & reprocessed.
+    const [already] = await db.select({ id: processedStripeEvents.event_id })
+        .from(processedStripeEvents).where(eq(processedStripeEvents.event_id, event.id)).limit(1);
+    if (already) {
+        logger.info(`[BILLING-WEBHOOK] Duplicate event ${event.id} (${event.type}) — already processed, skipping`);
+        return res.json({ received: true, duplicate: true });
+    }
+
     try {
         switch (event.type) {
             case 'checkout.session.completed': {
@@ -242,9 +261,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     // Fetch subscription to get accurate trial_end
                     const subscription = await stripe.subscriptions.retrieve(subId);
                     const priceId = subscription.items.data[0]?.price.id;
-                    let tier = 'pro';
-                    if (priceId === env.STRIPE_MAX_MONTHLY_PRICE_ID || priceId === env.STRIPE_MAX_YEARLY_PRICE_ID) {
-                        tier = 'max';
+                    const tier = priceToTier(priceId);
+                    if (!tier) {
+                        logger.warn(`[BILLING-WEBHOOK] Unknown price ${priceId} for user ${userId} — skipping tier change`);
+                        break;
                     }
 
                     await db.update(users).set({
@@ -278,9 +298,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000) : null;
 
                 const priceId = sub.items.data[0]?.price.id;
-                let tier = 'pro';
-                if (priceId === env.STRIPE_MAX_MONTHLY_PRICE_ID || priceId === env.STRIPE_MAX_YEARLY_PRICE_ID) {
-                    tier = 'max';
+                const tier = priceToTier(priceId);
+                if (!tier) {
+                    logger.warn(`[BILLING-WEBHOOK] Unknown price ${priceId} for customer ${sub.customer} — skipping tier change`);
+                    break;
                 }
 
                 await db.update(users).set({
@@ -325,8 +346,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                    break;
                 }
 
+                // Reactivate ANY tier on successful renewal (previously only 'pro' was
+                // un-flagged from past_due, so a Max renewal never cleared the status).
                 await db.update(users).set({ subscription_status: 'active' })
-                    .where(and(eq(users.stripe_customer_id, invoice.customer as string), eq(users.subscription_tier, 'pro')));
+                    .where(eq(users.stripe_customer_id, invoice.customer as string));
 
                 // Send payment received email
                 if (invoice.billing_reason === 'subscription_cycle') {
@@ -360,13 +383,19 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 break;
             }
         }
+        // Mark processed so redeliveries/retries of this exact event are skipped above.
+        await db.insert(processedStripeEvents)
+            .values({ event_id: event.id, type: event.type })
+            .onConflictDoNothing();
         res.json({ received: true });
     } catch (e: any) {
-        logger.error(`[BILLING-WEBHOOK] 🔥 CRITICAL ERROR: ${e.message}`, { 
+        logger.error(`[BILLING-WEBHOOK] 🔥 CRITICAL ERROR processing ${event.type}: ${e.message}`, {
             stack: e.stack,
-            eventType: event.type 
+            eventType: event.type
         });
-        res.status(500).json({ error: 'Webhook processing failed', details: e.message });
+        // Don't echo internal error detail to the caller; 500 lets Stripe retry (and the
+        // event stays unrecorded, so the retry reprocesses cleanly).
+        res.status(500).json({ error: 'Webhook processing failed' });
     }
 });
 

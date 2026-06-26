@@ -1,5 +1,5 @@
 import API_BASE_URL from '../config/api';
-import { createDecryptionStream, fromBase64 } from '@lazybird-inc/nest-crypto';
+import { createDecryptionStream, fromBase64, init } from '@lazybird-inc/nest-crypto';
 import streamSaver from 'streamsaver';
 
 // Use local MITM to bypass SES (e.g. from crypto extensions like Keplr/MetaMask) 
@@ -24,6 +24,8 @@ export interface DownloadOptions {
     fileId?: number;
     authToken?: string;
     isGatewayVerified?: boolean;
+    collabToken?: string;
+    collabSession?: string;
 }
 
 /**
@@ -42,7 +44,13 @@ function isIOS(): boolean {
  */
 export class StreamingDownloader {
     static async download(options: DownloadOptions): Promise<void> {
-        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress, isGatewayVerified } = options;
+        // Ensure the crypto WASM is ready before any decrypt call. This utility is a
+        // shared chokepoint (share links, collab, large authed files); it must not
+        // assume the caller already ran init() — otherwise the streaming decrypt path
+        // can throw "[nest-crypto] Library not initialised" (seen on share downloads).
+        await init();
+
+        const { shareToken, fileId, authToken, fileKey, filename, chunks, onProgress, isGatewayVerified, collabToken, collabSession } = options;
         const totalSize = chunks.reduce((acc, c) => acc + c.size, 0);
         let bytesDownloaded = 0;
 
@@ -101,8 +109,18 @@ export class StreamingDownloader {
 
                 if (chunk.status === 'local') {
                     // Force Server Path
-                    if (shareToken) {
-                        chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                    if (collabToken && fileId) {
+                        chunkUrl = `${API_BASE_URL}/collab/${collabToken}/files/${fileId}/chunk/${chunk.index}`;
+                        if (collabSession) {
+                            headers['x-collab-session'] = collabSession;
+                        } else if (authToken) {
+                            headers['Authorization'] = `Bearer ${authToken}`;
+                        }
+                    } else if (shareToken) {
+                        chunkUrl = `${API_BASE_URL}/shares/s/${shareToken}/chunk/${chunk.index}`;
+                        if (authToken) {
+                            headers['Authorization'] = `Bearer ${authToken}`;
+                        }
                     } else if (fileId && authToken) {
                         chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
                         headers['Authorization'] = `Bearer ${authToken}`;
@@ -115,8 +133,18 @@ export class StreamingDownloader {
                         chunkUrl = `https://gateway.lazybird.io/file/${chunk.jackal_merkle}`;
                     } else {
                         // Use Server proxy for cloud files that aren't gateway-verified (e.g. obsideo)
-                        if (shareToken) {
-                            chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                        if (collabToken && fileId) {
+                            chunkUrl = `${API_BASE_URL}/collab/${collabToken}/files/${fileId}/chunk/${chunk.index}`;
+                            if (collabSession) {
+                                headers['x-collab-session'] = collabSession;
+                            } else if (authToken) {
+                                headers['Authorization'] = `Bearer ${authToken}`;
+                            }
+                        } else if (shareToken) {
+                            chunkUrl = `${API_BASE_URL}/shares/s/${shareToken}/chunk/${chunk.index}`;
+                            if (authToken) {
+                                headers['Authorization'] = `Bearer ${authToken}`;
+                            }
                         } else if (fileId && authToken) {
                             chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
                             headers['Authorization'] = `Bearer ${authToken}`;
@@ -147,8 +175,15 @@ export class StreamingDownloader {
                             } catch (e) {
                                 console.warn(`[Downloader] ⚠️ Gateway failed for Chunk ${chunk.index}, falling back to Server Proxy:`, e);
                                 // Fallback to Server on next attempt loop
-                                if (shareToken) {
-                                    chunkUrl = `${API_BASE_URL}/files/share/${shareToken}/chunk/${chunk.index}`;
+                                if (collabToken && fileId) {
+                                    chunkUrl = `${API_BASE_URL}/collab/${collabToken}/files/${fileId}/chunk/${chunk.index}`;
+                                    if (collabSession) {
+                                        headers['x-collab-session'] = collabSession;
+                                    } else if (authToken) {
+                                        headers['Authorization'] = `Bearer ${authToken}`;
+                                    }
+                                } else if (shareToken) {
+                                    chunkUrl = `${API_BASE_URL}/shares/s/${shareToken}/chunk/${chunk.index}`;
                                 } else if (fileId && authToken) {
                                     chunkUrl = `${API_BASE_URL}/files/${fileId}/chunk/${chunk.index}`;
                                     headers['Authorization'] = `Bearer ${authToken}`;

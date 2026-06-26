@@ -64,7 +64,6 @@ export const SignupPage = () => {
                     <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-text-main drop-shadow-sm">
                         Create your Nest
                     </h1>
-                    <p className="mt-2 text-text-muted font-medium">Join the zero-knowledge revolution.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">

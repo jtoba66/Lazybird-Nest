@@ -5,10 +5,10 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { injectMasterKey } from '../middleware/sessionKey';
+import { injectMasterKey, getMasterKey } from '../middleware/sessionKey';
 import { db } from '../db';
-import { files, folders, users, userCrypto, fileChunks, graveyard, graveyardChunks, analyticsEvents } from '../db/schema';
-import { eq, and, isNull, sql, isNotNull, desc, asc, or } from 'drizzle-orm';
+import { files, folders, users, userCrypto, fileChunks, graveyard, graveyardChunks, analyticsEvents, shareAuditLog } from '../db/schema';
+import { eq, and, isNull, sql, isNotNull, desc, asc, or, inArray } from 'drizzle-orm';
 import { getJackalHandler, uploadFileToJackal, verifyOnGateway } from '../jackal';
 import { getStorageProvider } from '../storage';
 import { env } from '../config/env';
@@ -22,7 +22,7 @@ import {
     base64ToBuffer
 } from '../crypto/keyManagement';
 
-import { uploadLimiter, shareLimiter } from '../middleware/rateLimiter';
+import { uploadLimiter, shareLimiter, chunkLimiter } from '../middleware/rateLimiter';
 import { validate } from '../middleware/validate';
 import {
     uploadInitSchema,
@@ -73,6 +73,7 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             folderId,          // Folder ID (null = root)
             fileKeyEncrypted,  // File key encrypted with Folder Key (base64)
             fileKeyNonce,      // Nonce for file key encryption (base64)
+            sessionId,
         } = req.body;
 
         if (!file) {
@@ -160,6 +161,8 @@ router.post('/upload', authenticateToken, uploadLimiter, upload.single('file'), 
             file_key_nonce: base64ToBuffer(fileKeyNonce),
             encrypted_file_path: file.path,
             storage_provider: env.STORAGE_PROVIDER,
+            file_origin: 'private',
+            upload_session_id: sessionId || null,
         }).returning({ id: files.id });
 
         const fileId = newFile.id;
@@ -305,6 +308,127 @@ router.post('/:id/upload', authenticateToken, uploadLimiter, upload.single('file
 
 
 // ============================================================================
+// RECENT FILES
+// ============================================================================
+
+router.get('/recent', authenticateToken, async (req: AuthRequest, res) => {
+    const userId = req.user!.userId;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const sortBy = (req.query.sortBy as string) || 'date';
+    const order = (req.query.order as string) || 'desc';
+
+    const orderDirection = order === 'asc' ? asc : desc;
+    let orderColumn = files.created_at;
+    if (sortBy === 'size') {
+        orderColumn = files.file_size as any;
+    }
+
+    try {
+        const fileList = await db.select({
+            id: files.id,
+            jackal_fid: files.jackal_fid,
+            merkle_hash: files.merkle_hash,
+            jackal_filename: files.jackal_filename,
+            file_size: files.file_size,
+            folder_id: files.folderId,
+            share_token: files.share_token,
+            created_at: files.created_at,
+            last_accessed_at: files.last_accessed_at,
+            is_chunked: files.is_chunked,
+            chunk_count: files.chunk_count,
+            encrypted_filename: files.encrypted_filename,
+            encrypted_mime_type: files.encrypted_mime_type,
+            file_origin: files.file_origin,
+            upload_session_id: files.upload_session_id
+        }).from(files)
+        .where(
+            and(
+                eq(files.userId, userId),
+                isNull(files.deleted_at)
+            )
+        )
+        .orderBy(orderDirection(orderColumn))
+        .limit(limit)
+        .offset(offset);
+
+        // Get current metadata version for sync
+        const [cryptoData] = await db.select({ v: userCrypto.metadata_version })
+            .from(userCrypto)
+            .where(eq(userCrypto.userId, userId));
+
+        if (cryptoData) {
+            res.setHeader('x-metadata-version', cryptoData.v.toString());
+        }
+
+        res.json({ files: fileList });
+    } catch (error: any) {
+        logger.error(`[FILES] List Recent failed: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch recent files' });
+    }
+});
+
+// ============================================================================
+// QUERY FILES (Zero-Knowledge Search/Sort Hydration)
+// ============================================================================
+
+router.post('/query', authenticateToken, express.json(), async (req: AuthRequest, res) => {
+    const userId = req.user!.userId;
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length > 100) {
+        return res.status(400).json({ error: 'Invalid or too many IDs (max 100)' });
+    }
+
+    const numericIds = ids.map(Number).filter(id => !isNaN(id));
+
+    if (numericIds.length === 0) {
+        return res.json({ files: [] });
+    }
+
+    try {
+        const fileList = await db.select({
+            id: files.id,
+            jackal_fid: files.jackal_fid,
+            merkle_hash: files.merkle_hash,
+            jackal_filename: files.jackal_filename,
+            file_size: files.file_size,
+            folder_id: files.folderId,
+            share_token: files.share_token,
+            created_at: files.created_at,
+            last_accessed_at: files.last_accessed_at,
+            is_chunked: files.is_chunked,
+            chunk_count: files.chunk_count,
+            encrypted_filename: files.encrypted_filename,
+            encrypted_mime_type: files.encrypted_mime_type,
+            file_origin: files.file_origin,
+            upload_session_id: files.upload_session_id
+        }).from(files)
+        .where(
+            and(
+                eq(files.userId, userId),
+                isNull(files.deleted_at),
+                inArray(files.id, numericIds)
+            )
+        );
+
+        // Get current metadata version for sync
+        const [cryptoData] = await db.select({ v: userCrypto.metadata_version })
+            .from(userCrypto)
+            .where(eq(userCrypto.userId, userId));
+
+        if (cryptoData) {
+            res.setHeader('x-metadata-version', cryptoData.v.toString());
+        }
+
+        res.json({ files: fileList });
+    } catch (error: any) {
+        logger.error(`[FILES] Query files failed: ${error.message}`);
+        res.status(500).json({ error: 'Failed to query files' });
+    }
+});
+
+// ============================================================================
 // LIST FILES
 // ============================================================================
 
@@ -345,7 +469,10 @@ router.get('/list', authenticateToken, validate(listFilesSchema), async (req: Au
             created_at: files.created_at,
             last_accessed_at: files.last_accessed_at,
             is_chunked: files.is_chunked,
-            chunk_count: files.chunk_count
+            chunk_count: files.chunk_count,
+            encrypted_filename: files.encrypted_filename,
+            encrypted_mime_type: files.encrypted_mime_type,
+            file_origin: files.file_origin
         }).from(files).where(and(...conditions));
 
 
@@ -552,9 +679,16 @@ router.put('/:fileId/move', authenticateToken, validate(moveFileSchema), async (
 // SHARE LINK MANAGEMENT
 // ============================================================================
 
+const RESERVED_SLUGS = new Set([
+    'shares', 'share', 's', 'dz', 'collab', 'api', 'auth', 'billing', 'files', 'folders', 'storage', 'admin',
+    'login', 'signup', 'register', 'dashboard', 'settings', 'shared', 'obsideo', 'jackal', 'raw', 'download',
+    'health', 'webhook', 'static', 'public', 'assets', 'favicon', 'og-card'
+]);
+
 router.post('/:id/share', authenticateToken, async (req: AuthRequest, res) => {
     const userId = req.user!.userId;
     const fileId = parseInt(req.params.id);
+    const { password, max_downloads, expires_at, custom_slug } = req.body;
 
     try {
         // Check storage quota BEFORE sharing
@@ -563,18 +697,120 @@ router.post('/:id/share', authenticateToken, async (req: AuthRequest, res) => {
             return res.status(403).json({ error: 'Storage quota exceeded. Sharing is disabled.' });
         }
 
+        const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
+        if (!file) return res.status(404).json({ error: 'File not found or access denied' });
+
         const shareToken = crypto.randomBytes(16).toString('hex');
-        const [result] = await db.update(files)
-            .set({ share_token: shareToken })
-            .where(and(eq(files.id, fileId), eq(files.userId, userId), isNull(files.deleted_at)))
-            .returning({ id: files.id });
+        
+        let share_password_hash = null;
+        if (password) {
+            const bcrypt = await import('bcrypt');
+            share_password_hash = await bcrypt.default.hash(password, 10);
+        }
 
-        if (!result) return res.status(404).json({ error: 'File not found or deleted' });
+        let share_custom_slug = null;
+        if (custom_slug) {
+            const slug = custom_slug.toLowerCase();
+            if (RESERVED_SLUGS.has(slug)) {
+                return res.status(400).json({ error: 'Slug is a reserved word' });
+            }
+            // Check uniqueness
+            const [existing] = await db.select({ id: files.id }).from(files).where(eq(files.share_custom_slug, slug)).limit(1);
+            if (existing && existing.id !== fileId) {
+                return res.status(400).json({ error: 'Slug already taken' });
+            }
+            share_custom_slug = slug;
+        }
 
-        res.json({ success: true, share_token: shareToken, file_id: fileId });
-    } catch (error) {
+        await db.update(files)
+            .set({
+                share_token: shareToken,
+                share_password_hash,
+                share_max_downloads: max_downloads ? parseInt(max_downloads) : null,
+                share_download_count: 0,
+                share_expires_at: expires_at ? new Date(expires_at) : null,
+                share_custom_slug
+            })
+            .where(eq(files.id, fileId));
+
+        // Log audit
+        await db.insert(shareAuditLog).values({
+            share_type: 'standard_link',
+            share_id: fileId,
+            action: 'link_created',
+            actor: userId.toString(),
+            timestamp: new Date()
+        });
+
+        res.json({
+            success: true,
+            share_token: shareToken,
+            share_url: `https://nest.lazybird.io/s/${share_custom_slug || shareToken}`
+        });
+    } catch (error: any) {
+        if (error.code === '23505' && (error.detail?.includes('share_custom_slug') || error.constraint?.includes('share_custom_slug') || error.message?.includes('share_custom_slug'))) {
+            return res.status(400).json({ error: 'This custom slug is already taken. Please choose another.' });
+        }
         logger.error('[FILE-SHARE] ❌ Failed:', error);
         res.status(500).json({ error: 'Failed to create share link' });
+    }
+});
+
+router.patch('/:id/share', authenticateToken, async (req: AuthRequest, res) => {
+    const userId = req.user!.userId;
+    const fileId = parseInt(req.params.id);
+    const { password, max_downloads, expires_at, custom_slug } = req.body;
+
+    try {
+        const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
+        if (!file) return res.status(404).json({ error: 'File not found or access denied' });
+
+        const updates: any = {};
+        
+        if (password !== undefined) {
+            if (password === null || password === '') {
+                updates.share_password_hash = null;
+            } else {
+                const bcrypt = await import('bcrypt');
+                updates.share_password_hash = await bcrypt.default.hash(password, 10);
+            }
+        }
+
+        if (max_downloads !== undefined) {
+            updates.share_max_downloads = max_downloads ? parseInt(max_downloads) : null;
+        }
+
+        if (expires_at !== undefined) {
+            updates.share_expires_at = expires_at ? new Date(expires_at) : null;
+        }
+
+        if (custom_slug !== undefined) {
+            if (custom_slug === null || custom_slug === '') {
+                updates.share_custom_slug = null;
+            } else {
+                const slug = custom_slug.toLowerCase();
+                if (RESERVED_SLUGS.has(slug)) {
+                    return res.status(400).json({ error: 'Slug is a reserved word' });
+                }
+                const [existing] = await db.select({ id: files.id }).from(files).where(eq(files.share_custom_slug, slug)).limit(1);
+                if (existing && existing.id !== fileId) {
+                    return res.status(400).json({ error: 'Slug already taken' });
+                }
+                updates.share_custom_slug = slug;
+            }
+        }
+
+        await db.update(files)
+            .set(updates)
+            .where(eq(files.id, fileId));
+
+        res.json({ success: true, message: 'Share link settings updated' });
+    } catch (error: any) {
+        if (error.code === '23505' && (error.detail?.includes('share_custom_slug') || error.constraint?.includes('share_custom_slug') || error.message?.includes('share_custom_slug'))) {
+            return res.status(400).json({ error: 'This custom slug is already taken. Please choose another.' });
+        }
+        logger.error('[FILE-SHARE-PATCH] ❌ Failed:', error);
+        res.status(500).json({ error: 'Failed to update share settings' });
     }
 });
 
@@ -583,7 +819,29 @@ router.delete('/:id/share', authenticateToken, async (req: AuthRequest, res) => 
     const fileId = parseInt(req.params.id);
 
     try {
-        await db.update(files).set({ share_token: null }).where(and(eq(files.id, fileId), eq(files.userId, userId)));
+        const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
+        if (!file) return res.status(404).json({ error: 'File not found or access denied' });
+
+        await db.update(files)
+            .set({
+                share_token: null,
+                share_password_hash: null,
+                share_max_downloads: null,
+                share_download_count: 0,
+                share_expires_at: null,
+                share_custom_slug: null
+            })
+            .where(eq(files.id, fileId));
+
+        // Log audit
+        await db.insert(shareAuditLog).values({
+            share_type: 'standard_link',
+            share_id: fileId,
+            action: 'revoked',
+            actor: userId.toString(),
+            timestamp: new Date()
+        });
+
         res.json({ success: true, message: 'Share link revoked' });
     } catch (error) {
         logger.error('[FILE-REVOKE] ❌ Failed:', error);
@@ -710,6 +968,27 @@ router.delete('/:id/cancel', authenticateToken, async (req: AuthRequest, res) =>
             .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
             .where(eq(users.id, userId));
 
+        // 6. Optional: Clean up ghost metadata entry
+        const masterKey = getMasterKey(userId);
+        if (masterKey) {
+            const [cryptoData] = await db.select().from(userCrypto).where(eq(userCrypto.userId, userId)).limit(1);
+            if (cryptoData) {
+                try {
+                    const metadata = decryptMetadataBlob(cryptoData.metadata_blob, cryptoData.metadata_nonce, masterKey);
+                    if (metadata.files[fileId.toString()]) {
+                        delete metadata.files[fileId.toString()];
+                        const { encrypted, nonce } = encryptMetadataBlob(metadata, masterKey);
+                        await db.update(userCrypto)
+                            .set({ metadata_blob: encrypted, metadata_nonce: nonce, updated_at: new Date() })
+                            .where(eq(userCrypto.userId, userId));
+                        logger.info(`[UPLOAD-CANCEL] Cleaned ghost metadata entry for file_id=${fileId}`);
+                    }
+                } catch (e) {
+                    logger.warn(`[UPLOAD-CANCEL] Failed to clean metadata for file_id=${fileId}:`, e);
+                }
+            }
+        }
+
         logger.info(`[UPLOAD-CANCEL] Cancelled upload file_id=${fileId}, refunded ${file.file_size} bytes`);
 
         res.json({ success: true, refunded_bytes: file.file_size });
@@ -719,203 +998,6 @@ router.delete('/:id/cancel', authenticateToken, async (req: AuthRequest, res) =>
     }
 });
 
-
-// ============================================================================
-// PUBLIC SHARE ACCESS
-// ============================================================================
-
-
-// Fix: Add missing endpoint for raw shared file downloads
-router.get('/share/raw/:shareToken', shareLimiter, async (req, res) => {
-    const { shareToken } = req.params;
-
-    try {
-        const [file] = await db.select().from(files).where(eq(files.share_token, shareToken)).limit(1);
-
-        if (!file) {
-            logger.warn(`[SHARE-RAW] Invalid token: ${shareToken.substring(0, 8)}`);
-            return res.status(404).json({ error: 'Share link not found' });
-        }
-
-        if (file.deleted_at) {
-            return res.status(410).json({ error: 'File is no longer available' });
-        }
-
-        // Log analytics
-        await db.insert(analyticsEvents).values({
-            type: 'share_download_raw',
-            bytes: file.file_size,
-            timestamp: new Date(),
-            meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
-        });
-
-        let filePath = file.encrypted_file_path;
-
-        // Auto-hydration logic (same as authenticated /raw)
-        if (!filePath || !fs.existsSync(filePath)) {
-            const storageKey = file.obsideo_key ?? file.jackal_fid;
-            if (storageKey && storageKey !== 'pending') {
-                const provider = getStorageProvider(file.storage_provider);
-                const tempPath = path.join(__dirname, `../../uploads/temp_share_${file.id}_${Date.now()}`);
-
-                const handle = file.jackal_filename || `shared_${file.id}`;
-                const success = await provider.download(storageKey, handle, tempPath);
-
-                if (success && fs.existsSync(tempPath)) {
-                    const stream = fs.createReadStream(tempPath);
-                    res.setHeader('Content-Type', 'application/octet-stream');
-
-                    try {
-                        const stats = fs.statSync(tempPath);
-                        res.setHeader('Content-Length', stats.size);
-                    } catch (e) {
-                        // fallback
-                    }
-
-                    await new Promise<void>(resolve => {
-                        stream.pipe(res);
-                        stream.on('end', () => resolve());
-                        stream.on('error', () => resolve());
-                    });
-
-                    fs.unlink(tempPath, () => { }); // Cleanup
-                    return;
-                }
-            }
-            return res.status(404).json({ error: 'File content unavailable' });
-        }
-
-        // Serve local file
-        const stream = fs.createReadStream(filePath);
-        res.setHeader('Content-Type', 'application/octet-stream');
-
-        try {
-            const stats = fs.statSync(filePath);
-            res.setHeader('Content-Length', stats.size);
-        } catch (e) {
-            // fallback if stat fails
-        }
-
-        stream.pipe(res);
-
-    } catch (error: any) {
-        logger.error('[SHARE-RAW] Failed:', error);
-        if (!res.headersSent) res.status(500).json({ error: 'Download failed' });
-    }
-});
-
-
-// Fix #9: Rate limit share link access
-router.get('/share/:shareToken', shareLimiter, async (req, res) => {
-    const { shareToken } = req.params;
-    try {
-        const [file] = await db.select().from(files).where(eq(files.share_token, shareToken)).limit(1);
-
-        // Fix #7: Log failed share attempts for forensics
-        if (!file) {
-            logger.warn(`[SHARE-ATTEMPT] Invalid token attempt: ${shareToken.substring(0, 8)}... from IP: ${req.ip}`);
-            return res.status(404).json({ error: 'Share link not found' });
-        }
-
-        // Fix H4: Validate file still exists (not permanently deleted)
-        if (file.deleted_at) {
-            logger.warn(`[SHARE-ATTEMPT] Attempted access to deleted file: ${file.id} via token ${shareToken.substring(0, 8)}`);
-            return res.status(410).json({ error: 'This file is no longer available' });
-        }
-
-        // Fix: Detect chunked files even if is_chunked flag is wrong
-        const isActuallyChunked = file.is_chunked || file.jackal_fid === 'chunked-complete';
-        const chunks = isActuallyChunked ? await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id)).orderBy(fileChunks.chunk_index) : undefined;
-
-        // Fix M1: Log share download analytics
-        await db.insert(analyticsEvents).values({
-            type: 'share_download',
-            bytes: file.file_size,
-            timestamp: new Date(),
-            meta: `file_${file.id}_token_${shareToken.substring(0, 8)}`
-        });
-
-        res.json({
-            success: true,
-            file_id: file.id,
-            file_size: file.file_size,
-            jackal_fid: file.obsideo_key ?? file.jackal_fid,
-            merkle_hash: file.obsideo_key ?? file.merkle_hash,
-            created_at: file.created_at,
-            is_gateway_verified: file.storage_provider === 'jackal' ? !!file.is_gateway_verified : false,
-            is_chunked: !!isActuallyChunked,
-            chunks: chunks?.map(c => ({
-                index: c.chunk_index,
-                size: c.size,
-                nonce: bufferToBase64(c.nonce),
-                jackal_merkle: c.obsideo_key ?? c.jackal_merkle,
-                status: (c.local_path && fs.existsSync(c.local_path)) ? 'local' : ((c.obsideo_key ?? c.jackal_merkle) ? 'cloud' : 'pending')
-            }))
-        });
-
-        await db.update(files).set({ last_accessed_at: new Date() }).where(eq(files.id, file.id));
-    } catch (error) {
-        logger.error('[SHARE-GET] ❌ Failed:', error);
-        res.status(500).json({ error: 'Failed to access share link' });
-    }
-});
-
-
-router.get('/share/:shareToken/chunk/:index', shareLimiter, async (req, res) => {
-    const { shareToken, index } = req.params;
-    try {
-        const [file] = await db.select({ id: files.id, deleted_at: files.deleted_at, storage_provider: files.storage_provider }).from(files).where(eq(files.share_token, shareToken)).limit(1);
-        if (!file) {
-            logger.warn(`[SHARE-CHUNK] Invalid token attempt: ${shareToken.substring(0, 8)}... from IP: ${req.ip}`);
-            return res.status(404).json({ error: 'Share link not found' });
-        }
-        if (file.deleted_at) {
-            logger.warn(`[SHARE-CHUNK] Attempted access to deleted file via token ${shareToken.substring(0, 8)}`);
-            return res.status(410).json({ error: 'This file is no longer available' });
-        }
-
-        const [chunk] = await db.select().from(fileChunks).where(and(eq(fileChunks.fileId, file.id), eq(fileChunks.chunk_index, parseInt(index)))).limit(1);
-
-        if (!chunk) return res.status(404).json({ error: 'Chunk not found' });
-
-        let chunkPath = chunk.local_path;
-        let isTemp = false;
-
-        // Auto-hydration for Shared Chunks (Fix #59)
-        if (!chunkPath || !fs.existsSync(chunkPath)) {
-            const storageKey = chunk.obsideo_key ?? chunk.jackal_merkle;
-            if (storageKey && storageKey !== 'pending') {
-                const provider = getStorageProvider(file.storage_provider);
-                const tempPath = path.join(__dirname, `../../uploads/temp_hydrate_share_${chunk.id}_${Date.now()}`);
-                const success = await provider.download(storageKey, `chunk_${chunk.chunk_index}`, tempPath);
-                if (success) {
-                    chunkPath = tempPath;
-                    isTemp = true;
-                }
-            }
-        }
-
-        if (chunkPath && fs.existsSync(chunkPath)) {
-            res.setHeader('Content-Type', 'application/octet-stream');
-            res.setHeader('Content-Length', chunk.size); // Use DB size as hydration might differ slightly on disk if not closed properly
-
-            const stream = fs.createReadStream(chunkPath);
-            stream.pipe(res);
-
-            stream.on('end', () => {
-                if (isTemp) fs.unlink(chunkPath!, () => { });
-            });
-            stream.on('error', () => {
-                if (isTemp) fs.unlink(chunkPath!, () => { });
-            });
-        } else {
-            return res.status(404).json({ error: 'Chunk unavailable (missing locally and on cloud)' });
-        }
-    } catch (error) {
-        logger.error('[SHARE-CHUNK] Failed:', error);
-        res.status(500).json({ error: 'Chunk access failed' });
-    }
-});
 
 // ============================================================================
 // CHUNKED UPLOAD (v3)
@@ -984,7 +1066,9 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
             jackal_filename: 'pending',
             file_key_encrypted: base64ToBuffer(fileKeyEncrypted),
             file_key_nonce: base64ToBuffer(fileKeyNonce),
-            storage_provider: env.STORAGE_PROVIDER
+            storage_provider: env.STORAGE_PROVIDER,
+            file_origin: 'private',
+            upload_session_id: sessionId || null,
         }).returning({ id: files.id, is_chunked: files.is_chunked });
 
         const jackalFilename = `${userId}_${newFile.id}_${crypto.randomUUID()}`;
@@ -1005,7 +1089,7 @@ router.post('/upload/init', authenticateToken, uploadLimiter, validate(uploadIni
     }
 });
 
-router.post('/:id/chunk', authenticateToken, upload.single('chunk'), async (req: AuthRequest, res) => {
+router.post('/:id/chunk', authenticateToken, chunkLimiter, upload.single('chunk'), async (req: AuthRequest, res) => {
     const userId = req.user!.userId;
     const fileId = parseInt(req.params.id);
     const { chunk_index, nonce } = req.body;
@@ -1134,6 +1218,27 @@ router.post('/:id/finish', authenticateToken, async (req: AuthRequest, res) => {
             is_gateway_verified: isAllVerified ? 1 : 0,
             merkle_hash: isAllVerified ? 'obsideo-chunks' : 'pending-chunks'
         }).where(and(eq(files.id, fileId), eq(files.userId, userId)));
+
+        // Quota reconciliation: the file_size declared at /upload/init is client-supplied
+        // and untrusted. Charge for the ACTUAL bytes uploaded (sum of chunk sizes) so a
+        // client can't under-declare file_size to store beyond quota. Adjust
+        // storage_used_bytes by the delta and correct the stored file_size.
+        const actualBytes = chunks.reduce((sum, c) => sum + Number(c.size || 0), 0);
+        const [fileRow] = await db.select({ declared: files.file_size })
+            .from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
+        if (fileRow && actualBytes > 0) {
+            const delta = actualBytes - Number(fileRow.declared || 0);
+            if (delta !== 0) {
+                await db.update(files).set({ file_size: actualBytes })
+                    .where(and(eq(files.id, fileId), eq(files.userId, userId)));
+                await db.update(users)
+                    .set({ storage_used_bytes: delta > 0
+                        ? sql`${users.storage_used_bytes} + ${delta}`
+                        : sql`GREATEST(0, ${users.storage_used_bytes} - ${-delta})` })
+                    .where(eq(users.id, userId));
+                logger.info(`[UPLOAD-FINISH] Reconciled quota for file ${fileId}: declared=${fileRow.declared} actual=${actualBytes} delta=${delta}`);
+            }
+        }
 
         res.json({ success: true, chunk_count: chunks.length });
     } catch (error: any) {
@@ -1384,38 +1489,4 @@ router.get('/raw/:fileId', authenticateToken, async (req: AuthRequest, res) => {
         else res.end();
     }
 });
-
-router.delete('/:id/cancel', authenticateToken, injectMasterKey, async (req: AuthRequest, res) => {
-    const userId = req.user!.userId;
-    const masterKey = (req as any).masterKey;
-    const fileId = parseInt(req.params.id);
-
-    try {
-        const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.userId, userId))).limit(1);
-        if (!file || file.jackal_fid !== 'pending-chunks') return res.status(404).json({ error: 'Pending file not found' });
-
-        await db.delete(files).where(eq(files.id, fileId));
-        const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, fileId));
-        for (const chunk of chunks) {
-            if (chunk.local_path && fs.existsSync(chunk.local_path)) fs.unlinkSync(chunk.local_path);
-        }
-        await db.delete(fileChunks).where(eq(fileChunks.fileId, fileId));
-        await db.update(users).set({ storage_used_bytes: sql`${users.storage_used_bytes} - ${file.file_size}` }).where(eq(users.id, userId));
-
-        // Metadata cleanup
-        const [cryptoData] = await db.select().from(userCrypto).where(eq(userCrypto.userId, userId)).limit(1);
-        if (cryptoData && masterKey) {
-            const metadata = decryptMetadataBlob(cryptoData.metadata_blob, cryptoData.metadata_nonce, masterKey);
-            if (metadata.files[fileId.toString()]) {
-                delete metadata.files[fileId.toString()];
-                const { encrypted, nonce } = encryptMetadataBlob(metadata, masterKey);
-                await db.update(userCrypto).set({ metadata_blob: encrypted, metadata_nonce: nonce }).where(eq(userCrypto.userId, userId));
-            }
-        }
-        res.json({ success: true });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
 export default router;

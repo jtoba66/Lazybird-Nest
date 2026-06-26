@@ -17,6 +17,7 @@ interface AuthContextType {
     token: string | null;
     login: (credentials: LoginCredentials & { rootKey?: Uint8Array }) => Promise<any>;
     signup: (credentials: SignupCredentials) => Promise<void>;
+    migrateLegacy: (credentials: SignupCredentials) => Promise<void>;
     logout: () => void;
     isAuthenticated: boolean;
     masterKey: Uint8Array | null;
@@ -24,6 +25,7 @@ interface AuthContextType {
     metadata: MetadataBlob | null;
     setMetadata: (meta: MetadataBlob | null) => void;
     saveMetadata: (meta: MetadataBlob) => Promise<void>;
+    getLatestMetadata: () => MetadataBlob | null;
 
     isRestoring: boolean;
     metadataVersion: number;
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const [metadata, setMetadata] = useState<MetadataBlob | null>(null);
+    const metadataRef = useRef<MetadataBlob | null>(null);
     const [metadataVersion, setMetadataVersion] = useState<number>(0);
     const metadataVersionRef = useRef<number>(0); // Ref to avoid stale closure in checkMetadataVersion
     const isRefreshingRef = useRef(false); // Ref guard to prevent concurrent refreshes
@@ -90,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.log(`[AUTH] \u2705 Metadata synced (v${response.metadata_version})`);
 
                 setMetadata(meta);
+                metadataRef.current = meta;
 
                 // Trigger file list refresh UI update
                 const event = new CustomEvent('metadata-updated');
@@ -151,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleSessionLocked = () => {
         // Clear all session data
         localStorage.removeItem('nest_token');
+        localStorage.removeItem('nest_refresh_token');
         localStorage.removeItem('nest_email');
         localStorage.removeItem('nest_role');
         localStorage.removeItem('nest_master_key');         // Legacy: wipe any old localStorage key
@@ -233,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             masterKey
                         );
                         setMetadata(meta);
+                        metadataRef.current = meta;
                         // Set version on restore so checkMetadataVersion starts correctly
                         if (response.metadata_version) {
                             setMetadataVersion(response.metadata_version);
@@ -241,7 +247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         console.log(`[AUTH] Metadata restored successfully (v${response.metadata_version})`);
                     } else {
                         console.log('[AUTH] No metadata found on server, initializing empty vault');
-                        setMetadata({ v: 2, folders: {}, files: {} });
+                        const emptyMeta = { v: 2, folders: {}, files: {} };
+                        setMetadata(emptyMeta);
+                        metadataRef.current = emptyMeta;
                     }
                 } catch (e: any) {
                     console.error('[AUTH] Metadata restoration error:', e);
@@ -339,11 +347,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Now that storage and decryption is ready, update React states and localStorage
         localStorage.setItem('nest_token', response.token); // Ensure API interceptor can see the token immediately
+        if (response.refreshToken) {
+            localStorage.setItem('nest_refresh_token', response.refreshToken);
+        }
         localStorage.setItem('nest_email', credentials.email); // Persist email for session restoration
         localStorage.setItem('nest_role', response.user.role || 'user');
 
         if (mk) setMasterKey(mk);
-        if (meta) setMetadata(meta);
+        if (meta) {
+            setMetadata(meta);
+            metadataRef.current = meta;
+        }
 
         setUser({
             email: credentials.email,
@@ -414,7 +428,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await login({ email: credentials.email, password: credentials.password });
     };
 
-    const saveMetadata = async (newMetadata: MetadataBlob) => {
+    const migrateLegacy = async (credentials: SignupCredentials) => {
+        // 1. Generate Client-Side ZK Parameters
+        const { deriveRootKey,
+            deriveAuthHash,
+            deriveWrappingKey,
+            generateSalt,
+            generateMasterKey,
+            encryptMasterKey,
+            encryptMetadataBlob,
+            generateFolderKey,
+            encryptFolderKey,
+            toBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
+
+        const salt = generateSalt();
+        const kdfParams = { algorithm: 'argon2id' as const, memoryCost: 65536, timeCost: 3, parallelism: 4 };
+
+        // A. Derive Root Key & Auth Hash
+        if (!credentials.password) throw new Error("Password required for migration");
+        const rootKey = await deriveRootKey(credentials.password, salt, kdfParams);
+        const authHash = deriveAuthHash(rootKey);
+        const wrappingKey = deriveWrappingKey(rootKey);
+
+        // B. Generate Master Key
+        const masterKey = generateMasterKey();
+        const { encrypted: encryptedMasterKey, nonce: encryptedMasterKeyNonce } = encryptMasterKey(masterKey, wrappingKey);
+
+        // C. Initialize Empty Metadata (Root Structure)
+        const initialMetadata: MetadataBlob = { v: 2, folders: {}, files: {} };
+        const { encrypted: encryptedMetadata, nonce: encryptedMetadataNonce } = encryptMetadataBlob(initialMetadata, masterKey);
+
+        // D. Create Root Folder Key
+        const rootFolderKey = generateFolderKey();
+        const { encrypted: rootFolderKeyEncrypted, nonce: rootFolderKeyNonce } = encryptFolderKey(rootFolderKey, masterKey);
+
+        // 2. Submit to API (include legacy password for verification)
+        await authAPI.migrateLegacy({
+            email: credentials.email,
+            password: credentials.password, // Server needs this to verify old account
+            authHash,
+            salt: toBase64(salt),
+            encryptedMasterKey: toBase64(encryptedMasterKey),
+            encryptedMasterKeyNonce: toBase64(encryptedMasterKeyNonce),
+            encryptedMetadata: toBase64(encryptedMetadata),
+            encryptedMetadataNonce: toBase64(encryptedMetadataNonce),
+            rootFolderKeyEncrypted: toBase64(rootFolderKeyEncrypted),
+            rootFolderKeyNonce: toBase64(rootFolderKeyNonce),
+            kdfParams: JSON.stringify(kdfParams)
+        });
+
+        // 3. Auto-login
+        setToken(null);
+        await login({ email: credentials.email, password: credentials.password });
+    };
+
+    // Serializes metadata saves so concurrent callers don't collide on the
+    // optimistic-locking version. Without this, multiple FoldersPage self-heal
+    // passes racing on load each GET version v1 and POST v1 → first wins, the rest
+    // 409 → refresh → re-detect → retry, storming the endpoint into a 429.
+    const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+
+    const doSaveMetadata = async (newMetadata: MetadataBlob) => {
         if (!masterKey) {
             console.error('[AUTH] Cannot save metadata: Master Key not available');
             return;
@@ -438,6 +513,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 });
 
                 setMetadata(newMetadata);
+                metadataRef.current = newMetadata;
                 setMetadataVersion(v => {
                     const newV = v + 1;
                     metadataVersionRef.current = newV;
@@ -467,6 +543,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             masterKey
                         );
                         setMetadata(freshMetadata);
+                        metadataRef.current = freshMetadata;
                     }
                     throw new Error('Metadata conflict - please retry your operation');
                 }
@@ -479,14 +556,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    // Public entry point: queue each save behind the previous one (success or
+    // failure) so they run strictly sequentially and never race the version CAS.
+    const saveMetadata = (newMetadata: MetadataBlob): Promise<void> => {
+        const result = saveChainRef.current.then(
+            () => doSaveMetadata(newMetadata),
+            () => doSaveMetadata(newMetadata)
+        );
+        saveChainRef.current = result.then(() => undefined, () => undefined);
+        return result as Promise<void>;
+    };
+
 
     const logout = () => {
+        const storedRefreshToken = localStorage.getItem('nest_refresh_token');
+        if (storedRefreshToken) {
+            authAPI.logout(storedRefreshToken).catch(e => console.error('[AUTH] Server logout failed:', e));
+        }
+
         setToken(null);
         setUser(null);
         setMasterKey(null);
         setMetadata(null);
+        metadataRef.current = null;
         setMetadataVersion(0);
         localStorage.removeItem('nest_token');
+        localStorage.removeItem('nest_refresh_token');
         localStorage.removeItem('nest_email');
         localStorage.removeItem('nest_role');
         localStorage.removeItem('nest_master_key');         // Legacy: wipe any old localStorage key
@@ -508,6 +603,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 token,
                 login,
                 signup,
+                migrateLegacy,
                 logout,
                 isAuthenticated: !!token,
                 masterKey,
@@ -515,6 +611,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 metadata,
                 setMetadata,
                 saveMetadata,
+                getLatestMetadata: () => metadataRef.current,
                 isRestoring,
                 metadataVersion,
                 checkMetadataVersion

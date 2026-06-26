@@ -14,8 +14,8 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 
     if (!token) return res.sendStatus(401);
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-        if (err) return res.sendStatus(403);
+    jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err: any, user: any) => {
+        if (err) return res.sendStatus(401); // 401 so the frontend triggers the refresh token flow
         req.user = user;
         next();
     });

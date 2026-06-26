@@ -1,511 +1,799 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import {
-    ShareNetwork,
-    Copy,
-    Trash,
-    Image,
-    FilePdf,
-    FileText,
-    FileArchive,
-    File as FileIcon,
-    Video,
-    CheckCircle,
-    MagnifyingGlass,
-    SortAscending
-} from '@phosphor-icons/react';
-import { filesAPI } from '../api/files';
+import QRCode from 'react-qr-code';
+import { Folder, Lock, Copy, Trash, QrCode, DownloadSimple, ShareNetwork, Users, MagnifyingGlass, GearSix, ArrowCircleDown, ArrowCircleUp, File as FileIcon } from '@phosphor-icons/react';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
-import { RevokeConfirmationModal } from '../components/RevokeConfirmationModal';
-import { ShareSuccessModal } from '../components/ShareSuccessModal';
-import api from '../lib/api';
-import { useQuotaCheck } from '../components/QuotaBanner';
-import { PageLoader } from '../components/PageLoader';
+import { useRefresh } from '../contexts/RefreshContext';
+import { useStorage } from '../contexts/StorageContext';
+import { Modal } from '../components/Modal';
+import { CreateDropZoneModal } from '../components/share/CreateDropZoneModal';
+import { CreateCollabFolderModal } from '../components/share/CreateCollabFolderModal';
+import { ShareSettingsModal } from '../components/share/ShareSettingsModal';
 
-interface SharedFile {
+import api from '../lib/api';
+import { foldersAPI } from '../api/folders';
+import clsx from 'clsx';
+import nestLogo from '../assets/nest-logo.png';
+
+interface ShareItem {
     id: number;
-    filename: string;
-    share_token: string;
+    type: 'standard_link' | 'drop_zone' | 'collab_folder';
+    token: string;
+    name?: string;
+    custom_slug: string | null;
+    size?: number;
+    files_received?: number;
+    has_password?: boolean;
+    strict_mode?: boolean;
+    expires_at: string | null;
+    max_downloads?: number | null;
+    views: number;
+    downloads: number;
+    status: string;
     created_at: string;
-    file_size: number;
-    mime_type?: string;
+    collaborators?: string[];
+    folder_id?: number;
+}
+
+const getEmailColor = (email: string) => {
+    const colors = [
+        'bg-blue-500/20 text-blue-500 border border-blue-500/30',
+        'bg-purple-500/20 text-purple-500 border border-purple-500/30',
+        'bg-pink-500/20 text-pink-500 border border-pink-500/30',
+        'bg-indigo-500/20 text-indigo-500 border border-indigo-500/30',
+        'bg-teal-500/20 text-teal-500 border border-teal-500/30',
+        'bg-orange-500/20 text-orange-500 border border-orange-500/30',
+        'bg-cyan-500/20 text-cyan-500 border border-cyan-500/30',
+        'bg-rose-500/20 text-rose-500 border border-rose-500/30',
+    ];
+    let hash = 0;
+    for (let i = 0; i < email.length; i++) {
+        hash = email.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+};
+
+function formatBytes(bytes?: number): string {
+    if (bytes === undefined || bytes === null) return '-';
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 export const SharedLinksPage = () => {
     const { showToast } = useToast();
-    const { metadata, masterKey } = useAuth();
-    const { isOverQuota } = useQuotaCheck();
-    const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
-    const [filteredFiles, setFilteredFiles] = useState<SharedFile[]>([]);
+    const { metadata, saveMetadata, masterKey } = useAuth();
+    const qrRef = useRef<HTMLDivElement>(null);
+    const { refreshQuota } = useStorage();
+    const { fileListVersion, triggerFileRefresh } = useRefresh();
+
+    const [shares, setShares] = useState<ShareItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [copiedId, setCopiedId] = useState<number | null>(null);
-    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState<'name' | 'date' | 'size'>('date');
-    const [revokeModal, setRevokeModal] = useState<{ isOpen: boolean; file: SharedFile | null }>({ isOpen: false, file: null });
-    const [bulkRevokeModal, setBulkRevokeModal] = useState(false);
-    const [isRevoking, setIsRevoking] = useState(false);
-    const [shareModal, setShareModal] = useState<{ isOpen: boolean, link: string, name: string }>({ isOpen: false, link: '', name: '' });
+    const [filterType, setFilterType] = useState<string>('all');
+    const [sortBy, setSortBy] = useState<string>('newest');
+    
+    // Checkbox multi-select state
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-    const loadSharedFiles = async () => {
+    // Modals state
+    const [showCreateDz, setShowCreateDz] = useState(false);
+    const [showCreateCollab, setShowCreateCollab] = useState(false);
+    const [settingsModal, setSettingsModal] = useState<{ isOpen: boolean; share: ShareItem | null }>({ isOpen: false, share: null });
+    const [qrModal, setQrModal] = useState<{ isOpen: boolean; share: ShareItem | null }>({ isOpen: false, share: null });
+    const [revokeConfirm, setRevokeConfirm] = useState<{ isOpen: boolean; sharesToRevoke: ShareItem[] }>({ isOpen: false, sharesToRevoke: [] });
+
+    // Loading indicators inside modals
+    const [submitting, setSubmitting] = useState(false);
+
+    // ============================================================================
+    // LOAD SHARES LIST
+    // ============================================================================
+    const loadShares = async () => {
         try {
-            const response = await filesAPI.list();
-            const shared = (response.files || []).filter((f: any) => f.share_token);
-
-            // Merge with metadata if available
-            const merged = shared.map((f: any) => {
-                const meta = metadata?.files[f.id.toString()];
-                return {
-                    ...f,
-                    filename: meta?.filename || f.filename || `File ${f.id}`,
-                    mime_type: meta?.mime_type || f.mime_type
-                };
-            });
-
-            setSharedFiles(merged as SharedFile[]);
-            setFilteredFiles(merged as SharedFile[]);
+            setLoading(true);
+            const res = await api.get('/shares');
+            if (res.data && res.data.success) {
+                // Merge name from ZK metadata for standard links
+                const merged: ShareItem[] = (res.data.shares || []).map((share: any) => {
+                    if (share.type === 'standard_link' && metadata) {
+                        const fileMeta = metadata.files[share.id.toString()];
+                        return {
+                            ...share,
+                            name: fileMeta?.filename || `File ${share.id}`
+                        };
+                    }
+                    return share;
+                });
+                setShares(merged);
+            }
         } catch (error) {
-            console.error('Failed to load shared files:', error);
+            console.error('Failed to load shares list:', error);
+            showToast('Failed to retrieve shares list', 'error');
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        loadSharedFiles();
-    }, [metadata]); // Reload when metadata is available/updates
+        loadShares();
+    }, [metadata, fileListVersion]);
 
-    useEffect(() => {
-        let filtered = [...sharedFiles];
+    // ============================================================================
+    // CREATE FOLDER HELPER (Standard ZK Folder creation)
+    // ============================================================================
+    const createZKFolder = async (folderName: string): Promise<number> => {
+        if (!masterKey || !metadata) throw new Error('Auth components missing');
+        const { generateFolderKey, encryptFolderKey, toBase64, init } = await import('@lazybird-inc/nest-crypto');
+        await init();
 
-        // Apply search
-        if (searchQuery) {
-            filtered = filtered.filter(f =>
-                f.filename.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
+        const folderKey = generateFolderKey();
+        const { encrypted, nonce } = encryptFolderKey(folderKey, masterKey);
 
-        // Apply sort
-        filtered.sort((a, b) => {
-            switch (sortBy) {
-                case 'name':
-                    return a.filename.localeCompare(b.filename);
-                case 'size':
-                    return b.file_size - a.file_size;
-                case 'date':
-                default:
-                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-            }
-        });
+        const res = await foldersAPI.create(
+            toBase64(encrypted),
+            toBase64(nonce),
+            folderName
+        );
+        const newId = res.folder_id;
 
-        setFilteredFiles(filtered);
-    }, [searchQuery, sortBy, sharedFiles]);
+        // Update local metadata
+        const newMeta = JSON.parse(JSON.stringify(metadata));
+        newMeta.folders[newId.toString()] = {
+            name: folderName,
+            created_at: new Date().toISOString()
+        };
+        await saveMetadata(newMeta);
 
-    const copyLink = async (file: SharedFile) => {
+        return newId;
+    };
+
+    // ============================================================================
+    // REVOKE ACTION (Single & Bulk)
+    // ============================================================================
+    const handleRevoke = async () => {
+        setSubmitting(true);
         try {
-            if (isOverQuota) {
-                showToast('Storage quota exceeded. Link generation disabled.', 'error');
-                return;
-            }
-
-            if (!masterKey) {
-                showToast('Please log in again to copy links', 'error');
-                return;
-            }
-
-            // Import crypto functions
-            const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
-            await init();
-
-            // 1. Get encrypted keys
-            const downloadInfo = await api.get(`/files/download/${file.id}`);
-            const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
-            const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
-            const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
-            const folderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
-
-            // 2. Decrypt folder key
-            const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
-
-            // 3. Decrypt file key
-            const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
-
-            // 4. Build URL
-            const fileKeyBase64 = toBase64(fileKey);
-            const origin = window.location.origin.trim();
-            const token = file.share_token.trim();
-
-            // Get proper filename/mime from metadata or file object
-            const meta = metadata?.files[file.id.toString()];
-            const filename = meta?.filename || file.filename || 'file';
-            const mimeType = meta?.mime_type || file.mime_type || 'application/octet-stream';
-
-            const shareUrl = `${origin}/s/${token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
-
-            // Step 5: Copy with Safari Fallback
-            try {
-                if (navigator.clipboard) {
-                    await navigator.clipboard.writeText(shareUrl);
-                    setCopiedId(file.id);
-                    setTimeout(() => setCopiedId(null), 2000);
-                    showToast('Link copied to clipboard', 'success');
-                } else {
-                    throw new Error('Clipboard API unavailable');
+            for (const item of revokeConfirm.sharesToRevoke) {
+                if (item.type === 'standard_link') {
+                    await api.delete(`/files/${item.id}/share`);
+                } else if (item.type === 'drop_zone') {
+                    await api.delete(`/drop-zones/${item.id}`);
+                } else if (item.type === 'collab_folder') {
+                    await api.delete(`/collab-folders/${item.id}`);
                 }
-            } catch (clipboardError) {
-                console.warn('[SHARE] Clipboard write failed:', clipboardError);
-                // Fallback: Open Modal for manual copy
-                setShareModal({
-                    isOpen: true,
-                    link: shareUrl,
-                    name: filename
-                });
             }
+            showToast('Selected share links successfully revoked.', 'success');
+            setSelectedIds(new Set());
+            triggerFileRefresh();
+            setRevokeConfirm({ isOpen: false, sharesToRevoke: [] });
+            refreshQuota();
         } catch (error) {
-            console.error('Failed to copy link:', error);
-            showToast('Failed to generate link', 'error');
-        }
-    };
-
-    const revokeLink = (file: SharedFile) => {
-        setRevokeModal({ isOpen: true, file });
-    };
-
-    const handleRevokeConfirm = async () => {
-        if (!revokeModal.file) return;
-
-        setIsRevoking(true);
-        try {
-            await filesAPI.revokeShare(revokeModal.file.id);
-            showToast('Share link revoked successfully!', 'success');
-            setRevokeModal({ isOpen: false, file: null });
-            loadSharedFiles(); // Refresh list
-        } catch (error) {
-            console.error('Revoke failed:', error);
-            showToast('Failed to revoke share link', 'error');
+            console.error('Revocation failed:', error);
+            showToast('Failed to revoke some shares.', 'error');
         } finally {
-            setIsRevoking(false);
+            setSubmitting(false);
         }
     };
 
-    const toggleSelection = (fileId: number) => {
-        const newSelected = new Set(selectedIds);
-        if (newSelected.has(fileId)) {
-            newSelected.delete(fileId);
+    // ============================================================================
+    // COPY URL LINK
+    // ============================================================================
+    const handleCopy = async (item: ShareItem) => {
+        let url = '';
+        if (item.type === 'standard_link') {
+            // Need file key from fragment. We obtain it from metadata
+            try {
+                const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
+                if (!masterKey) return;
+
+                const downloadInfo = await api.get(`/files/download/${item.id}`);
+                const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
+                const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
+                const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
+                const folderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
+
+                const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
+                const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
+
+                const filename = metadata?.files[item.id.toString()]?.filename || 'file';
+                const mimeType = metadata?.files[item.id.toString()]?.mime_type || 'application/octet-stream';
+
+                const fileKeyBase64 = toBase64(fileKey);
+                url = `${window.location.origin}/s/${item.custom_slug || item.token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
+            } catch (e) {
+                console.error('Failed to reconstruct standard share URL:', e);
+                showToast('Failed to decrypt standard share link. Missing keys or corrupted metadata.', 'error', 6000);
+                return;
+            }
+        } else if (item.type === 'drop_zone') {
+            url = `${window.location.origin}/dz/${item.custom_slug || item.token}`;
+        } else if (item.type === 'collab_folder') {
+            // Collab folders require the lk (linkKey) fragment which is not stored in DB.
+            // We alert the user that they must copy the URL generated during creation, or they can re-generate the link key from settings.
+            // However, in this UI, if the user didn't save the link key, they will need to generate a new link key or settings updates.
+            // Let's check if the collab token can be copied without lk for standard otp authentication if host allows it.
+            // Actually, collab link key is required in fragment to decrypt the collab key.
+            // So if they copy from here, we will look up the token. If they lost the linkKey, we prompt them.
+            // In our implementation, since the server doesn't have the link key, they need it.
+            // To make it friendly, we will retrieve/store it or prompt.
+            // Let's check: if we cannot copy, we show a toast warning or allow copying the base URL.
+            url = `${window.location.origin}/collab/${item.custom_slug || item.token}`;
+            showToast('Collab folders require the collaboration key to decrypt. Re-generate a link key in settings if lost.', 'warning', 6000);
+        }
+
+        if (url) {
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('Link copied to clipboard!', 'success');
+            } catch {
+                showToast('Failed to copy link', 'error');
+            }
+        }
+    };
+
+    // ============================================================================
+    // SELECTION LOGIC
+    // ============================================================================
+    const handleSelectRow = (type: string, id: number) => {
+        const key = `${type}_${id}`;
+        const next = new Set(selectedIds);
+        if (next.has(key)) {
+            next.delete(key);
         } else {
-            newSelected.add(fileId);
+            next.add(key);
         }
-        setSelectedIds(newSelected);
+        setSelectedIds(next);
     };
 
-    const selectAll = () => {
-        if (selectedIds.size === filteredFiles.length) {
+    const handleSelectAll = (visibleItems: ShareItem[]) => {
+        if (selectedIds.size === visibleItems.length) {
             setSelectedIds(new Set());
         } else {
-            setSelectedIds(new Set(filteredFiles.map(f => f.id)));
+            const next = new Set<string>();
+            visibleItems.forEach(item => next.add(`${item.type}_${item.id}`));
+            setSelectedIds(next);
         }
     };
 
-    const revokeSelected = () => {
-        if (selectedIds.size === 0) return;
-        setBulkRevokeModal(true);
+    const getSelectedShares = (): ShareItem[] => {
+        return shares.filter(item => selectedIds.has(`${item.type}_${item.id}`));
     };
 
-    const handleBulkRevokeConfirm = async () => {
-        if (selectedIds.size === 0) return;
+    // ============================================================================
+    // FILTER & SORT LOGIC
+    // ============================================================================
+    const getVisibleShares = (): ShareItem[] => {
+        let result = [...shares];
 
-        setIsRevoking(true);
-        try {
-            // Revoke all selected files
-            await Promise.all(
-                Array.from(selectedIds).map(id => filesAPI.revokeShare(id))
+        // Search Query
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            result = result.filter(item => 
+                (item.name || '').toLowerCase().includes(query) ||
+                (item.custom_slug || '').toLowerCase().includes(query) ||
+                item.token.toLowerCase().includes(query)
             );
-            showToast(`Successfully revoked ${selectedIds.size} share link(s)!`, 'success');
-            setBulkRevokeModal(false);
-            setSelectedIds(new Set());
-            loadSharedFiles();
-        } catch (error) {
-            console.error('Bulk revoke failed:', error);
-            showToast('Failed to revoke some share links', 'error');
-        } finally {
-            setIsRevoking(false);
         }
-    };
 
-    const getFileIcon = (mimeType?: string) => {
-        if (!mimeType) return FileIcon;
-        if (mimeType.startsWith('image/')) return Image;
-        if (mimeType.startsWith('video/')) return Video;
-        if (mimeType === 'application/pdf') return FilePdf;
-        if (mimeType.includes('zip') || mimeType.includes('archive')) return FileArchive;
-        if (mimeType.startsWith('text/')) return FileText;
-        return FileIcon;
-    };
+        // Filtering
+        if (filterType === 'standard') {
+            result = result.filter(item => item.type === 'standard_link');
+        } else if (filterType === 'dropzone') {
+            result = result.filter(item => item.type === 'drop_zone');
+        } else if (filterType === 'collab') {
+            result = result.filter(item => item.type === 'collab_folder');
+        } else if (filterType === 'ghost') {
+            result = result.filter(item => item.type === 'standard_link' && item.max_downloads === 1);
+        } else if (filterType === 'expiring') {
+            // Expiring within the next 24h — must still be in the future, otherwise
+            // already-expired links (negative diff) would also match.
+            result = result.filter(item => {
+                if (item.expires_at === null) return false;
+                const msUntilExpiry = new Date(item.expires_at).getTime() - Date.now();
+                return msUntilExpiry > 0 && msUntilExpiry < 24 * 60 * 60 * 1000;
+            });
+        }
 
-    const formatBytes = (bytes: number) => {
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round(bytes / Math.pow(k, i)) + ' ' + sizes[i];
-    };
-
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
+        // Sorting
+        result.sort((a, b) => {
+            if (sortBy === 'oldest') {
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            } else if (sortBy === 'views') {
+                return b.views - a.views;
+            } else if (sortBy === 'downloads') {
+                return b.downloads - a.downloads;
+            } else if (sortBy === 'expiry') {
+                if (!a.expires_at) return 1;
+                if (!b.expires_at) return -1;
+                return new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime();
+            } else {
+                // newest
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            }
         });
+
+        return result;
     };
+
+    const visibleShares = getVisibleShares();
+
+    // Counts for subtitle
+    const standardCount = shares.filter(item => item.type === 'standard_link').length;
+    const dzCount = shares.filter(item => item.type === 'drop_zone').length;
+    const collabCount = shares.filter(item => item.type === 'collab_folder').length;
 
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="flex-1 p-4 custom-scrollbar overflow-auto h-full"
+            transition={{ duration: 0.4 }}
+            className="flex-1 flex flex-col min-h-0 w-full"
         >
-            <ShareSuccessModal
-                isOpen={shareModal.isOpen}
-                onClose={() => setShareModal({ ...shareModal, isOpen: false })}
-                shareLink={shareModal.link}
-                filename={shareModal.name}
-            />
-
-            {/* Single File Revoke Confirmation Modal */}
-            <RevokeConfirmationModal
-                isOpen={revokeModal.isOpen}
-                onClose={() => setRevokeModal({ isOpen: false, file: null })}
-                onConfirm={handleRevokeConfirm}
-                fileName={revokeModal.file?.filename || ''}
-                isRevoking={isRevoking}
-            />
-
-            {/* Bulk Revoke Confirmation Modal */}
-            <RevokeConfirmationModal
-                isOpen={bulkRevokeModal}
-                onClose={() => setBulkRevokeModal(false)}
-                onConfirm={handleBulkRevokeConfirm}
-                fileName={`${selectedIds.size} file${selectedIds.size > 1 ? 's' : ''}`}
-                isRevoking={isRevoking}
-            />
-
-            <div className="mb-4">
-                <h1 className="text-xl sm:text-2xl font-bold text-text-main mb-1 sm:mb-2">Shared Links</h1>
-                <p className="text-text-muted">Manage files you've shared with others</p>
-            </div>
-
-            {loading ? (
-                <PageLoader />
-            ) : sharedFiles.length === 0 ? (
-                <div className="glass-panel p-8 sm:p-16 text-center group">
-                    <motion.div
-                        whileHover={{ scale: 1.1, rotate: 5 }}
-                        className="w-20 h-20 bg-background/50 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-transform duration-300"
-                    >
-                        <ShareNetwork size={40} className="text-text-muted group-hover:text-primary transition-colors" weight="duotone" />
-                    </motion.div>
-                    <h3 className="text-xl font-bold text-text-main mb-2">No active shares</h3>
-                    <p className="text-text-muted max-w-sm mx-auto">
-                        Files you share via link will appear here. You can manage access and copy links at any time.
+            {/* Header */}
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-panel p-4 rounded-xl">
+                <div>
+                    <h1 className="text-xl md:text-2xl font-bold tracking-tight text-text-main flex items-center gap-2">
+                        <ShareNetwork className="text-primary" />
+                        <span>Access & Sharing</span>
+                    </h1>
+                    <p className="text-xs text-text-muted mt-1 font-medium">
+                        {standardCount} active links &middot; {dzCount} drop zones &middot; {collabCount} collab folders
                     </p>
                 </div>
-            ) : (
-                <>
-                    {/* Search and Sort Controls */}
-                    <div className="glass-panel p-3 mb-4 flex flex-col sm:flex-row gap-3">
-                        <div className="flex-1 relative">
-                            <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" weight="bold" />
-                            <input
-                                type="text"
-                                placeholder="Search files..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-1.5 sm:py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-text-main placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50"
-                            />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <SortAscending size={18} className="text-text-muted" weight="bold" />
-                            <select
-                                value={sortBy}
-                                onChange={(e) => setSortBy(e.target.value as any)}
-                                className="px-3 py-1.5 sm:py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
-                            >
-                                <option value="date">Sort by Date</option>
-                                <option value="name">Sort by Name</option>
-                                <option value="size">Sort by Size</option>
-                            </select>
-                        </div>
-                    </div>
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                    <button
+                        onClick={() => setShowCreateCollab(true)}
+                        className="glass-button px-3 py-1.5 flex items-center gap-2 text-xs font-semibold"
+                    >
+                        <Users size={16} weight="bold" />
+                        <span>New Collab Folder</span>
+                    </button>
+                    <button
+                        onClick={() => setShowCreateDz(true)}
+                        className="glass-button px-3 py-1.5 flex items-center gap-2 text-xs font-semibold bg-primary/20 text-text-main border-primary/30"
+                    >
+                        <Folder size={16} weight="fill" />
+                        <span>Create Drop Zone</span>
+                    </button>
+                </div>
+            </div>
 
-                    {/* Bulk Actions Bar */}
+            {/* Controls Bar */}
+            <div className="mb-4 flex flex-col md:flex-row gap-3 items-center justify-between glass-panel p-3 rounded-xl">
+                <div className="relative w-full md:w-80">
+                    <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input
+                        type="text"
+                        placeholder="Search sharing items..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 text-sm bg-black/5 rounded-xl border border-white/20 focus:outline-none focus:border-primary/50 text-text-main"
+                    />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+                    {/* Bulk actions */}
                     {selectedIds.size > 0 && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="glass-panel p-3 mb-4 flex items-center justify-between"
-                        >
-                            <span className="text-sm font-medium text-text-main">
+                        <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 p-1.5 rounded-xl animate-in fade-in slide-in-from-right-2 duration-200">
+                            <span className="text-xs font-bold text-primary px-2">
                                 {selectedIds.size} selected
                             </span>
-                            <div className="flex gap-2">
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
-                                    onClick={revokeSelected}
-                                    className="px-3 py-1.5 flex items-center gap-2 text-sm bg-red-500/80 hover:bg-red-500 text-white rounded-lg transition-colors shadow-soft"
-                                >
-                                    <Trash size={16} weight="bold" className="text-white" />
-                                    Revoke Selected
-                                </motion.button>
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
-                                    onClick={() => setSelectedIds(new Set())}
-                                    className="glass-button px-3 py-1.5 text-sm"
-                                >
-                                    Clear
-                                </motion.button>
-                            </div>
-                        </motion.div>
+                            <button
+                                onClick={() => setRevokeConfirm({ isOpen: true, sharesToRevoke: getSelectedShares() })}
+                                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-error bg-error/10 hover:bg-error/20 rounded-lg transition-colors border border-error/20"
+                            >
+                                <Trash size={14} />
+                                <span>Revoke</span>
+                            </button>
+                        </div>
                     )}
 
-                    {/* List View */}
-                    <div className="glass-panel overflow-hidden">
-                        {/* Select All Header */}
-                        <div className="px-3 sm:px-5 py-2.5 sm:py-3 border-b border-white/10 bg-white/5 flex items-center gap-3 sm:gap-4">
-                            <div className="flex items-center justify-center w-5 h-5 flex-shrink-0">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedIds.size === filteredFiles.length && filteredFiles.length > 0}
-                                    onChange={selectAll}
-                                    className="w-4 h-4 rounded border-white/30 bg-white/10 text-primary cursor-pointer accent-primary hover:border-primary/50 transition-colors"
-                                />
-                            </div>
-                            <span className="text-xs sm:text-sm text-text-muted font-semibold tracking-wide flex-1">
-                                SELECT ALL ({filteredFiles.length})
-                            </span>
-                            <div className="hidden sm:grid grid-cols-[100px_120px_80px] gap-6 text-[10px] font-bold text-text-muted/60 uppercase tracking-widest text-right pr-2">
-                                <span>Size</span>
-                                <span>Shared Date</span>
-                                <span>Status</span>
-                            </div>
-                            <div className="hidden sm:block w-24"></div> {/* Spacer for actions */}
-                        </div>
+                    <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="bg-white/40 border border-white/20 text-text-main rounded-xl px-3 py-2 text-xs font-medium focus:outline-none cursor-pointer"
+                    >
+                        <option value="all">All Types</option>
+                        <option value="standard">Standard Links</option>
+                        <option value="dropzone">Drop Zones</option>
+                        <option value="collab">Collab Folders</option>
+                        <option value="ghost">Ghost Links</option>
+                        <option value="expiring">Expiring Soon</option>
+                    </select>
 
-                        {/* File List */}
-                        <div className="divide-y divide-white/10">
-                            {filteredFiles.map(file => {
-                                const Icon = getFileIcon(file.mime_type);
-                                const isSelected = selectedIds.has(file.id);
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-white/40 border border-white/20 text-text-main rounded-xl px-3 py-2 text-xs font-medium focus:outline-none cursor-pointer"
+                    >
+                        <option value="newest">Sort: Newest</option>
+                        <option value="oldest">Sort: Oldest</option>
+                        <option value="views">Sort: Views</option>
+                        <option value="downloads">Sort: Downloads</option>
+                        <option value="expiry">Sort: Expiry</option>
+                    </select>
+                </div>
+            </div>
 
-                                return (
-                                    <motion.div
-                                        layout
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        whileHover={{ scale: 1.02, backgroundColor: "rgba(255, 255, 255, 0.15)" }}
-                                        transition={{ duration: 0.2 }}
-                                        key={file.id}
-                                        className={`px-3 sm:px-5 py-3 sm:py-4 transition-colors duration-200 flex items-center gap-3 sm:gap-4 group cursor-pointer ${isSelected ? 'bg-white/10' : 'hover:bg-white/5'
-                                            } `}
-                                        onClick={() => toggleSelection(file.id)}
-                                    >
-                                        {/* Checkbox */}
-                                        <div className="flex items-center justify-center w-5 h-5 flex-shrink-0">
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => toggleSelection(file.id)}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="w-4 h-4 rounded border-white/30 bg-white/10 text-primary cursor-pointer accent-primary hover:border-primary/50 transition-colors"
-                                            />
-                                        </div>
-
-                                        {/* File Icon */}
-                                        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-primary/15 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                                            <Icon size={18} className="text-primary" weight="duotone" />
-                                        </div>
-
-                                        {/* File Info */}
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="text-sm font-semibold text-text-main break-words whitespace-normal leading-snug sm:truncate group-hover:text-primary transition-colors">
-                                                {file.filename}
-                                            </h3>
-                                        </div>
-
-                                        {/* Metadata & Status Grid */}
-                                        <div className="hidden sm:grid grid-cols-[100px_120px_80px] gap-6 items-center text-right pr-2">
-                                            <span className="text-xs font-medium text-text-muted/80">
-                                                {formatBytes(file.file_size)}
-                                            </span>
-                                            <span className="text-xs text-text-muted/60">{formatDate(file.created_at)}</span>
-
-                                            {/* Status Badge */}
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-primary/40 shadow-[0_0_8px_rgba(255,255,255,0.6)] animate-pulse"></div>
-                                                <span className="text-[11px] font-bold text-text-muted/60 uppercase tracking-tight">Active</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Actions */}
-                                        <div className="flex items-center gap-1.5 sm:gap-3 ml-2 sm:ml-4 flex-shrink-0 sm:pl-4 sm:border-l border-white/5">
-                                            <motion.button
-                                                whileHover={{ scale: 1.1 }}
-                                                whileTap={{ scale: 0.9 }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    copyLink(file);
-                                                }}
-                                                className={`p-1.5 sm:p-2 rounded-lg transition-all transform active:scale-95 ${copiedId === file.id
-                                                    ? 'bg-primary/20 text-primary'
-                                                    : isOverQuota
-                                                        ? 'opacity-30 cursor-not-allowed grayscale'
-                                                        : 'hover:bg-primary/20 text-text-muted hover:text-primary'
-                                                    }`}
-                                                title={isOverQuota ? 'Quota Exceeded - Sharing Disabled' : 'Copy share link'}
-                                            >
-                                                {copiedId === file.id ? (
-                                                    <>
-                                                        <CheckCircle size={16} className="sm:hidden" weight="fill" />
-                                                        <CheckCircle size={18} className="hidden sm:block" weight="fill" />
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Copy size={16} className="sm:hidden" weight="bold" />
-                                                        <Copy size={18} className="hidden sm:block" weight="bold" />
-                                                    </>
-                                                )}
-                                            </motion.button>
-                                            <motion.button
-                                                whileHover={{ scale: 1.1 }}
-                                                whileTap={{ scale: 0.9 }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    revokeLink(file);
-                                                }}
-                                                className="p-1.5 sm:p-2 hover:bg-red-500/20 text-text-muted hover:text-error rounded-lg transition-all transform active:scale-95"
-                                                title="Revoke link"
-                                            >
-                                                <Trash size={16} className="sm:hidden" weight="bold" />
-                                                <Trash size={18} className="hidden sm:block" weight="bold" />
-                                            </motion.button>
-                                        </div>
-                                    </motion.div>
-                                );
-                            })}
+            {/* Main Content List */}
+            <div className="flex-1 glass-panel overflow-hidden p-0 relative flex flex-col min-h-0">
+                {loading ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/10 backdrop-blur-[2px]">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+                            <p className="text-text-muted text-sm font-medium">Loading sharing activities...</p>
                         </div>
                     </div>
+                ) : visibleShares.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                        <ShareNetwork size={48} className="text-text-muted mb-4 opacity-40 animate-pulse" />
+                        <p className="text-text-muted font-semibold">No active sharing links found.</p>
+                        <p className="text-xs text-text-muted/70 mt-1 max-w-sm">
+                            Create standard file links from your File Manager, or launch Drop Zones and Collab Folders here to collaborate securely.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
+                        <table className="w-full text-left border-collapse min-w-[700px]">
+                            <thead>
+                                <tr className="border-b border-border bg-black/5 text-[10px] font-bold uppercase tracking-wider text-text-muted sticky top-0 z-10 backdrop-blur-md">
+                                    <th className="p-4 w-12 text-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.size === visibleShares.length && visibleShares.length > 0}
+                                            onChange={() => handleSelectAll(visibleShares)}
+                                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
+                                        />
+                                    </th>
+                                    <th className="p-4">Name</th>
+                                    <th className="p-4 w-40">Collaborators</th>
+                                    <th className="p-4 w-32">Type</th>
+                                    <th className="p-4 w-28 text-right">Size / Files</th>
+                                    <th className="p-4 w-28 text-center">Views / Downloads</th>
+                                    <th className="p-4 w-32">Status</th>
+                                    <th className="p-4 w-28 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {visibleShares.map((item) => {
+                                    const isSelected = selectedIds.has(`${item.type}_${item.id}`);
+                                    const hasExpired = item.expires_at && new Date(item.expires_at) < new Date();
+                                    
+                                    return (
+                                        <tr
+                                            key={`${item.type}_${item.id}`}
+                                            className={clsx(
+                                                "border-b border-border/40 hover:bg-card-hover/40 transition-colors group text-sm",
+                                                isSelected && "bg-primary/5"
+                                            )}
+                                        >
+                                            {/* Checkbox */}
+                                            <td className="p-4 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => handleSelectRow(item.type, item.id)}
+                                                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
+                                                />
+                                            </td>
 
-                    {filteredFiles.length === 0 && searchQuery && (
-                        <div className="glass-panel p-5 sm:p-8 text-center mt-4">
-                            <p className="text-text-muted">No files match "{searchQuery}"</p>
+                                            {/* Name & custom slug */}
+                                            <td className="p-4 max-w-xs sm:max-w-sm">
+                                                <div className="flex items-center gap-3">
+                                                    {item.type === 'standard_link' && <FileIcon size={20} className="text-primary" />}
+                                                    {item.type === 'drop_zone' && <ArrowCircleDown size={20} className="text-secondary" />}
+                                                    {item.type === 'collab_folder' && <ArrowCircleUp size={20} className="text-primary" />}
+                                                    
+                                                    <div className="min-w-0">
+                                                        <div className="font-bold text-text-main truncate" title={item.name || `Folder ${item.id}`}>
+                                                            {item.name || `Folder ${item.id}`}
+                                                        </div>
+                                                        {item.custom_slug && (
+                                                            <div className="text-[10px] text-primary/70 font-semibold mt-0.5 truncate">
+                                                                slug: /{item.custom_slug}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            {/* Stacked collaborator avatars */}
+                                            <td className="p-4">
+                                                {item.type === 'collab_folder' && item.collaborators && item.collaborators.length > 0 ? (
+                                                    <div
+                                                        className="flex items-center -space-x-2.5 cursor-pointer"
+                                                        onClick={() => setSettingsModal({ isOpen: true, share: item })}
+                                                    >
+                                                        {item.collaborators.slice(0, 3).map((email, idx) => {
+                                                            const initials = email.substring(0, 2).toUpperCase();
+                                                            const colorClass = getEmailColor(email);
+                                                            return (
+                                                                <div
+                                                                    key={idx}
+                                                                    className={clsx(
+                                                                        "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm border border-white",
+                                                                        colorClass
+                                                                    )}
+                                                                    title={email}
+                                                                >
+                                                                    {initials}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {item.collaborators.length > 3 && (
+                                                            <div className="w-7 h-7 rounded-full bg-slate-200 text-text-muted flex items-center justify-center text-[10px] font-bold border border-white shadow-sm">
+                                                                +{item.collaborators.length - 3}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-text-muted/40 text-xs">-</span>
+                                                )}
+                                            </td>
+
+                                            {/* Type */}
+                                            <td className="p-4">
+                                                {item.type === 'standard_link' && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">
+                                                        Standard Link
+                                                    </span>
+                                                )}
+                                                {item.type === 'drop_zone' && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                                                        Drop Zone
+                                                    </span>
+                                                )}
+                                                {item.type === 'collab_folder' && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">
+                                                        Collab Folder
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            {/* Size / Files Count */}
+                                            <td className="p-4 text-right font-medium">
+                                                {item.type === 'standard_link' && formatBytes(item.size)}
+                                                {item.type === 'drop_zone' && (
+                                                    <span className="text-xs font-semibold text-text-muted">
+                                                        {item.files_received || 0} files
+                                                    </span>
+                                                )}
+                                                {item.type === 'collab_folder' && (
+                                                    <span className="text-xs font-semibold text-text-muted">
+                                                        Workspace
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            {/* Views / Downloads */}
+                                            <td className="p-4 text-center text-xs text-text-muted font-medium">
+                                                {item.type === 'standard_link' ? (
+                                                    <span>{item.views} views / {item.downloads} downloads</span>
+                                                ) : (
+                                                    <span>{item.views} views</span>
+                                                )}
+                                            </td>
+
+                                            {/* Status Badge */}
+                                            <td className="p-4">
+                                                {hasExpired ? (
+                                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-error bg-error/10 px-2 py-0.5 rounded-md">
+                                                        Expired
+                                                    </span>
+                                                ) : item.status === 'ghost' ? (
+                                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md" title="Self-destructs after 1 download">
+                                                        Ghost Link
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md">
+                                                        Active
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            <td className="p-4 text-center">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    {item.type !== 'collab_folder' && (
+                                                        <button
+                                                            onClick={() => setQrModal({ isOpen: true, share: item })}
+                                                            className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
+                                                            title="View QR Code"
+                                                        >
+                                                            <QrCode size={16} />
+                                                        </button>
+                                                    )}
+                                                    {item.type !== 'collab_folder' && (
+                                                        <button
+                                                            onClick={() => handleCopy(item)}
+                                                            className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
+                                                            title="Copy Share URL"
+                                                        >
+                                                            <Copy size={16} />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => setSettingsModal({ isOpen: true, share: item })}
+                                                        className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
+                                                        title="Settings & Audit Logs"
+                                                    >
+                                                        <GearSix size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setRevokeConfirm({ isOpen: true, sharesToRevoke: [item] })}
+                                                        className="p-1.5 hover:bg-error/10 rounded-lg transition-colors text-text-muted hover:text-error"
+                                                        title="Revoke Share"
+                                                    >
+                                                        <Trash size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* ============================================================================
+                MODAL: REVOCATION CONFIRMATION
+            ============================================================================ */}
+            <Modal
+                isOpen={revokeConfirm.isOpen}
+                onClose={() => setRevokeConfirm({ isOpen: false, sharesToRevoke: [] })}
+                title="Revoke Share Link"
+            >
+                <div className="flex flex-col gap-4">
+                    <p className="text-sm text-text-muted leading-relaxed">
+                        Are you sure you want to revoke {revokeConfirm.sharesToRevoke.length === 1 ? 'this share link' : `these ${revokeConfirm.sharesToRevoke.length} share links`}? 
+                    </p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
+                        <Lock size={20} className="text-amber-700 flex-shrink-0 mt-0.5" />
+                        <span className="text-xs text-amber-800 leading-normal">
+                            <strong>Note:</strong> Physical files will remain completely safe in your Private File Manager. Only public link access is disabled.
+                        </span>
+                    </div>
+                    
+                    <div className="flex justify-end gap-3 mt-4">
+                        <button
+                            type="button"
+                            onClick={() => setRevokeConfirm({ isOpen: false, sharesToRevoke: [] })}
+                            className="px-4 py-2 border border-border text-text-main rounded-xl hover:bg-card transition-colors text-sm font-semibold"
+                            disabled={submitting}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleRevoke}
+                            className="px-4 py-2 bg-error text-white rounded-xl hover:bg-error/80 transition-colors text-sm font-semibold flex items-center gap-1.5"
+                            disabled={submitting}
+                        >
+                            {submitting ? 'Revoking...' : 'Revoke Access'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* ============================================================================
+                MODAL: CREATE DROP ZONE
+            ============================================================================ */}
+            <CreateDropZoneModal
+                isOpen={showCreateDz}
+                onClose={() => setShowCreateDz(false)}
+                createZKFolder={createZKFolder}
+                onSuccess={() => {
+                    setShowCreateDz(false);
+                    triggerFileRefresh();
+                }}
+            />
+
+            {/* ============================================================================
+                MODAL: CREATE COLLAB FOLDER
+            ============================================================================ */}
+            <CreateCollabFolderModal
+                isOpen={showCreateCollab}
+                onClose={() => setShowCreateCollab(false)}
+                createZKFolder={createZKFolder}
+                onSuccess={() => {
+                    setShowCreateCollab(false);
+                    triggerFileRefresh();
+                }}
+            />
+
+            {/* ============================================================================
+                MODAL: SHARE SETTINGS & AUDIT LOGS
+            ============================================================================ */}
+            <ShareSettingsModal
+                isOpen={settingsModal.isOpen}
+                onClose={() => setSettingsModal({ isOpen: false, share: null })}
+                share={settingsModal.share}
+                onSuccess={() => {
+                    setSettingsModal({ isOpen: false, share: null });
+                    triggerFileRefresh();
+                }}
+            />
+
+            {/* Standalone QR Code Modal for the list */}
+            <Modal
+                isOpen={qrModal.isOpen}
+                onClose={() => setQrModal({ isOpen: false, share: null })}
+                title="Share QR Code"
+                maxWidth="max-w-sm"
+            >
+                {qrModal.share && (
+                    <div className="flex flex-col items-center gap-6 py-4">
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-border/20" ref={qrRef}>
+                            <QRCode 
+                                id="list-qr-code" 
+                                value={`${window.location.origin}/${qrModal.share.type === 'drop_zone' ? 'dz' : qrModal.share.type === 'collab_folder' ? 'collab' : 's'}/${qrModal.share.custom_slug || qrModal.share.token}`} 
+                                size={250} 
+                            />
                         </div>
-                    )}
-                </>
-            )}
+                        <button
+                            onClick={() => {
+                                const svg = qrRef.current?.querySelector('svg');
+                                if (!svg) return;
+                                const svgData = new XMLSerializer().serializeToString(svg);
+                                const canvas = document.createElement("canvas");
+                                const ctx = canvas.getContext("2d");
+                                const qrImg = new Image();
+                                const logoImg = new Image();
+                                let loaded = 0;
+                                const onImageLoad = () => {
+                                    loaded++;
+                                    if (loaded === 2) {
+                                        const padding = 40;
+                                        const qrSize = 250;
+                                        const logoSize = 40;
+                                        const cardWidth = qrSize + (padding * 2);
+                                        const cardHeight = qrSize + (padding * 2) + 110;
+                                        canvas.width = cardWidth;
+                                        canvas.height = cardHeight;
+                                        if (ctx) {
+                                            ctx.fillStyle = "#ffffff";
+                                            ctx.fillRect(0, 0, cardWidth, cardHeight);
+                                            ctx.drawImage(logoImg, (cardWidth - logoSize) / 2, padding / 1.5, logoSize, logoSize);
+                                            ctx.fillStyle = "#0A0A0A";
+                                            ctx.font = "bold 22px system-ui, -apple-system, sans-serif";
+                                            ctx.textAlign = "center";
+                                            const titleText = qrModal.share?.type === 'drop_zone' ? 'Nest Drop Zone' : qrModal.share?.type === 'collab_folder' ? 'Nest Collab Folder' : 'Nest Shared Resource';
+                                            ctx.fillText(titleText, cardWidth / 2, padding + logoSize + 10);
+                                            ctx.fillStyle = "#ffffff";
+                                            ctx.fillRect(padding, padding + logoSize + 30, qrSize, qrSize);
+                                            ctx.drawImage(qrImg, padding, padding + logoSize + 30, qrSize, qrSize);
+                                            ctx.fillStyle = "#666666";
+                                            ctx.font = "16px system-ui, -apple-system, sans-serif";
+                                            ctx.textAlign = "center";
+                                            const nameStr = qrModal.share?.name || 'Scan to access files';
+                                            ctx.fillText(nameStr.length > 35 ? nameStr.substring(0, 32) + '...' : nameStr, cardWidth / 2, cardHeight - 25);
+                                        }
+                                        const pngFile = canvas.toDataURL("image/png", 1.0);
+                                        const downloadLink = document.createElement("a");
+                                        downloadLink.download = `Nest_QR_${qrModal.share?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'share'}.png`;
+                                        downloadLink.href = pngFile;
+                                        downloadLink.click();
+                                    }
+                                };
+                                qrImg.onload = onImageLoad;
+                                logoImg.onload = onImageLoad;
+                                qrImg.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
+                                logoImg.src = nestLogo;
+                            }}
+                            className="w-full py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <DownloadSimple size={20} weight="bold" />
+                            Download QR Code
+                        </button>
+                    </div>
+                )}
+            </Modal>
         </motion.div>
     );
 };

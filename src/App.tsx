@@ -19,6 +19,8 @@ const SignupPage = lazy(() => import('./pages/SignupPage').then(module => ({ def
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(module => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
 const SharePage = lazy(() => import('./pages/SharePage').then(module => ({ default: module.SharePage })));
+const DropZonePage = lazy(() => import('./pages/DropZonePage').then(module => ({ default: module.DropZonePage })));
+const CollabPortalPage = lazy(() => import('./pages/CollabPortalPage').then(module => ({ default: module.CollabPortalPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const RecoverySetupPage = lazy(() => import('./pages/RecoverySetupPage').then(module => ({ default: module.RecoverySetupPage })));
 const TrashPage = lazy(() => import('./pages/TrashPage').then(module => ({ default: module.TrashPage })));
@@ -64,7 +66,8 @@ const App = () => {
                       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                       <Route path="/reset-password" element={<ResetPasswordPage />} />
                       <Route path="/s/:shareToken" element={<SharePage />} />
-                      <Route path="/s/:shareToken" element={<SharePage />} />
+                      <Route path="/dz/:token" element={<DropZonePage />} />
+                      <Route path="/collab/:token" element={<CollabPortalPage />} />
                       <Route path="/terms" element={<TermsPage />} />
                       <Route path="/privacy" element={<TermsPage />} />
                       <Route path="/security" element={<SecurityPage />} />

@@ -1,20 +1,27 @@
 import express from 'express';
+import { env } from '../config/env';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import fs from 'fs';
 import { db } from '../db';
-import { users, userCrypto, folders, files, graveyard, graveyardChunks, fileChunks, analyticsEvents, userDevices } from '../db/schema';
-import { eq, and, gt, sql } from 'drizzle-orm';
+import { users, userCrypto, folders, files, graveyard, graveyardChunks, fileChunks, analyticsEvents, userDevices, refreshTokens } from '../db/schema';
+import { eq, and, gt, sql, or } from 'drizzle-orm';
 
 import { validate } from '../middleware/validate';
 import {
     signupSchema,
+    migrateLegacySchema,
     loginSchema,
     forgotPasswordSchema,
     resetPasswordSchema
 } from '../schemas/auth';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-12-15.clover' as any,
+});
 import logger from '../utils/logger';
 import {
     bufferToBase64,
@@ -26,14 +33,38 @@ import {
     sendPasswordResetConfirmation,
     sendSecurityAlertEmail
 } from '../services/email';
-import { env } from '../config/env';
 import { authLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 const JWT_SECRET = env.JWT_SECRET;
 
-// Apply auth rate limiting to all auth routes
-router.use(authLimiter);
+// Anti-enumeration: when a login email doesn't exist we still run a bcrypt comparison
+// against this dummy hash, so the missing-user path costs the same as the real path and
+// response latency can't reveal whether an account exists. Computed once at startup.
+const DUMMY_AUTH_HASH = bcrypt.hashSync('nonexistent-user-timing-equalizer', 12);
+
+// Password-reset tokens are stored as a SHA-256 hash so a DB read can't yield a usable
+// reset token. The raw token still goes in the emailed link; we hash on store + lookup.
+const hashToken = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
+
+// The strict auth brute-force limiter (10/15min per IP) must only guard
+// credential/abuse endpoints (login, signup, salt, password reset, etc.).
+// The routes below are normal recurring/session traffic — NOT brute-force
+// targets — so capping them at the auth rate causes spurious 429s during
+// ordinary use (and, behind NAT where many users share one IP, breaks them
+// outright). They stay protected by authenticateToken (where applicable) and
+// the app-wide globalLimiter (100/min):
+//   /metadata — read on every page load, written on every vault save
+//               (saveMetadata does a GET version-check + POST each time)
+//   /refresh  — token refresh runs ~every 15min per session; rate-limiting it
+//               yields no security benefit but causes silent logouts under NAT
+//   /me       — fetched on load / session checks
+//   /logout   — recurring, no abuse value
+const AUTH_LIMITER_EXEMPT = new Set(['/metadata', '/refresh', '/me', '/logout']);
+router.use((req, res, next) => {
+    if (AUTH_LIMITER_EXEMPT.has(req.path)) return next();
+    return authLimiter(req, res, next);
+});
 
 // ============================================================================
 // GET SALT (Client-side usage)
@@ -49,17 +80,16 @@ router.post('/salt', async (req, res) => {
         // 1. Find User
         const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
 
-        if (!user) {
+        // 2. Find Crypto Data
+        const [cryptoData] = user ? await db.select().from(userCrypto).where(eq(userCrypto.userId, user.id)).limit(1) : [null];
+
+        if (!user || !cryptoData) {
             // Fake salt to prevent enumeration
             return res.json({
                 salt: bufferToBase64(crypto.randomBytes(32)),
                 kdfParams: JSON.stringify({ algorithm: 'argon2id', memoryCost: 65536, timeCost: 3, parallelism: 4 })
             });
         }
-
-        // 2. Find Crypto Data
-        const [cryptoData] = await db.select().from(userCrypto).where(eq(userCrypto.userId, user.id)).limit(1);
-        if (!cryptoData) return res.status(500).json({ error: 'Account setup incomplete' });
 
         res.json({
             salt: bufferToBase64(cryptoData.salt),
@@ -148,7 +178,7 @@ router.post('/signup', validate(signupSchema), async (req, res) => {
             // Log Analytics Event (outside transaction as it's not critical for user creation atomicity)
             await db.insert(analyticsEvents).values({
                 type: 'user_signup',
-                bytes: 1,
+                bytes: 0,
                 meta: `user_${result.userId}`
             });
 
@@ -162,83 +192,6 @@ router.post('/signup', validate(signupSchema), async (req, res) => {
         } catch (err: any) {
             // In Postgres, unique violation is code 23505
             if (err.code === '23505' || err.constraint === 'users_email_unique') {
-                const [existingUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-
-                if (existingUser) {
-                    const [hasCrypto] = await db.select({ id: userCrypto.userId }).from(userCrypto).where(eq(userCrypto.userId, existingUser.id)).limit(1);
-
-                    if (!hasCrypto) {
-                        // 1. Update Password Hash and Reset Quota (taking over legacy account)
-                        await db.update(users)
-                            .set({ password_hash: storedAuthHash, storage_used_bytes: 0 })
-                            .where(eq(users.id, existingUser.id));
-
-                        // 2. Wipe Legacy Data (Move to Graveyard first)
-                        const allUserFiles = await db.select().from(files).where(eq(files.userId, existingUser.id));
-
-                        for (const file of allUserFiles) {
-                            // Archive to Graveyard
-                            const [gv] = await db.insert(graveyard).values({
-                                original_file_id: file.id,
-                                user_id: file.userId,
-                                filename: file.jackal_filename || 'unknown',
-                                file_size: file.file_size,
-                                jackal_fid: file.jackal_fid,
-                                merkle_hash: file.merkle_hash,
-                                original_created_at: file.created_at,
-                                deletion_reason: 'account_nuke'
-                            }).returning({ id: graveyard.id });
-
-                            // Archive Chunks
-                            if (file.is_chunked) {
-                                const chunks = await db.select().from(fileChunks).where(eq(fileChunks.fileId, file.id));
-                                if (chunks.length > 0) {
-                                    await db.insert(graveyardChunks).values(
-                                        chunks.map(c => ({
-                                            graveyard_id: gv.id,
-                                            chunk_index: c.chunk_index,
-                                            jackal_merkle: c.jackal_merkle,
-                                            size: c.size
-                                        }))
-                                    );
-                                }
-                            }
-
-                            // Hard Delete from Files (clearing user view)
-                            await db.delete(files).where(eq(files.id, file.id));
-                        }
-
-                        // Clear folders
-                        await db.delete(folders).where(eq(folders.userId, existingUser.id));
-
-                        // 3. Insert Crypto Data
-                        await db.insert(userCrypto).values({
-                            userId: existingUser.id,
-                            salt: base64ToBuffer(salt),
-                            kdf_algorithm: 'argon2id',
-                            kdf_params: kdfParams,
-                            metadata_blob: base64ToBuffer(encryptedMetadata),
-                            metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
-                            encrypted_master_key: base64ToBuffer(encryptedMasterKey),
-                            encrypted_master_key_nonce: base64ToBuffer(encryptedMasterKeyNonce)
-                        });
-
-                        // 4. Create Root Folder Record
-                        const { hashFolderPath } = await import('../crypto/keyManagement');
-                        await db.insert(folders).values({
-                            userId: existingUser.id,
-                            parentId: null,
-                            folder_key_encrypted: base64ToBuffer(rootFolderKeyEncrypted),
-                            folder_key_nonce: base64ToBuffer(rootFolderKeyNonce),
-                            path_hash: hashFolderPath('/')
-                        });
-
-                        logger.info(`[AUTH-SIGNUP] ✅ Legacy account migrated: ${existingUser.id}`);
-                        sendWelcomeEmail(email).catch((err: any) => logger.error('[AUTH-SIGNUP] Failed to send migration welcome email:', err));
-
-                        return res.status(201).json({ message: 'Account migrated to Zero-Knowledge' });
-                    }
-                }
                 return res.status(400).json({ error: 'Email already exists' });
             }
             throw err;
@@ -246,6 +199,129 @@ router.post('/signup', validate(signupSchema), async (req, res) => {
     } catch (e: any) {
         logger.error('[AUTH] ❌ Registration failed:', e);
         res.status(500).json({ error: e.message || 'Server error' });
+    }
+});
+
+// ============================================================================
+// LEGACY MIGRATION
+// ============================================================================
+
+router.post('/migrate-legacy', validate(migrateLegacySchema), async (req: express.Request, res: express.Response) => {
+    const startTime = Date.now();
+    logger.info(`[AUTH-MIGRATE] Request for: ${req.body.email}`);
+
+    try {
+        const {
+            email,
+            password, // Original legacy password (from login form)
+            authHash,
+            salt,
+            encryptedMasterKey,
+            encryptedMasterKeyNonce,
+            encryptedMetadata,
+            encryptedMetadataNonce,
+            rootFolderKeyEncrypted,
+            rootFolderKeyNonce,
+            kdfParams
+        } = req.body;
+
+        if (!authHash || !salt || !encryptedMasterKey || !password) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        // 1. Find User
+        const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        if (!existingUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // 2. Verify Legacy Password
+        const passwordMatch = await bcrypt.compare(password, existingUser.password_hash);
+        if (!passwordMatch) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // 3. Verify they actually need migration
+        const [hasCrypto] = await db.select({ id: userCrypto.userId }).from(userCrypto).where(eq(userCrypto.userId, existingUser.id)).limit(1);
+        if (hasCrypto) {
+            return res.status(400).json({ error: 'Account is already migrated' });
+        }
+
+        const storedAuthHash = await bcrypt.hash(authHash, 12);
+        const { hashFolderPath } = await import('../crypto/keyManagement');
+
+        // Steps 4-7 are destructive (wipe legacy data) AND constructive (insert new ZK
+        // crypto + root folder). They MUST be atomic — previously a failure between the
+        // wipe and the crypto insert left the account with its data destroyed and no new
+        // keys (unrecoverable). Wrap the whole thing in one transaction.
+        await db.transaction(async (tx) => {
+            // 4. Update Password Hash and Reset Quota
+            await tx.update(users)
+                .set({ password_hash: storedAuthHash, storage_used_bytes: 0 })
+                .where(eq(users.id, existingUser.id));
+
+            // 5. Wipe Legacy Data (Move to Graveyard first)
+            const allUserFiles = await tx.select().from(files).where(eq(files.userId, existingUser.id));
+
+            for (const file of allUserFiles) {
+                const [gv] = await tx.insert(graveyard).values({
+                    original_file_id: file.id,
+                    user_id: file.userId,
+                    filename: file.jackal_filename || 'unknown',
+                    file_size: file.file_size,
+                    jackal_fid: file.jackal_fid,
+                    merkle_hash: file.merkle_hash,
+                    original_created_at: file.created_at,
+                    deletion_reason: 'account_nuke'
+                }).returning({ id: graveyard.id });
+
+                if (file.is_chunked) {
+                    const chunks = await tx.select().from(fileChunks).where(eq(fileChunks.fileId, file.id));
+                    if (chunks.length > 0) {
+                        await tx.insert(graveyardChunks).values(
+                            chunks.map(c => ({
+                                graveyard_id: gv.id,
+                                chunk_index: c.chunk_index,
+                                jackal_merkle: c.jackal_merkle,
+                                size: c.size
+                            }))
+                        );
+                    }
+                }
+                await tx.delete(files).where(eq(files.id, file.id));
+            }
+
+            await tx.delete(folders).where(eq(folders.userId, existingUser.id));
+
+            // 6. Insert Crypto Data
+            await tx.insert(userCrypto).values({
+                userId: existingUser.id,
+                salt: base64ToBuffer(salt),
+                kdf_algorithm: 'argon2id',
+                kdf_params: kdfParams,
+                metadata_blob: base64ToBuffer(encryptedMetadata),
+                metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
+                encrypted_master_key: base64ToBuffer(encryptedMasterKey),
+                encrypted_master_key_nonce: base64ToBuffer(encryptedMasterKeyNonce)
+            });
+
+            // 7. Create Root Folder Record
+            await tx.insert(folders).values({
+                userId: existingUser.id,
+                parentId: null,
+                folder_key_encrypted: base64ToBuffer(rootFolderKeyEncrypted),
+                folder_key_nonce: base64ToBuffer(rootFolderKeyNonce),
+                path_hash: hashFolderPath('/')
+            });
+        });
+
+        logger.info(`[AUTH-MIGRATE] ✅ Legacy account migrated: ${existingUser.id}`);
+
+        return res.status(200).json({ message: 'Account migrated to Zero-Knowledge' });
+
+    } catch (e: any) {
+        logger.error('[AUTH-MIGRATE] ❌ Failed:', e);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -263,7 +339,8 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
         const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
         if (!user) {
-            logger.warn(`[AUTH-LOGIN] User not found: ${email}`);
+            // Equalize timing with the real-user path (constant-time enumeration defense).
+            await bcrypt.compare(authHash || '', DUMMY_AUTH_HASH);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -275,7 +352,7 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
         const passwordMatch = await bcrypt.compare(authHash, user.password_hash);
 
         if (!passwordMatch) {
-            logger.warn(`[AUTH-LOGIN] Invalid password: ${email}`);
+            logger.warn(`[AUTH-LOGIN] Invalid credentials for user ${user.id}`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -294,7 +371,7 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
             .set({ last_accessed_at: new Date() })
             .where(eq(users.id, user.id));
 
-        // 5. Generate JWT
+        // 5. Generate JWT (Short-lived Access Token)
         const token = jwt.sign(
             {
                 userId: user.id,
@@ -303,8 +380,17 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
                 role: user.role
             },
             JWT_SECRET,
-            { expiresIn: '30d' }
+            { expiresIn: '15m' }
         );
+
+        // Generate Long-lived Refresh Token
+        const refreshToken = crypto.randomBytes(40).toString('hex');
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await db.insert(refreshTokens).values({
+            userId: user.id,
+            token: refreshToken,
+            expiresAt
+        });
 
         logger.info(`[AUTH-LOGIN] ✅ Success: ${user.id}`);
 
@@ -352,6 +438,7 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
 
         res.json({
             token,
+            refreshToken,
             user: {
                 id: user.id,
                 email: user.email,
@@ -370,6 +457,100 @@ router.post('/login', validate(loginSchema), async (req: express.Request, res: e
 
     } catch (e) {
         logger.error('[AUTH] ❌ Login failed:', e);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ============================================================================
+// REFRESH & LOGOUT
+// ============================================================================
+
+router.post('/refresh', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
+
+        // 1. Verify token exists and is valid (check current OR previous)
+        const [storedToken] = await db.select().from(refreshTokens)
+            .where(
+                or(
+                    eq(refreshTokens.token, refreshToken),
+                    eq(refreshTokens.previousToken, refreshToken)
+                )
+            ).limit(1);
+
+        if (!storedToken) {
+            return res.status(401).json({ error: 'Invalid refresh token' });
+        }
+
+        if (new Date() > new Date(storedToken.expiresAt)) {
+            await db.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
+            return res.status(401).json({ error: 'Refresh token expired' });
+        }
+
+        // 2. Check for Grace Period / Theft
+        if (storedToken.previousToken === refreshToken) {
+            const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+            if (storedToken.rotatedAt && new Date(storedToken.rotatedAt) > thirtySecondsAgo) {
+                // Grace Period active - token was recently rotated by a concurrent request
+                const [user] = await db.select().from(users).where(eq(users.id, storedToken.userId)).limit(1);
+                if (!user || user.is_banned) return res.status(401).json({ error: 'User invalid' });
+
+                const token = jwt.sign(
+                    { userId: user.id, email: user.email, tier: user.subscription_tier, role: user.role },
+                    JWT_SECRET, { expiresIn: '15m' }
+                );
+                // Return the already-rotated token
+                return res.json({ token, refreshToken: storedToken.token });
+            } else {
+                // THEFT DETECTED: An old token was replayed after the grace period
+                logger.warn(`[AUTH-REFRESH] 🚨 Token theft detected for user ${storedToken.userId}! Revoking ALL of the user's refresh tokens.`);
+                // Revoke the entire family (every refresh token for this user), not just the
+                // replayed row — otherwise the attacker's other live sessions keep working.
+                await db.delete(refreshTokens).where(eq(refreshTokens.userId, storedToken.userId));
+                return res.status(401).json({ error: 'Compromised token family detected' });
+            }
+        }
+
+        // 3. Normal Rotation (reqToken === storedToken.token)
+        const [user] = await db.select().from(users).where(eq(users.id, storedToken.userId)).limit(1);
+        if (!user || user.is_banned) {
+            return res.status(401).json({ error: 'User invalid' });
+        }
+
+        // Issue new Access Token
+        const token = jwt.sign(
+            { userId: user.id, email: user.email, tier: user.subscription_tier, role: user.role },
+            JWT_SECRET, { expiresIn: '15m' }
+        );
+
+        // Rotate Refresh Token
+        const newRefreshToken = crypto.randomBytes(40).toString('hex');
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await db.update(refreshTokens).set({
+            token: newRefreshToken,
+            previousToken: storedToken.token,
+            rotatedAt: new Date(),
+            expiresAt
+        }).where(eq(refreshTokens.id, storedToken.id));
+
+        res.json({ token, refreshToken: newRefreshToken });
+
+    } catch (e) {
+        logger.error('[AUTH-REFRESH] ❌ Failed:', e);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+router.post('/logout', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        if (refreshToken) {
+            await db.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
+        }
+        res.json({ success: true });
+    } catch (e) {
+        logger.error('[AUTH-LOGOUT] ❌ Failed:', e);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -410,21 +591,13 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
 // ============================================================================
 
 
-router.get('/metadata', async (req, res) => {
+router.get('/metadata', authenticateToken, async (req: AuthRequest, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'No token provided' });
-        }
-
-        const token = authHeader.substring(7);
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-
         const [cryptoData] = await db.select({
             metadata_blob: userCrypto.metadata_blob,
             metadata_nonce: userCrypto.metadata_nonce,
             metadata_version: userCrypto.metadata_version
-        }).from(userCrypto).where(eq(userCrypto.userId, decoded.userId)).limit(1);
+        }).from(userCrypto).where(eq(userCrypto.userId, req.user.userId)).limit(1);
 
         if (!cryptoData) {
             return res.json({ encryptedMetadata: null, encryptedMetadataNonce: null, metadata_version: 0 });
@@ -441,33 +614,34 @@ router.get('/metadata', async (req, res) => {
     }
 });
 
-router.post('/metadata', async (req, res) => {
+router.post('/metadata', authenticateToken, async (req: AuthRequest, res) => {
     try {
-        // Use JWT for authentication instead of trusting email in body
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'No token provided' });
-        }
+        const { encryptedMetadata, encryptedMetadataNonce, metadata_version } = req.body;
 
-        const token = authHeader.substring(7);
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-
-        const { encryptedMetadata, encryptedMetadataNonce } = req.body;
-
-        if (!encryptedMetadata || !encryptedMetadataNonce) {
+        if (!encryptedMetadata || !encryptedMetadataNonce || metadata_version === undefined) {
             return res.status(400).json({ error: 'Missing metadata fields' });
         }
 
-        await db.update(userCrypto)
+        const result = await db.update(userCrypto)
             .set({
                 metadata_blob: base64ToBuffer(encryptedMetadata),
                 metadata_nonce: base64ToBuffer(encryptedMetadataNonce),
                 metadata_version: sql`${userCrypto.metadata_version} + 1`,
                 updated_at: new Date()
             })
-            .where(eq(userCrypto.userId, decoded.userId));
+            .where(
+                and(
+                    eq(userCrypto.userId, req.user.userId),
+                    eq(userCrypto.metadata_version, metadata_version)
+                )
+            )
+            .returning({ newVersion: userCrypto.metadata_version });
 
-        res.json({ success: true });
+        if (result.length === 0) {
+            return res.status(409).json({ error: 'Metadata version conflict' });
+        }
+
+        res.json({ success: true, newVersion: result[0].newVersion });
     } catch (e) {
         logger.error('[AUTH-METADATA] ❌ Failed:', e);
         res.status(500).json({ error: 'Server error' });
@@ -488,7 +662,7 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res)
         const token = crypto.randomBytes(32).toString('hex');
         const expires = new Date(Date.now() + 3600000); // 1 hour
         await db.update(users)
-            .set({ reset_token: token, reset_token_expires: expires })
+            .set({ reset_token: hashToken(token), reset_token_expires: expires }) // store hash, email the raw token
             .where(eq(users.id, user.id));
         sendPasswordResetEmail(email, token).catch(console.error);
     }
@@ -516,7 +690,12 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
         // 1. Verify Token
         const [user] = await db.select()
             .from(users)
-            .where(and(eq(users.reset_token, token), gt(users.reset_token_expires, new Date())))
+            // Match the hashed token; also accept a legacy plaintext token still inside its
+            // 1h window (transition safety) so resets issued just before deploy still work.
+            .where(and(
+                or(eq(users.reset_token, hashToken(token)), eq(users.reset_token, token)),
+                gt(users.reset_token_expires, new Date())
+            ))
             .limit(1);
 
         if (!user) return res.status(400).json({ error: 'Invalid or expired token' });
@@ -611,7 +790,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
                 password_hash: storedAuthHash,
                 reset_token: null,
                 reset_token_expires: null,
-                storage_used_bytes: 0
+                ...(wipeData ? { storage_used_bytes: 0 } : {})
             })
             .where(eq(users.id, user.id));
 
@@ -679,6 +858,9 @@ router.post('/change-password', authenticateToken, async (req: AuthRequest, res)
             })
             .where(eq(userCrypto.userId, user.id));
 
+        // Invalidate all active refresh tokens for absolute security
+        await db.delete(refreshTokens).where(eq(refreshTokens.userId, user.id));
+
         logger.info(`[AUTH] ✅ Password changed for user ${user.id}`);
         sendPasswordResetConfirmation(user.email).catch(err => logger.error(`[AUTH] Failed to send password change email: ${err.message}`));
 
@@ -707,6 +889,16 @@ router.delete('/account', authenticateToken, async (req: AuthRequest, res) => {
         }
 
         logger.warn(`[GDPR-ERASURE] Starting account scrub for user ${userId} (${user.email})`);
+
+        // 1. Cancel active Stripe subscription if it exists
+        if (user.stripe_subscription_id) {
+            try {
+                logger.info(`[GDPR-ERASURE] Canceling Stripe subscription ${user.stripe_subscription_id} for user ${userId}`);
+                await stripe.subscriptions.cancel(user.stripe_subscription_id);
+            } catch (stripeErr: any) {
+                logger.error(`[GDPR-ERASURE] ⚠️ Failed to cancel Stripe subscription: ${stripeErr.message}`);
+            }
+        }
 
         // 2. Process Files (Hard Delete and Archive to Graveyard)
         const allUserFiles = await db.select().from(files).where(eq(files.userId, userId));
@@ -759,7 +951,6 @@ router.delete('/account', authenticateToken, async (req: AuthRequest, res) => {
         await db.delete(folders).where(eq(folders.userId, userId));
         await db.delete(userCrypto).where(eq(userCrypto.userId, userId));
 
-        // 4. Scrub User Identity
         const anonymousEmail = `deleted_user_${userId}_${crypto.randomBytes(4).toString('hex')}@nest.internal`;
         await db.update(users)
             .set({
@@ -772,6 +963,9 @@ router.delete('/account', authenticateToken, async (req: AuthRequest, res) => {
                 reset_token: null
             })
             .where(eq(users.id, userId));
+
+        // Remove all refresh tokens to terminate any dangling sessions
+        await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
 
         logger.info(`[GDPR-ERASURE] ✅ Account ${userId} scrubbed successfully. Email anonymized to ${anonymousEmail}`);
 

@@ -20,17 +20,35 @@ import filesRoutes from './routes/files';
 import foldersRoutes from './routes/folders';
 import storageRoutes from './routes/storage';
 import adminRoutes from './routes/admin';
+import sharesRoutes from './routes/shares';
+import dropZonesRoutes from './routes/dropZones';
+import { hostRouter as collabHostRoutes, guestRouter as collabGuestRoutes } from './routes/collabFolders';
+import pageOgRoutes from './routes/pageOg';
 
 import { globalLimiter } from './middleware/rateLimiter';
 
 const app = express();
 const PORT = env.PORT;
 
+// Global safety net: a stray async rejection or error in a background task — e.g. a
+// storage/RPC outage during an upload retry — must NEVER take down the whole API.
+// Node terminates the process on an unhandled rejection by default (>= v15); these
+// handlers log + report it and keep the server serving requests instead.
+process.on('unhandledRejection', (reason: unknown) => {
+    console.error('[Process] Unhandled promise rejection — keeping server alive:',
+        reason instanceof Error ? (reason.stack || reason.message) : reason);
+    try { Sentry.captureException(reason); } catch { /* never let reporting crash us */ }
+});
+
+process.on('uncaughtException', (err: Error) => {
+    console.error('[Process] Uncaught exception — keeping server alive:', err?.stack || err);
+    try { Sentry.captureException(err); } catch { /* never let reporting crash us */ }
+});
+
 // Trust first proxy (Caddy) for accurate client IP detection
 app.set('trust proxy', 1);
 
-// Apply global rate limiter
-app.use(globalLimiter);
+// Wait to apply rate limiter until after CORS
 
 // Production-only Security Guards
 if (env.NODE_ENV === 'production') {
@@ -59,7 +77,9 @@ const allowedOrigins = [
     'https://www.lazybird.io',
     'https://lazybird-nest.netlify.app',
     'http://localhost:5173',
-    'http://127.0.0.1:5173'
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174'
 ];
 
 app.use(cors({
@@ -83,8 +103,12 @@ app.use(cors({
     credentials: true
 }));
 
+// Apply global rate limiter AFTER CORS
+app.use(globalLimiter);
+
 // Logging
-app.use(morgan('dev'));
+const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
+app.use(morgan(morganFormat));
 
 // Body parsing - IMPORTANT: Place raw handler before JSON for Stripe webhooks
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
@@ -125,6 +149,11 @@ app.use('/api/files', filesRoutes);
 app.use('/api/folders', foldersRoutes);
 app.use('/api/storage', storageRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/shares', sharesRoutes);
+app.use('/api/drop-zones', dropZonesRoutes);
+app.use('/api/collab-folders', collabHostRoutes);
+app.use('/api/collab', collabGuestRoutes);
+app.use('/', pageOgRoutes);
 
 if (env.NODE_ENV !== 'production') {
     app.get("/api/debug-sentry", function mainHandler(req, res) {

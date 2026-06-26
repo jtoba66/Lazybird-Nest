@@ -10,6 +10,8 @@ export interface File {
     chunk_count: number;
     created_at: string;
     last_accessed_at: string | null;
+    upload_session_id: string | null;
+    deleted_at?: string;
 }
 
 export interface UploadResponse {
@@ -108,6 +110,72 @@ export const filesAPI = {
         return data;
     },
 
+
+    // Collab Chunked Upload
+    async initCollabUpload(collabToken: string, metadata: {
+        file_size: number;
+        folder_id?: number | null;
+        encrypted_file_key: string;
+        file_key_nonce: string;
+        sessionId?: string;
+    }, sessionToken?: string): Promise<{ success: boolean; file_id: number; is_chunked: boolean }> {
+        const headers: Record<string, string> = {};
+        if (sessionToken) headers['x-collab-session'] = sessionToken;
+        const { data } = await api.post(`/collab/${collabToken}/upload/init`, metadata, { headers });
+        return data;
+    },
+
+    async uploadCollabChunk(
+        collabToken: string,
+        fileId: number,
+        chunkIndex: number,
+        encryptedChunk: Blob,
+        nonce: string, // Base64 header
+        size: number,
+        onProgress?: (progress: number) => void,
+        sessionToken?: string
+    ): Promise<{ success: boolean; message: string }> {
+        const formData = new FormData();
+        formData.append('file_id', String(fileId));
+        formData.append('chunk', encryptedChunk);
+        formData.append('chunk_index', String(chunkIndex));
+        formData.append('nonce', nonce);
+        formData.append('size', String(size));
+
+        const headers: Record<string, string> = { 'Content-Type': 'multipart/form-data' };
+        if (sessionToken) headers['x-collab-session'] = sessionToken;
+
+        const { data } = await api.post(`/collab/${collabToken}/upload/chunk`, formData, {
+            headers,
+            onUploadProgress: (progressEvent) => {
+                if (progressEvent.total && onProgress) {
+                    const progress = (progressEvent.loaded / progressEvent.total) * 100;
+                    onProgress(progress);
+                }
+            }
+        });
+        return data;
+    },
+
+    async finishCollabChunkedUpload(collabToken: string, fileId: number, encryptedFilename: string, encryptedMimeType: string, sessionToken?: string): Promise<{ success: boolean }> {
+        const headers: Record<string, string> = {};
+        if (sessionToken) headers['x-collab-session'] = sessionToken;
+        
+        const { data } = await api.post(`/collab/${collabToken}/upload/finish`, {
+            file_id: fileId,
+            encrypted_filename: encryptedFilename,
+            encrypted_mime_type: encryptedMimeType
+        }, { headers });
+        return data;
+    },
+
+    async getCollabManifest(_collabToken: string, _fileId: number): Promise<{ chunks: { id: string; chunk_index: number; jackal_merkle: string; size: number; nonce: string; is_gateway_verified: number }[] }> {
+        // Technically this could be useful for resumability. For now we will just assume fresh uploads or implement if needed.
+        // If we want resumability for guests, we need a GET /api/collab/:token/upload/manifest/:fileId endpoint.
+        // Actually, we'll skip manifest for guests for simplicity right now unless we want to build it.
+        return { chunks: [] };
+    },
+
     async cancelUpload(fileId: number): Promise<{ success: boolean }> {
         const { data } = await api.delete(`/files/${fileId}/cancel`);
         return data;
@@ -124,6 +192,34 @@ export const filesAPI = {
             params.folderId = folderId === null ? 'null' : folderId;
         }
         const response = await api.get('/files/list', { params });
+
+        const metadataVersion = response.headers['x-metadata-version']
+            ? parseInt(response.headers['x-metadata-version'])
+            : undefined;
+
+        return {
+            files: response.data.files,
+            metadataVersion
+        };
+    },
+
+    async getRecent(limit: number = 50, offset: number = 0, sortBy: string = 'date', order: string = 'desc'): Promise<FilesResponse> {
+        const response = await api.get('/files/recent', {
+            params: { limit, offset, sortBy, order }
+        });
+
+        const metadataVersion = response.headers['x-metadata-version']
+            ? parseInt(response.headers['x-metadata-version'])
+            : undefined;
+
+        return {
+            files: response.data.files,
+            metadataVersion
+        };
+    },
+
+    async queryFiles(ids: number[]): Promise<FilesResponse> {
+        const response = await api.post('/files/query', { ids });
 
         const metadataVersion = response.headers['x-metadata-version']
             ? parseInt(response.headers['x-metadata-version'])

@@ -77,7 +77,6 @@ export async function runAccountRetentionPolicy() {
 
 export function initRetentionWorker() {
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-    setTimeout(() => runAccountRetentionPolicy(), 60000);
     setInterval(() => runAccountRetentionPolicy(), TWENTY_FOUR_HOURS);
     logger.info('[RETENTION] Worker initialized (24h period)');
 }

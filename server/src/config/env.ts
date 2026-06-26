@@ -3,13 +3,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // Load .env file for local development
-// Try to load from server root (../../.env relative to this file)
-const envPath = path.resolve(__dirname, '../../.env');
-dotenv.config({ path: envPath });
+const envFile = process.env.NODE_ENV === 'test' ? '../../.env.test' : '../../.env';
+const envPath = path.resolve(__dirname, envFile);
+dotenv.config({ path: envPath, override: true });
 
 // Fallback: Try loading from current working directory if above failed
 if (!process.env.JACKAL_SEED) {
-    dotenv.config();
+    dotenv.config({ override: true });
 }
 
 const envSchema = z.object({

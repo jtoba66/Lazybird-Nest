@@ -28,3 +28,19 @@ export const encryptMasterKey = crypto.encryptMasterKey;
 export const generateSalt = crypto.generateSalt;
 export const createDecryptionStream = crypto.createDecryptionStream;
 export const createEncryptionStream = crypto.createEncryptionStream;
+
+// Advanced Sharing
+export const generateCollabKey = crypto.generateCollabKey;
+export const generateLinkKey = crypto.generateLinkKey;
+export const encryptCollabKeyForHost = crypto.encryptCollabKeyForHost;
+export const encryptCollabKeyForLink = crypto.encryptCollabKeyForLink;
+export const decryptCollabKey = crypto.decryptCollabKey;
+export const generateDropZoneKeyPair = crypto.generateDropZoneKeyPair;
+export const encryptDropPrivateKey = crypto.encryptDropPrivateKey;
+export const decryptDropPrivateKey = crypto.decryptDropPrivateKey;
+export const encryptFileForDropZone = crypto.encryptFileForDropZone;
+export const decryptDropZoneFile = crypto.decryptDropZoneFile;
+export const encryptFileWithCollabKey = crypto.encryptFileWithCollabKey;
+export const rekeyFileForCollab = crypto.rekeyFileForCollab;
+export const encryptWithMasterKey = crypto.encryptWithMasterKey;
+export const decryptWithMasterKey = crypto.decryptWithMasterKey;

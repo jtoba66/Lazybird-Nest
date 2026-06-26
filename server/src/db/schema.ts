@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, uniqueIndex, foreignKey, decimal, uuid, customType, unique, bigint } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, boolean, uniqueIndex, foreignKey, decimal, uuid, customType, unique, bigint, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 // Custom type for BLOBs in Postgres (bytea)
@@ -41,7 +41,9 @@ export const users = pgTable('users', {
     role: text('role').default('user'),
     last_accessed_at: timestamp('last_accessed_at').defaultNow(),
     created_at: timestamp('created_at').defaultNow(),
-});
+}, (table) => ({
+    stripeCustomerIdx: index('users_stripe_customer_id_idx').on(table.stripe_customer_id), // webhook lookups
+}));
 
 export const userCrypto = pgTable('user_crypto', {
     userId: integer('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
@@ -76,17 +78,29 @@ export const folders = pgTable('folders', {
     path_hash: text('path_hash').notNull(),
     folder_key_encrypted: bytea('folder_key_encrypted').notNull(),
     folder_key_nonce: bytea('folder_key_nonce').notNull(),
+    encrypted_folder_name: text('encrypted_folder_name'),
     created_at: timestamp('created_at').defaultNow(),
+    deleted_at: timestamp('deleted_at'),
 }, (table) => ({
     parentRef: foreignKey({
         columns: [table.parentId],
         foreignColumns: [table.id]
-    }).onDelete('cascade')
+    }).onDelete('cascade'),
+    userIdx: index('folders_user_id_idx').on(table.userId),
+    parentIdx: index('folders_parent_id_idx').on(table.parentId),
 }));
 
 export const files = pgTable('files', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+
+    // Storage Provider (migration)
+    storage_provider: text('storage_provider').default('jackal').notNull(),
+    obsideo_key: text('obsideo_key'),
+    migration_status: text('migration_status'), // null | 'migrated' | 'broken'
+    purge_after: timestamp('purge_after'),       // set on soft-delete: NOW + 30 days
+    file_origin: text('file_origin').default('private').notNull(), // 'private' | 'drop_zone' | 'collab'
+    upload_session_id: text('upload_session_id'), // Used for batching recent uploads
 
     // Jackal Storage
     jackal_fid: text('jackal_fid'),
@@ -111,6 +125,13 @@ export const files = pgTable('files', {
     share_token: text('share_token').unique(),
     share_key_encrypted: bytea('share_key_encrypted'),
     share_key_nonce: bytea('share_key_nonce'),
+    share_password_hash: text('share_password_hash'),
+    share_max_downloads: integer('share_max_downloads'),
+    share_download_count: integer('share_download_count').default(0).notNull(),
+    share_expires_at: timestamp('share_expires_at'),
+    share_custom_slug: text('share_custom_slug').unique(),
+    encrypted_filename: text('encrypted_filename'),
+    encrypted_mime_type: text('encrypted_mime_type'),
 
     // Timestamps
     created_at: timestamp('created_at').defaultNow(),
@@ -123,13 +144,11 @@ export const files = pgTable('files', {
     retry_count: integer('retry_count').default(0),
     last_retry_at: text('last_retry_at'),
     failure_reason: text('failure_reason'),
-
-    // Storage Provider (migration)
-    storage_provider: text('storage_provider').default('jackal').notNull(),
-    obsideo_key: text('obsideo_key'),
-    migration_status: text('migration_status'), // null | 'migrated' | 'broken'
-    purge_after: timestamp('purge_after'),       // set on soft-delete: NOW + 30 days
-});
+}, (table) => ({
+    userIdx: index('files_user_id_idx').on(table.userId),
+    folderIdx: index('files_folder_id_idx').on(table.folderId),
+    deletedIdx: index('files_deleted_at_idx').on(table.deleted_at),
+}));
 
 export const fileChunks = pgTable('file_chunks', {
     id: text('id').primaryKey(), // UUID
@@ -177,4 +196,137 @@ export const analyticsEvents = pgTable('analytics_events', {
     bytes: bigint('bytes', { mode: 'number' }).notNull(), // Positive or Negative
     timestamp: timestamp('timestamp').defaultNow().notNull(),
     meta: text('meta'), // Optional: file_id or description
+}, (table) => ({
+    typeTimeIdx: index('analytics_events_type_timestamp_idx').on(table.type, table.timestamp),
+}));
+
+// ============================================================================
+// Advanced Sharing Tables — Collab Folders & Drop Zones
+// ============================================================================
+
+export const collabFolders = pgTable('collab_folders', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    folderId: integer('folder_id').notNull().references(() => folders.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    token: text('token').notNull().unique(),           // public token in URL
+    host_encrypted_collab_key: bytea('host_encrypted_collab_key').notNull(),
+    host_collab_key_nonce: bytea('host_collab_key_nonce').notNull(),
+    link_encrypted_collab_key: bytea('link_encrypted_collab_key').notNull(),
+    link_collab_key_nonce: bytea('link_collab_key_nonce').notNull(),
+    require_pin: boolean('require_pin').notNull().default(false),
+    pin_hash: text('pin_hash'),
+    strict_mode: boolean('strict_mode').notNull().default(false),
+    activity_notifications: boolean('activity_notifications').notNull().default(true),
+    custom_slug: text('custom_slug').unique(),
+    expires_at: timestamp('expires_at'),
+    revoked_at: timestamp('revoked_at'),
+    created_at: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    userIdx: index('collab_folders_user_id_idx').on(table.userId),
+}));
+
+export const collabAccessList = pgTable('collab_access_list', {
+    id: serial('id').primaryKey(),
+    collabId: integer('collab_id').notNull().references(() => collabFolders.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    added_at: timestamp('added_at').defaultNow().notNull(),
+}, (table) => ({
+    unq: unique().on(table.collabId, table.email)
+}));
+
+export const collabOtpSessions = pgTable('collab_otp_sessions', {
+    id: serial('id').primaryKey(),
+    collabId: integer('collab_id').notNull().references(() => collabFolders.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    code_hash: text('code_hash').notNull(),          // sha256 of the 6-digit code
+    attempts: integer('attempts').notNull().default(0),
+    expires_at: timestamp('expires_at').notNull(),
+    verified_at: timestamp('verified_at'),
+    created_at: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    collabEmailIdx: index('collab_otp_sessions_collab_email_idx').on(table.collabId, table.email),
+}));
+
+export const collabGuestSessions = pgTable('collab_guest_sessions', {
+    id: serial('id').primaryKey(),
+    collabId: integer('collab_id').notNull().references(() => collabFolders.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    session_token: text('session_token').notNull().unique(),   // issued after OTP verification
+    expires_at: timestamp('expires_at').notNull(),
+    created_at: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    collabIdx: index('collab_guest_sessions_collab_id_idx').on(table.collabId),
+}));
+
+export const dropZones = pgTable('drop_zones', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    folderId: integer('folder_id').notNull().references(() => folders.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    token: text('token').notNull().unique(),
+    drop_public_key: bytea('drop_public_key').notNull(),                 // plaintext ECDH public key
+    encrypted_drop_private_key: bytea('encrypted_drop_private_key').notNull(), // private key enc with master_key
+    drop_private_key_nonce: bytea('drop_private_key_nonce').notNull(),
+    require_pin: boolean('require_pin').notNull().default(false),
+    pin_hash: text('pin_hash'),
+    upload_notifications: boolean('upload_notifications').notNull().default(true),
+    custom_slug: text('custom_slug').unique(),
+    expires_at: timestamp('expires_at'),
+    revoked_at: timestamp('revoked_at'),
+    created_at: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    userIdx: index('drop_zones_user_id_idx').on(table.userId),
+}));
+
+export const dropZoneFiles = pgTable('drop_zone_files', {
+    id: serial('id').primaryKey(),
+    dropZoneId: integer('drop_zone_id').notNull().references(() => dropZones.id, { onDelete: 'cascade' }),
+    encrypted_file_key: bytea('encrypted_file_key').notNull(),     // file_key encrypted with drop_public_key
+    file_key_nonce: bytea('file_key_nonce').notNull(),
+    storage_key: text('storage_key').notNull(),      // key on Obsideo/storage
+    file_size: bigint('file_size', { mode: 'number' }).notNull(),
+    uploaded_at: timestamp('uploaded_at').defaultNow().notNull(),
+});
+
+export const sharedWithMe = pgTable('shared_with_me', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    collabId: integer('collab_id').notNull().references(() => collabFolders.id, { onDelete: 'cascade' }),
+    encrypted_collab_key: bytea('encrypted_collab_key').notNull(),   // collab_key re-enc with user's master_key
+    collab_key_nonce: bytea('collab_key_nonce').notNull(),
+    pinned_at: timestamp('pinned_at').defaultNow().notNull(),
+}, (table) => ({
+    unq: unique().on(table.userId, table.collabId)
+}));
+
+export const shareAuditLog = pgTable('share_audit_log', {
+    id: serial('id').primaryKey(),
+    share_type: text('share_type').notNull(),          // 'standard_link' | 'drop_zone' | 'collab_folder'
+    share_id: integer('share_id').notNull(),       // id from the relevant share table
+    action: text('action').notNull(),          // 'view' | 'download' | 'upload' | 'otp_sent' | ...
+    actor: text('actor'),                   // email of guest, or user id of host (as string)
+    filename: text('filename'),                   // exact filename where relevant (NOT a summary)
+    timestamp: timestamp('timestamp').defaultNow().notNull(),
+});
+
+export const refreshTokens = pgTable('refresh_tokens', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    token: text('token').unique().notNull(),
+    previousToken: text('previous_token'),
+    rotatedAt: timestamp('rotated_at'),
+    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+}, (table) => ({
+    userIdx: index('refresh_tokens_user_id_idx').on(table.userId),       // family revoke / logout-all
+    prevTokenIdx: index('refresh_tokens_previous_token_idx').on(table.previousToken), // grace-period lookup
+}));
+
+// Dedup table for Stripe webhook idempotency: an event_id is recorded after it is
+// successfully processed, so at-least-once redeliveries / retries are skipped.
+export const processedStripeEvents = pgTable('processed_stripe_events', {
+    event_id: text('event_id').primaryKey(),
+    type: text('type'),
+    processed_at: timestamp('processed_at').defaultNow().notNull(),
 });

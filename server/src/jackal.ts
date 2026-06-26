@@ -108,6 +108,15 @@ export async function getJackalHandler(freshSession = false) {
     })();
 
     if (!freshSession) cachedContextPromise = promise;
+
+    // If the connection fails, evict it from the cache so the next call retries fresh
+    // (a cached rejected promise would wedge Jackal until restart), and attach a handler
+    // so this rejection is never left dangling as an unhandled rejection.
+    promise.catch((err: any) => {
+        if (cachedContextPromise === promise) cachedContextPromise = null;
+        console.warn('[Jackal] Connection failed; cleared cached handler so the next call retries:', err?.message ?? err);
+    });
+
     return promise;
 }
 

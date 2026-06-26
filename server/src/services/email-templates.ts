@@ -351,3 +351,21 @@ export function accountInactiveEmail() {
     `;
     return wrapTemplate(content, title);
 }
+
+/**
+ * Collab Folder Verification Email (OTP)
+ */
+export function collabOtpEmail(otp: string, folderName: string, hostEmail: string) {
+    const title = 'Your Verification Code';
+    const content = `
+        <h1 class="h1">Nest Verification Code</h1>
+        <p class="p">Hello,</p>
+        <p class="p">You have been invited by <strong>${hostEmail}</strong> to collaborate in the folder <strong>${folderName}</strong> on Nest.</p>
+        <p class="p">To verify your email and gain access to this secure workspace, please enter the following 6-digit verification code:</p>
+        <div style="text-align: center; margin: 32px 0;">
+            <span style="font-size: 32px; font-weight: 700; letter-spacing: 0.2em; color: #18181B; padding: 12px 24px; background-color: #F3F4F6; border-radius: 12px;">${otp}</span>
+        </div>
+        <p class="p" style="font-size: 14px; color: #4B5563;">This code is valid for 10 minutes. If you did not request this invitation, you can safely ignore this email.</p>
+    `;
+    return wrapTemplate(content, title);
+}

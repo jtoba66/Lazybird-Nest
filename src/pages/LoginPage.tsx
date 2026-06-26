@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LockKey, EnvelopeSimple, Eye, EyeSlash } from '@phosphor-icons/react';
 import logoImg from '../assets/nest-logo.png';
+import { MigrationModal } from '../components/MigrationModal';
 
 export const LoginPage = () => {
     const [email, setEmail] = useState('');
@@ -11,6 +12,7 @@ export const LoginPage = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
+    const [showMigrationModal, setShowMigrationModal] = useState(false);
 
     const { login, setMasterKey } = useAuth();
     const navigate = useNavigate();
@@ -54,7 +56,11 @@ export const LoginPage = () => {
 
         } catch (err: any) {
             console.error(err);
-            setError(err.response?.data?.error || 'Login failed');
+            if (err.response?.data?.needsMigration) {
+                setShowMigrationModal(true);
+            } else {
+                setError(err.response?.data?.error || 'Login failed');
+            }
             setMasterKey(null);
         } finally {
             setLoading(false);
@@ -64,6 +70,13 @@ export const LoginPage = () => {
 
     return (
         <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+            {showMigrationModal && (
+                <MigrationModal
+                    email={email}
+                    password={password}
+                    onClose={() => setShowMigrationModal(false)}
+                />
+            )}
             {/* Background Gradients (Subtle) */}
             <div className="absolute top-0 left-0 right-0 h-full overflow-hidden -z-10 pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[100px]" />

@@ -33,7 +33,7 @@ const Navbar = () => {
                 </Link>
 
                 {/* Desktop Menu */}
-                <div className="hidden md:flex items-center gap-10">
+                <div className="hidden lg:flex items-center gap-6 xl:gap-10">
                     {['Features', 'Architecture', 'FAQ', 'Pricing'].map((item) => (
                         <a
                             key={item}
@@ -62,7 +62,7 @@ const Navbar = () => {
 
                 {/* Mobile Toggle */}
                 <button
-                    className="md:hidden text-text-main"
+                    className="lg:hidden text-text-main"
                     onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     aria-label="Toggle menu"
                 >
@@ -77,7 +77,7 @@ const Navbar = () => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="absolute top-full left-0 right-0 bg-white border-b border-slate-200 overflow-hidden md:hidden shadow-xl"
+                        className="absolute top-full left-0 right-0 bg-white border-b border-slate-200 overflow-hidden lg:hidden shadow-xl"
                     >
                         <div className="flex flex-col p-6 gap-6">
                             {['Features', 'Architecture', 'FAQ', 'Pricing'].map((item) => (

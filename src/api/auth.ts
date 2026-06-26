@@ -22,6 +22,7 @@ export interface SignupCredentials {
 
 export interface AuthResponse {
     token: string;
+    refreshToken?: string;
     user: {
         id: number;
         email: string;
@@ -65,6 +66,11 @@ export const authAPI = {
         return data;
     },
 
+    async migrateLegacy(credentials: SignupCredentials): Promise<{ message: string }> {
+        const { data } = await api.post('/auth/migrate-legacy', credentials);
+        return data;
+    },
+
     async forgotPassword(email: string): Promise<{ message: string }> {
         const { data } = await api.post('/auth/forgot-password', { email });
         return data;
@@ -89,6 +95,11 @@ export const authAPI = {
 
     async deleteAccount(authHash: string): Promise<{ message: string }> {
         const { data } = await api.delete('/auth/account', { data: { authHash } });
+        return data;
+    },
+
+    async logout(refreshToken: string): Promise<{ success: boolean }> {
+        const { data } = await api.post('/auth/logout', { refreshToken });
         return data;
     }
 };

@@ -21,6 +21,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuotaCheck } from './QuotaBanner';
 import nestLogo from '../assets/nest-logo.png';
+import api from '../lib/api';
+import { decryptCollabKey, fromBase64 } from '@lazybird-inc/nest-crypto';
 
 interface SidebarItemProps {
     icon: any;
@@ -65,7 +67,7 @@ function formatBytes(bytes: number): string {
 const SIDEBAR_ITEMS = [
     { icon: House, label: 'Nest', path: '/dashboard' },
     { icon: FolderOpen, label: 'File Manager', path: '/folders' },
-    { icon: ShareNetwork, label: 'Shared Links', path: '/shared' },
+    { icon: ShareNetwork, label: 'Access & Sharing', path: '/shared' },
     { icon: Trash, label: 'Trash', path: '/trash' },
     { icon: GearSix, label: 'Settings', path: '/settings' },
 ];
@@ -77,13 +79,29 @@ interface SidebarProps {
 export const Sidebar = ({ onClose }: SidebarProps) => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { user } = useAuth();
+    const { user, masterKey } = useAuth();
     const { quota, loading } = useStorage();
     const { addUpload } = useUpload();
     const { showToast } = useToast();
     const { isOverQuota } = useQuotaCheck();
-    const isAdmin = user?.email === 'josephtoba29@gmail.com' || user?.role === 'admin';
+    const isAdmin = user?.role === 'admin';
     const [showNewMenu, setShowNewMenu] = useState(false);
+    const [sharedFolders, setSharedFolders] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!user) return;
+        const fetchSharedFolders = async () => {
+            try {
+                const res = await api.get('/collab-folders/shared-with-me');
+                if (res.data && res.data.success) {
+                    setSharedFolders(res.data.shared_folders || []);
+                }
+            } catch (error) {
+                console.error('Failed to load shared folders:', error);
+            }
+        };
+        fetchSharedFolders();
+    }, [user, location.pathname]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
@@ -109,7 +127,30 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                 } else {
                     const searchParams = new URLSearchParams(location.search);
                     const currentFolderId = searchParams.get('folderId');
-                    addUpload(file, currentFolderId ? parseInt(currentFolderId) : null);
+                    const collabToken = searchParams.get('collabToken');
+                    let collabKey: Uint8Array | undefined = undefined;
+
+                    if (collabToken && sharedFolders.length > 0 && masterKey) {
+                        const activeFolder = sharedFolders.find((f: any) => f.token === collabToken);
+                        if (activeFolder) {
+                            try {
+                                collabKey = decryptCollabKey(
+                                    fromBase64(activeFolder.encrypted_collab_key),
+                                    fromBase64(activeFolder.collab_key_nonce),
+                                    masterKey
+                                );
+                            } catch (err) {
+                                console.error('Failed to decrypt collabKey in Sidebar:', err);
+                            }
+                        }
+                    }
+
+                    addUpload(
+                        file,
+                        currentFolderId ? parseInt(currentFolderId) : null,
+                        collabToken || undefined,
+                        collabKey
+                    );
                 }
             });
         }
@@ -137,7 +178,30 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                 } else {
                     const searchParams = new URLSearchParams(location.search);
                     const currentFolderId = searchParams.get('folderId');
-                    addUpload(file, currentFolderId ? parseInt(currentFolderId) : null);
+                    const collabToken = searchParams.get('collabToken');
+                    let collabKey: Uint8Array | undefined = undefined;
+
+                    if (collabToken && sharedFolders.length > 0 && masterKey) {
+                        const activeFolder = sharedFolders.find((f: any) => f.token === collabToken);
+                        if (activeFolder) {
+                            try {
+                                collabKey = decryptCollabKey(
+                                    fromBase64(activeFolder.encrypted_collab_key),
+                                    fromBase64(activeFolder.collab_key_nonce),
+                                    masterKey
+                                );
+                            } catch (err) {
+                                console.error('Failed to decrypt collabKey in Sidebar:', err);
+                            }
+                        }
+                    }
+
+                    addUpload(
+                        file,
+                        currentFolderId ? parseInt(currentFolderId) : null,
+                        collabToken || undefined,
+                        collabKey
+                    );
                 }
             });
         }
@@ -258,6 +322,38 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                                 onClick={() => navigate('/admin')}
                             />
                         </>
+                    )}
+
+                    {/* Shared With Me Folders */}
+                    {sharedFolders.length > 0 && (
+                        <div className="mt-4">
+                            <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                Shared With Me
+                            </div>
+                            <div className="mt-1 space-y-1">
+                                {sharedFolders.map((folder) => {
+                                    const isActive = location.pathname === '/folders' && location.search.includes(`folderId=${folder.folder_id}`);
+                                    return (
+                                        <button
+                                            key={folder.id}
+                                            onClick={() => navigate(`/folders?folderId=${folder.folder_id}&collabToken=${folder.token}`)}
+                                            className={clsx(
+                                                "nav-item w-full flex items-center gap-3 px-4 py-2 hover:bg-white/40 rounded-xl text-left text-sm",
+                                                isActive && "active bg-white/60 font-semibold"
+                                            )}
+                                        >
+                                            <div className="relative">
+                                                <FolderOpen size={18} className="text-primary" />
+                                                <div className="absolute -bottom-1 -right-1 bg-secondary rounded-full p-0.5 shadow-sm border border-white">
+                                                    <ShareNetwork size={6} weight="bold" className="text-white" />
+                                                </div>
+                                            </div>
+                                            <span className="truncate">{folder.name}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
