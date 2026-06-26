@@ -105,6 +105,53 @@ export const test = base.extend<{
     await use(page);
     await page.close();
   },
+
+  // Override the default `page` to re-inject sessionStorage (the ZK masterKey) that
+  // Playwright's storageState cannot persist. Specs that use the config storageState +
+  // a plain `{ page }` then load fully authenticated instead of bouncing to /login.
+  page: async ({ page }, use) => {
+    const sessionFile = path.join(STORAGE_DIR, 'session.json');
+    if (fs.existsSync(sessionFile)) {
+      const data = fs.readFileSync(sessionFile, 'utf-8');
+      await page.addInitScript((d) => {
+        try { const s = JSON.parse(d); for (const k of Object.keys(s)) sessionStorage.setItem(k, s[k]); } catch { /* noop */ }
+      }, data);
+    }
+    await use(page);
+  },
 });
+
+/**
+ * Download capture helpers.
+ *
+ * The app's StreamingDownloader prefers the File System Access API (`showSaveFilePicker`),
+ * which can't be driven headlessly. We stub it with an in-memory writable so the app's REAL
+ * fetch + WASM-decrypt path runs unchanged and we capture the resulting plaintext bytes —
+ * letting tests assert that what comes back out of storage decrypts to the original content.
+ * Must be called BEFORE the page navigates (it uses addInitScript).
+ */
+export async function captureDownloads(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __captured: number[][]; __captureDone: boolean; showSaveFilePicker: unknown };
+    w.__captured = [];
+    w.__captureDone = false;
+    w.showSaveFilePicker = async () => ({
+      createWritable: async () => ({
+        getWriter: () => ({
+          write: async (value: Uint8Array) => { w.__captured.push(Array.from(value)); },
+          close: async () => { w.__captureDone = true; },
+          abort: async () => { w.__captureDone = true; },
+        }),
+      }),
+    });
+  });
+}
+
+/** Wait for a captured download to finish, then return its bytes decoded as UTF-8 text. */
+export async function readCapturedText(page: Page, timeout = 20000): Promise<string> {
+  await page.waitForFunction(() => (window as unknown as { __captureDone: boolean }).__captureDone === true, undefined, { timeout });
+  const chunks: number[][] = await page.evaluate(() => (window as unknown as { __captured: number[][] }).__captured || []);
+  return Buffer.from(chunks.flat()).toString('utf-8');
+}
 
 export { expect };

@@ -81,6 +81,10 @@ export const FoldersPage = () => {
     const [collabRootId, setCollabRootId] = useState<number | null>(null);
     const [rawCollabFolders, setRawCollabFolders] = useState<any[]>([]);
     const [hostCollabFolders, setHostCollabFolders] = useState<any[]>([]);
+    // Decrypted collab keys for collab folders THIS host owns, keyed by folder_id. Lets the
+    // normal File Manager decrypt collab-origin file names (which are symmetrically encrypted
+    // with the collab key) instead of showing "Encrypted File" / "File <id>".
+    const [hostCollabKeys, setHostCollabKeys] = useState<Record<number, Uint8Array>>({});
     const [dropZones, setDropZones] = useState<any[]>([]);
 
     const collabToken = searchParams.get('collabToken');
@@ -174,6 +178,37 @@ export const FoldersPage = () => {
         };
         loadDropZonesAndShares();
     }, [masterKey]);
+
+    // Load + decrypt the collab keys for collab folders this host owns. host_encrypted_collab_key
+    // is the collab key sealed to the host's master key (encryptCollabKeyForHost), so the host can
+    // always recover it — this is what lets us decrypt collaborator-uploaded file names in the
+    // normal File Manager (and dashboard), not just inside the collab portal.
+    useEffect(() => {
+        if (!masterKey || hostCollabFolders.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const { decryptCollabKey, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+            await init();
+            const keyMap: Record<number, Uint8Array> = {};
+            for (const cf of hostCollabFolders) {
+                if (!cf.id || !cf.folder_id) continue;
+                try {
+                    const res = await api.get(`/collab-folders/${cf.id}/host-key`);
+                    if (res.data?.success) {
+                        keyMap[cf.folder_id] = decryptCollabKey(
+                            fromBase64(res.data.host_encrypted_collab_key),
+                            fromBase64(res.data.host_collab_key_nonce),
+                            masterKey
+                        );
+                    }
+                } catch (err) {
+                    console.error(`Failed to load host collab key for folder ${cf.folder_id}:`, err);
+                }
+            }
+            if (!cancelled) setHostCollabKeys(keyMap);
+        })();
+        return () => { cancelled = true; };
+    }, [hostCollabFolders, masterKey]);
 
     // Drag-and-drop handlers
     const onDragOver = (e: React.DragEvent) => {
@@ -338,6 +373,31 @@ export const FoldersPage = () => {
                     });
                 }
 
+                // Surface host-owned collab folders in the File Manager root, mirroring the
+                // drop-zone merge above. They're real folders the host owns (with collaborators'
+                // uploads inside), but the server list filters them out (their path_hash holds the
+                // public collab name, not a 'collab_' prefix), and they're loaded separately into
+                // hostCollabFolders. Without this they'd only be reachable via Access & Sharing.
+                // `name` here is the collab's public display name (already non-ZK), consistent with
+                // how it appears on the share landing page.
+                if (!collabToken && targetId === primaryRootId && hostCollabFolders && hostCollabFolders.length > 0) {
+                    const collabFolderRows = hostCollabFolders
+                        .filter((cf: any) => cf.folder_id)
+                        .map((cf: any) => ({
+                            id: cf.folder_id,
+                            name: cf.name,
+                            parent_id: targetId,
+                            created_at: cf.created_at
+                        }));
+
+                    const existingIds = new Set(allVisibleFolders.map((f: any) => f.id));
+                    collabFolderRows.forEach((cf: any) => {
+                        if (!existingIds.has(cf.id)) {
+                            allVisibleFolders.push(cf);
+                        }
+                    });
+                }
+
                 // Filter out self-referencing folders
                 const visibleFolders = allVisibleFolders
                     .filter((f: any) => f.id !== targetId)
@@ -372,6 +432,18 @@ export const FoldersPage = () => {
                                     filename = 'Decryption Error';
                                 }
                             }
+                    } else if (f.file_origin === 'collab' && f.encrypted_filename && hostCollabKeys[f.folder_id]) {
+                        // Collaborator-uploaded file: name/type are symmetrically encrypted with the
+                        // collab key, which (for folders we own) we recovered into hostCollabKeys.
+                        try {
+                            const collabFileKey = hostCollabKeys[f.folder_id];
+                            filename = decryptSymmetricMetadata(f.encrypted_filename, collabFileKey);
+                            if (f.encrypted_mime_type) {
+                                mimeType = decryptSymmetricMetadata(f.encrypted_mime_type, collabFileKey);
+                            }
+                        } catch (e) {
+                            console.error('Failed to decrypt collab file metadata:', e);
+                        }
                     }
 
                     return {
@@ -398,7 +470,7 @@ export const FoldersPage = () => {
         };
 
         loadContent();
-    }, [selectedFolderId, fileListVersion, collabToken, collabKey, dropZones, hostCollabFolders]);
+    }, [selectedFolderId, fileListVersion, collabToken, collabKey, dropZones, hostCollabFolders, hostCollabKeys]);
 
     // Fire exactly once when metadata first becomes available (login / session restore)
     const metadataReady = metadata !== null;

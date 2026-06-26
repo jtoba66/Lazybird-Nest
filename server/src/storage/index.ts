@@ -1,6 +1,7 @@
 import { StorageProvider } from './StorageProvider';
 import jackalProvider from './jackalProvider';
 import obsideoProvider from './obsideoProvider';
+import localProvider from './localProvider';
 import { env } from '../config/env';
 
 export { StorageProvider };
@@ -16,6 +17,8 @@ export { StorageProvider };
 export function getStorageProvider(providerName?: string | null): StorageProvider {
     const name = providerName ?? env.STORAGE_PROVIDER;
     if (name === 'obsideo') return obsideoProvider;
+    // `local` is a filesystem backend for local dev/e2e only — never selected in production.
+    if (name === 'local') return localProvider;
     return jackalProvider;
 }
 

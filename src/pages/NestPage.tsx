@@ -28,6 +28,9 @@ export const NestPage = () => {
     const { fileListVersion } = useRefresh();
     const { metadata, checkMetadataVersion, masterKey } = useAuth();
     const [dropZones, setDropZones] = useState<any[]>([]);
+    // Collab keys for collab folders this host owns (keyed by folder_id), so collaborator-uploaded
+    // files in the "all files" feed show their real names instead of "File <id>".
+    const [hostCollabKeys, setHostCollabKeys] = useState<Record<number, Uint8Array>>({});
     const [files, setFiles] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -80,6 +83,43 @@ export const NestPage = () => {
             }
         };
         loadDropZones();
+    }, [masterKey]);
+
+    // Recover collab keys for collab folders this host owns (host_encrypted_collab_key is sealed to
+    // the host's master key), so collaborator-uploaded files decrypt in the all-files feed.
+    useEffect(() => {
+        if (!masterKey) return;
+        let cancelled = false;
+        const loadCollabKeys = async () => {
+            try {
+                const sharesRes = await api.get('/shares');
+                const collabShares = (sharesRes.data?.shares || []).filter((s: any) => s.type === 'collab_folder');
+                if (collabShares.length === 0) return;
+                const { decryptCollabKey, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
+                const keyMap: Record<number, Uint8Array> = {};
+                for (const cf of collabShares) {
+                    if (!cf.id || !cf.folder_id) continue;
+                    try {
+                        const res = await api.get(`/collab-folders/${cf.id}/host-key`);
+                        if (res.data?.success) {
+                            keyMap[cf.folder_id] = decryptCollabKey(
+                                fromBase64(res.data.host_encrypted_collab_key),
+                                fromBase64(res.data.host_collab_key_nonce),
+                                masterKey
+                            );
+                        }
+                    } catch (e) {
+                        console.error(`Failed to load host collab key for folder ${cf.folder_id}:`, e);
+                    }
+                }
+                if (!cancelled) setHostCollabKeys(keyMap);
+            } catch (e) {
+                console.error('Failed to load collab keys for feed:', e);
+            }
+        };
+        loadCollabKeys();
+        return () => { cancelled = true; };
     }, [masterKey]);
 
     const loadFiles = async (reset = false) => {
@@ -136,6 +176,21 @@ export const NestPage = () => {
                             console.error('Failed to decrypt Drop Zone file metadata in feed:', e);
                             filename = 'Decryption Error';
                         }
+                    }
+                } else if (svrFile.file_origin === 'collab' && svrFile.encrypted_filename && hostCollabKeys[svrFile.folder_id]) {
+                    // Collaborator-uploaded file: name/type are symmetrically encrypted with the
+                    // collab key we recovered for folders this host owns.
+                    try {
+                        const { decryptWithMasterKey, fromBase64 } = await import('@lazybird-inc/nest-crypto');
+                        const ck = hostCollabKeys[svrFile.folder_id];
+                        const decMeta = (jsonStr: string) => {
+                            const { encrypted, nonce } = JSON.parse(jsonStr);
+                            return new TextDecoder().decode(decryptWithMasterKey(fromBase64(encrypted), fromBase64(nonce), ck));
+                        };
+                        filename = decMeta(svrFile.encrypted_filename);
+                        if (svrFile.encrypted_mime_type) mimeType = decMeta(svrFile.encrypted_mime_type);
+                    } catch (e) {
+                        console.error('Failed to decrypt collab file metadata in feed:', e);
                     }
                 }
 
@@ -243,7 +298,7 @@ export const NestPage = () => {
     const metadataReady = metadata !== null;
     useEffect(() => {
         if (metadataReady) loadFiles(true);
-    }, [metadataReady, debouncedSearch, sortBy, order, dropZones]);
+    }, [metadataReady, debouncedSearch, sortBy, order, dropZones, hostCollabKeys]);
 
     return (
         <motion.div

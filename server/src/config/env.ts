@@ -52,7 +52,7 @@ const envSchema = z.object({
 
     // Storage
     DOWNLOAD_GATEWAY_URL: z.string().url().default('https://gateway.lazybird.io'),
-    STORAGE_PROVIDER: z.enum(['jackal', 'obsideo']).default('jackal'),
+    STORAGE_PROVIDER: z.enum(['jackal', 'obsideo', 'local']).default('jackal'),
 
     // Obsideo credentials (optional — only required when STORAGE_PROVIDER=obsideo)
     OBSIDEO_API_KEY: z.string().optional(),

@@ -1,9 +1,31 @@
 import { test, expect } from '@playwright/test';
 import postgres from 'postgres';
-import crypto from 'crypto';
+import fs from 'fs';
 
-// Setup database connection to read OTP code
+// DB handle kept for collab assertions; the OTP itself now comes from the real email (MailDev).
 const sql = postgres('postgresql://localhost:5432/nest_test');
+
+// MailDev REST API — lets us assert mail was actually generated, sent over SMTP, and delivered.
+const MAILDEV_API = 'http://localhost:1080';
+
+/** Poll MailDev for the most recent message to `to` and return the 6-digit OTP from its subject. */
+async function fetchOtpFromMail(to: string, timeoutMs = 15000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await fetch(`${MAILDEV_API}/email`);
+    const messages: Array<{ subject: string; to: Array<{ address: string }> }> = await res.json();
+    const match = messages
+      .filter(m => m.to?.some(t => t.address.toLowerCase() === to.toLowerCase()))
+      .reverse()
+      .find(m => /\b\d{6}\b/.test(m.subject));
+    if (match) {
+      const code = match.subject.match(/\b(\d{6})\b/);
+      if (code) return code[1];
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  throw new Error(`No OTP email for ${to} arrived in MailDev within ${timeoutMs}ms`);
+}
 
 // Force this test file to start with a clean state (no pre-saved auth)
 // This guarantees that signup runs in-browser and populates sessionStorage keys!
@@ -13,7 +35,7 @@ test.describe('Nest Full User Journey Integration Test', () => {
 
   test('Walkthrough: Upload, Share Link, Collab Folder, and Drop Zone', async ({ page, browser, context }) => {
     // Increase test timeout to 90 seconds for all integration steps to complete safely
-    test.setTimeout(90000);
+    test.setTimeout(120000);
     
     console.log('🏁 Starting E2E Journey Test...');
 
@@ -53,10 +75,11 @@ test.describe('Nest Full User Journey Integration Test', () => {
     await expect(fileInput).toBeAttached({ timeout: 10000 });
 
     const testFilename = `journey-test-${Date.now()}.txt`;
+    const SHARED_CONTENT = 'Nest zero-knowledge integration test content — share marker 67890';
     await fileInput.setInputFiles({
       name: testFilename,
       mimeType: 'text/plain',
-      buffer: Buffer.from('Nest zero-knowledge integration test content'),
+      buffer: Buffer.from(SHARED_CONTENT),
     });
 
     // Wait for the specific file row in the table to be visible
@@ -94,17 +117,26 @@ test.describe('Nest Full User Journey Integration Test', () => {
     console.log(`✅ Share URL: ${shareUrl}`);
     expect(shareUrl).toContain('/s/');
 
-    // Guest retrieves the shared file
+    // Guest retrieves the shared file — and actually downloads + decrypts the bytes.
     const guestContext = await browser.newContext();
     const guestPage = await guestContext.newPage();
     guestPage.on('console', msg => console.log(`[GUEST SHARE BROWSER] [${msg.type().toUpperCase()}] ${msg.text()}`));
-    
+
     console.log('Guest opening share link...');
     await guestPage.goto(shareUrl);
-    
-    // Verify guest sees file name
+
+    // Verify guest sees file name (metadata decrypts from the URL key fragment)
     await expect(guestPage.locator(`text=${testFilename}`)).toBeVisible({ timeout: 15000 });
-    console.log('✅ Share link download verified.');
+
+    // The real prod-bug path: anonymous guest fetches the ciphertext from local storage, decrypts
+    // it in-browser (the WASM init that the "Library not initialised" fix guards), then triggers an
+    // <a download> of the plaintext. Read that download and assert it equals the original content.
+    const shareDownloadPromise = guestPage.waitForEvent('download', { timeout: 30000 });
+    await guestPage.getByRole('button', { name: /Download File/i }).click();
+    const shareDownload = await shareDownloadPromise;
+    const sharePath = await shareDownload.path();
+    expect(fs.readFileSync(sharePath, 'utf-8')).toBe(SHARED_CONTENT);
+    console.log('✅ Share link download + decrypt verified (real bytes).');
     await guestPage.close();
 
     // ----------------------------------------------------
@@ -151,39 +183,10 @@ test.describe('Nest Full User Journey Integration Test', () => {
     await guestEmailInput.fill(guestEmail);
     await collabGuestPage.getByRole('button', { name: 'Request Access Key' }).click();
 
-    // Wait 2 seconds for OTP to register in DB
-    await collabGuestPage.waitForTimeout(2000);
-
-    // Query OTP Code from Database
-    const otpSessions = await sql`
-      SELECT code_hash FROM collab_otp_sessions 
-      WHERE email = ${guestEmail} 
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `;
-    
-    if (otpSessions.length === 0) {
-      throw new Error(`No OTP session found for ${guestEmail} in the database.`);
-    }
-    
-    const targetHash = otpSessions[0].code_hash;
-    console.log(`Found OTP code hash: ${targetHash}. Brute forcing 6-digit pin...`);
-
-    // Brute force 6-digit pin in test script
-    let foundCode = '';
-    for (let pinCode = 100000; pinCode <= 999999; pinCode++) {
-      const pinStr = pinCode.toString();
-      const hash = crypto.createHash('sha256').update(pinStr).digest('hex');
-      if (hash === targetHash) {
-        foundCode = pinStr;
-        break;
-      }
-    }
-
-    if (!foundCode) {
-      throw new Error('Failed to resolve OTP code from hash.');
-    }
-    console.log(`✅ Resolved OTP code: ${foundCode}`);
+    // Read the OTP from the REAL email delivered to MailDev. This proves the full mail path:
+    // the server generated the code, sent it over SMTP, and it was delivered to the guest's inbox.
+    const foundCode = await fetchOtpFromMail(guestEmail);
+    console.log(`✅ OTP received via email (MailDev): ${foundCode}`);
 
     // Fill OTP inputs
     const otpInputs = collabGuestPage.locator('input[type="text"]');
@@ -243,9 +246,11 @@ test.describe('Nest Full User Journey Integration Test', () => {
       buffer: Buffer.from('Anonymous Drop Zone test content'),
     });
 
-    // Verify upload success message or progress clears
-    await expect(dzPage.locator('text=Upload Successful|Upload Complete|Done')).toBeVisible({ timeout: 20000 }).catch(() => {});
-    console.log('✅ Anonymous Drop Zone file upload completed.');
+    // Real assertion (previously a no-op: `text=` ignores `|` alternation and `.catch` swallowed
+    // failures). The drop-zone shows this toast only after the file is encrypted (crypto_box_seal
+    // to the host's public key) and the ciphertext is accepted by the server.
+    await expect(dzPage.getByText('File received securely!')).toBeVisible({ timeout: 25000 });
+    console.log('✅ Anonymous Drop Zone file upload verified.');
     await dzPage.close();
 
     // Clean up connections

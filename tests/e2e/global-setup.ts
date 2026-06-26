@@ -82,6 +82,13 @@ async function globalSetup() {
     await context.storageState({ path: storageFile });
     console.log(`✅ Auth state saved to ${storageFile}`);
 
+    // Playwright's storageState does NOT persist sessionStorage — but the ZK masterKey
+    // lives there (nest_master_key). Save it separately so the fixture can re-inject it;
+    // without it, shared-auth tests load "token present, vault locked" → bounced to login.
+    const sessionData = await page.evaluate(() => JSON.stringify(sessionStorage));
+    fs.writeFileSync(path.join(authDir, 'session.json'), sessionData);
+    console.log('✅ sessionStorage (masterKey) saved');
+
     await browser.close();
 }
 
