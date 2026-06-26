@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@lazybird-inc/nest-crypto": "file:../nest-crypto-sharing",
+    "@lazybird-inc/nest-crypto": "file:vendor/nest-crypto",
     "@playwright/test": "^1.60.0",
     "@prerenderer/renderer-puppeteer": "^1.2.4",
     "@types/node": "^24.10.1",

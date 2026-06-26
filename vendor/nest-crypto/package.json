@@ -1,0 +1,8 @@
+{
+  "name": "@lazybird-inc/nest-crypto",
+  "version": "1.0.2",
+  "description": "Vendored TYPE DECLARATIONS for the Nest zero-knowledge crypto engine. The runtime implementation is loaded from the committed UMD bundle (public/nest-crypto.umd.js) via the Vite alias '@lazybird-inc/nest-crypto' -> src/crypto-loader.ts, so only these .d.ts types are consumed (at build time). Vendored because the matching engine version is not published to npm (the registry's 1.0.2 predates the sharing APIs). Keep in sync with public/nest-crypto.umd.js.",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "private": true
+}
