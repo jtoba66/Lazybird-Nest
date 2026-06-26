@@ -368,7 +368,7 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                                 <Copy size={16} />
                             </button>
                         </div>
-                        <span className="text-[10px] text-error font-semibold mt-1">
+                        <span className="block text-xs leading-snug text-amber-700 bg-amber-500/10 border border-amber-500/20 font-medium mt-2 px-3 py-2 rounded-lg">
                             ⚠️ This link contains the ephemeral decryption key. Save it immediately! It will not be shown again and the 'Copy' button in the dashboard is disabled for security.
                         </span>
                     </div>

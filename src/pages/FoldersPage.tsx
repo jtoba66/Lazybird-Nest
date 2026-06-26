@@ -85,6 +85,9 @@ export const FoldersPage = () => {
     // normal File Manager decrypt collab-origin file names (which are symmetrically encrypted
     // with the collab key) instead of showing "Encrypted File" / "File <id>".
     const [hostCollabKeys, setHostCollabKeys] = useState<Record<number, Uint8Array>>({});
+    // Whether the /shares fetch (which supplies host-owned collab folders) has resolved.
+    // Used to avoid flashing "No files or folders yet" at root before collab folders merge in.
+    const [sharesLoaded, setSharesLoaded] = useState(false);
     const [dropZones, setDropZones] = useState<any[]>([]);
 
     const collabToken = searchParams.get('collabToken');
@@ -174,6 +177,10 @@ export const FoldersPage = () => {
                 }
             } catch (err) {
                 console.error('Failed to fetch host shares:', err);
+            } finally {
+                // Mark shares resolved so the root view can stop waiting and render its
+                // (now collab-merged) contents instead of a premature empty state.
+                setSharesLoaded(true);
             }
         };
         loadDropZonesAndShares();
@@ -1204,7 +1211,7 @@ export const FoldersPage = () => {
                             </motion.div>
                         )}
                     </AnimatePresence>
-                    {loading ? (
+                    {(loading || (!collabToken && selectedFolderId === null && !sharesLoaded && displayFiles.length === 0 && displayFolders.length === 0)) ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-white/10 backdrop-blur-sm">
                             <div className="flex flex-col items-center gap-3">
                                 <motion.div
