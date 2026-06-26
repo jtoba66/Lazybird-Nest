@@ -36,19 +36,30 @@ jobs:
           # If you use a password instead of key, use password: ${{ secrets.SERVER_PASSWORD }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Navigate to the project root (as per Deployment Guide)
+            # Fail the whole deploy if ANY command fails (previously a rejected `git pull`
+            # was ignored and the box silently rebuilt stale code).
+            set -e
+
             cd /opt/nest
 
-            # Pull latest code
-            git pull origin main
+            export DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }}
+
+            # Force the working tree to EXACTLY match origin/main. A plain `git pull` is
+            # rejected whenever the box has local edits (which had accumulated from manual
+            # hotfixes), so deploys silently no-op'd. reset --hard + clean make the box
+            # authoritative from git on every deploy.
+            #
+            # CRITICAL: never clean `uploads/` — it holds ~2GB of real user file storage
+            # (obsideo-bundle + chunks). It is untracked (not gitignored), so it MUST be
+            # excluded explicitly. `.env` is gitignored so clean already skips it.
+            git fetch origin main
+            git clean -fd -e uploads
+            git reset --hard origin/main
 
             # Ensure upload directory exists and has correct permissions for Node (1000:1000)
             mkdir -p /opt/nest/uploads
             chown -R 1000:1000 /opt/nest/uploads
             chmod 775 /opt/nest/uploads
-
-            # Export Doppler Token for the build/run
-            export DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }}
 
             # Rebuild and restart containers
             # We use --build to ensure the Dockerfile changes are picked up
