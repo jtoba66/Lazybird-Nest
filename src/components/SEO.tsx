@@ -20,7 +20,7 @@ const SEO = ({
     jsonLd
 }: SEOProps) => {
     const siteTitle = 'Nest | Secure Cloud Storage & Private File Sharing';
-    const siteDescription = 'LazyBird Nest is your secure, zero-knowledge cloud vault. Store and share your files with military-grade encryption. Only you hold the keys.';
+    const siteDescription = 'LazyBird Nest is your secure, zero-knowledge cloud vault. Store and share your files with strong end to end encryption. Only you hold the keys.';
 
     return (
         <Helmet>

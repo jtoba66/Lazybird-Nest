@@ -47,7 +47,7 @@ We use industry-standard, audited algorithms for all operations:
 | :--- | :--- | :--- |
 | **Password Hashing** | Argon2id | Memory-hard, resistant to GPU/ASIC cracking attacks. |
 | **Key Wrapping** | XChaCha20-Poly1305 | 192-bit nonce misuse resistance; superior performance. |
-| **File Encryption** | AES-256-GCM | Authenticated encryption with hardware acceleration (AES-NI). |
+| **File Encryption** | XChaCha20-Poly1305 (SecretStream) | Authenticated stream encryption; 192-bit nonces, nonce-misuse resistant. |
 | **Integrity** | SHA-256 / Blake3 | Ensuring file chunks haven't been tampered with in transit. |
 
 ---
@@ -57,7 +57,7 @@ We use industry-standard, audited algorithms for all operations:
 1.  **Chunking**: Your file is split into 4MB-10MB chunks locally.
 2.  **Encryption**: Each chunk is encrypted with your unique `FileKey` and a random nonce.
 3.  **Transmission**: The encrypted chunks are sent to the Nest server.
-4.  **Storage**: The server proxies these blobs to the decentralized **Jackal Network**.
+4.  **Storage**: The server proxies these blobs to the distributed **Obsideo Network**.
 
 **Server Visibility during this process: [ ZERO ]**
 

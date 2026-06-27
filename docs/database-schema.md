@@ -22,7 +22,7 @@ The core of the zero-knowledge vault.
 ### 3. `folders` & `files`
 Represent the structural skeleton of the user's vault.
 -   **folders**: Stores `parentId` and the folder's unique encrypted key.
--   **files**: Stores the Jackal `merkle_hash` (the pointer to decentralized storage) and the unique encrypted file key.
+-   **files**: Stores the Obsideo `merkle_hash` (the pointer to distributed storage) and the unique encrypted file key.
 -   **Note**: These tables do **not** store filenames. The `id` is a random serial/UUID, and the name is only reachable via the `metadata_blob`.
 
 ### 4. `file_chunks`

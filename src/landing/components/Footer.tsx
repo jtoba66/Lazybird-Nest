@@ -20,7 +20,7 @@ const Footer = () => {
                         </div>
                         <p className="text-text-muted leading-relaxed font-sans">
                             The secure layer for your digital life.
-                            Decentralized, encrypted, and yours.
+                            Distributed, encrypted, and yours.
                         </p>
                         <div className="flex gap-4 mt-2">
                             <a href="https://x.com/LazyBird_io" target="_blank" rel="noopener noreferrer" aria-label="Follow us on X (Twitter)" className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-text-muted hover:text-text-main transition-colors border border-slate-100">

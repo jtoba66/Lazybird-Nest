@@ -81,7 +81,7 @@ const DatabaseDoc = () => {
                                 <code className="text-amber-600 font-bold text-xl">files</code>
                                 <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-bold uppercase tracking-widest">Cloud Pointers</span>
                             </div>
-                            <p className="text-sm text-text-muted mb-6">Stores pointers to the decentralized storage network. Does NOT store filenames.</p>
+                            <p className="text-sm text-text-muted mb-6">Stores pointers to the distributed storage network. Does NOT store filenames.</p>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left text-sm text-text-muted">
                                     <thead>

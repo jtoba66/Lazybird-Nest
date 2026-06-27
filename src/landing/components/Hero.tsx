@@ -93,7 +93,7 @@ const Hero = () => {
 
                                 {/* Subtitle text inside the splash */}
                                 <span className="relative z-10 block font-display font-black text-text-main italic text-lg md:text-2xl tracking-tighter leading-none px-6 py-2 select-none">
-                                    Your files. Your keys. <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent not-italic font-extrabold">We see nothing.</span>
+                                    Your files. Your keys. <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent not-italic font-extrabold">We can't read them.</span>
                                 </span>
                             </div>
                         </motion.div>

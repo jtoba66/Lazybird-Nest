@@ -93,7 +93,7 @@ async function main() {
     const secured = `
         <h1 class="h1">Your file is now encrypted and stored</h1>
         <p class="p">Hi there,</p>
-        <p class="p">Your recent upload was successful. Your file is now fully encrypted and stored securely on the decentralized network.</p>
+        <p class="p">Your recent upload was successful. Your file is now fully encrypted and stored securely on the distributed network.</p>
         <p class="p">Since only you hold the decryption keys, your data is safe and private by design.</p>
         <a href="https://nest.lazybird.io" class="btn">View Your Library</a>
     `;

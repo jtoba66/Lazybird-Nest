@@ -10,18 +10,18 @@ const Features = () => {
         },
         {
             icon: HardDrives,
-            title: "Decentralized Storage",
+            title: "Distributed Storage",
             description: "Your files are split into encrypted chunks and stored redundantly across a global network.",
         },
         {
             icon: Fingerprint,
             title: "Client-Side Encryption",
-            description: "AES-256-GCM (streaming) encryption. Keys derived via Argon2id. We never see your password or files.",
+            description: "XChaCha20-Poly1305 (streaming) encryption. Keys derived via Argon2id. We never see your password or files.",
         },
         {
             icon: Lightning,
             title: "Blazing Fast",
-            description: "Optimized streaming encryption and decentralized delivery network for high performance access.",
+            description: "Optimized streaming encryption and distributed delivery network for high performance access.",
         }
     ];
 

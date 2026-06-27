@@ -15,7 +15,7 @@ export const LandingPage = () => {
             "name": "LazyBird Nest",
             "url": "https://nest.lazybird.io",
             "logo": "https://nest.lazybird.io/nest-logo.png",
-            "description": "Zero-knowledge decentralized cloud storage provider."
+            "description": "Zero-knowledge distributed cloud storage provider."
         },
         {
             "@context": "https://schema.org",
@@ -28,8 +28,8 @@ export const LandingPage = () => {
                 "price": "0",
                 "priceCurrency": "USD"
             },
-            "featureList": "Zero-Knowledge Encryption, Decentralized Storage, Secure File Sharing, Private Vault",
-            "description": "Nest is a secure, zero-knowledge cloud storage solution that encrypts your files based on AES-256-GCM and Argon2id."
+            "featureList": "Zero-Knowledge Encryption, Distributed Storage, Secure File Sharing, Private Vault",
+            "description": "Nest is a secure, zero-knowledge cloud storage solution that encrypts your files using XChaCha20-Poly1305 and Argon2id."
         },
         {
             "@context": "https://schema.org",
@@ -67,7 +67,7 @@ export const LandingPage = () => {
         <div className="min-h-screen bg-background text-text-main font-outfit selection:bg-primary/20 selection:text-primary overflow-x-hidden">
             <SEO
                 title="Secure Cloud Storage & Encrypted File Sharing"
-                description="The private cloud storage for creators, teams, and anyone sharing sensitive files. Zero knowledge, zero tracking, 100% privacy."
+                description="The private cloud storage for creators, teams, and anyone sharing sensitive files. Zero knowledge — your names and contents stay encrypted, and only you hold the keys."
                 image="/og-image.png"
                 canonical="https://nest.lazybird.io/"
                 jsonLd={jsonLd}

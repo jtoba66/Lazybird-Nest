@@ -68,7 +68,7 @@ const DocsIndex = () => {
                     Documentation
                 </h1>
                 <p className="text-xl text-text-muted leading-relaxed">
-                    Welcome to the Nest Deep Wiki. Here you'll find everything you need to understand the technical foundations of our decentralized, zero-knowledge storage network.
+                    Welcome to the Nest Deep Wiki. Here you'll find everything you need to understand the technical foundations of our distributed, zero-knowledge storage network.
                 </p>
             </motion.div>
 

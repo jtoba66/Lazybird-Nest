@@ -8,7 +8,7 @@
 ![Security](https://img.shields.io/badge/protocol-v1-blue.svg)
 ![Protocol](https://img.shields.io/badge/encryption-Zero--Knowledge-green.svg)
 
-Nest is an enterprise-grade, zero-knowledge cloud storage platform engineered for absolute data privacy. It leverages client-side encryption and decentralized storage networks to ensure that **only the user** holds the keys to their data. The server acts purely as a blind facilitator, having zero visibility into file contents, filenames, or folder structures.
+Nest is an enterprise-grade, zero-knowledge cloud storage platform engineered for absolute data privacy. It leverages client-side encryption and distributed storage networks to ensure that **only the user** holds the keys to their data. The server stores only ciphertext plus the non-content metadata it needs to operate (encrypted file sizes, timestamps, and integrity hashes); it has zero visibility into file contents, file names, or folder structure.
 
 ---
 
@@ -74,14 +74,14 @@ graph TD
 ## 🚀 Key Features
 
 ### 🔐 Zero-Knowledge Security
-*   **Client-Side Encryption:** Files are encrypted with `AES-256-GCM` before they ever leave the user's device.
-*   **Encrypted Metadata:** Filenames, folder structures, and file types are encrypted. The database only sees opaque blobs and random UUIDs.
+*   **Client-Side Encryption:** Files are encrypted with `XChaCha20-Poly1305` (SecretStream) before they ever leave the user's device.
+*   **Encrypted Metadata:** File names, folder structure, and file types are encrypted client-side — the database holds only opaque blobs and random UUIDs for these. It does retain the technical metadata needed to store and verify files: file sizes, timestamps, and integrity hashes.
 *   **Master Key Architecture:** A derived Master Key unlocks Folder Keys, which in turn unlock File Keys. This hierarchical key management allows for secure and distinct sharing scopes.
 
-### 💾 Decentralized Storage
-*   **Obsideo Protocol Integration:** Files are stored on the Obsideo decentralized storage network, ensuring high availability and censorship resistance.
+### 💾 Distributed Storage
+*   **Obsideo Protocol Integration:** Files are stored on the Obsideo distributed storage network, ensuring high availability and redundancy.
 *   **Chunking & Resiliency:** Large files are split into encrypted chunks, allowing for resumable uploads and handling files up to **10GB**.
-*   **Redundancy:** Files are verified on the Obsideo gateway to insure durability.
+*   **Redundancy:** Files are replicated across the Obsideo network and verified on the gateway to ensure durability.
 
 ### ⚡ Enterprise Capabilities
 *   **Secure Sharing:** Create time-bound, encrypted share links. External users decrypt files locally using a hash fragment key (never sent to the server).

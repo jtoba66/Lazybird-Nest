@@ -106,7 +106,7 @@ export const AnalyticsDashboard = () => {
                             <HardDrives className="text-primary" size={24} weight="duotone" />
                             Network Storage Growth
                         </h3>
-                        <p className="text-sm text-text-muted">Data volume added to the decentralized network</p>
+                        <p className="text-sm text-text-muted">Data volume added to the distributed network</p>
                     </div>
                     <div className="flex bg-white/5 rounded-lg p-1">
                         {['24h', '7d', '30d'].map(r => (

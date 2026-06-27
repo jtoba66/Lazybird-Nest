@@ -6,7 +6,7 @@ const ArchitectureDoc = () => {
         <div className="max-w-4xl text-text-main">
             <SEO
                 title="Zero-Knowledge Architecture"
-                description="Deep dive into Nest's client-side encryption, key management, and decentralized storage model."
+                description="Deep dive into Nest's client-side encryption, key management, and distributed storage model."
                 canonical="https://nest.lazybird.io/docs/architecture"
             />
             <motion.div
@@ -77,14 +77,14 @@ const ArchitectureDoc = () => {
                 </section>
 
                 <section className="mb-12">
-                    <h2 className="text-2xl font-bold mb-4 text-text-main">Obsideo Decentralized Storage</h2>
+                    <h2 className="text-2xl font-bold mb-4 text-text-main">Obsideo Distributed Storage</h2>
                     <p className="text-text-muted mb-4 leading-relaxed">
-                        Once your files are encrypted locally, Nest does not store the resulting ciphertexts on centralized servers like AWS S3. Instead, we utilize the <strong className="font-bold">Obsideo Storage Network</strong> for high-availability, censorship-resistant, decentralized storage.
+                        Once your files are encrypted locally, Nest does not store the resulting ciphertexts on centralized servers like AWS S3. Instead, we utilize the <strong className="font-bold">Obsideo Storage Network</strong> for high-availability, redundant, distributed storage.
                     </p>
                     <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 shadow-sm mb-4">
                         <p className="text-sm font-bold mb-1">Important Integration Note</p>
                         <p className="text-xs">
-                            The Obsideo SDK is utilized purely as a dumb storage pipe. It receives files that are <strong className="font-bold underline">already encrypted</strong> by your browser's WebAssembly crypto engine. Obsideo has zero visibility into your file contents or metadata.
+                            The Obsideo SDK is utilized purely as a dumb storage pipe. It receives files that are <strong className="font-bold underline">already encrypted</strong> by your browser's WebAssembly crypto engine. Obsideo stores only opaque encrypted chunks — it never sees your file contents or file names.
                         </p>
                     </div>
                 </section>

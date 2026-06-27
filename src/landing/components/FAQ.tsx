@@ -46,6 +46,10 @@ const FAQ = () => {
             answer: "Zero‑knowledge is a design goal your files are encrypted on your device and the service stores encrypted data, not readable content. In practice, that means we cannot view the content of your files."
         },
         {
+            question: "What can Nest see?",
+            answer: "Your file names, folder names, and file contents are encrypted on your device before upload, so we can't read them. To store and verify your data, our servers do handle some technical metadata: encrypted file sizes, timestamps, and integrity hashes. We never see what your files are called or what's inside them."
+        },
+        {
             question: "Who is Nest for?",
             answer: "Anyone who wants private storage for personal videos, documents, and projects."
         },

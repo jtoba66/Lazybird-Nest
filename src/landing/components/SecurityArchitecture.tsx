@@ -29,7 +29,7 @@ const SecurityArchitecture = () => {
                             <PremiumIcon icon={LockKey} />
                         </div>
                         <h3 className="text-2xl font-display font-bold mb-3 text-text-main">1. Client-Side Encryption</h3>
-                        <p className="text-text-muted text-base leading-relaxed font-sans">Your browser generates a key and encrypts files using AES-256-GCM.</p>
+                        <p className="text-text-muted text-base leading-relaxed font-sans">Your browser generates a key and encrypts files using XChaCha20-Poly1305.</p>
                     </div>
 
                     {/* Connector 1 */}
@@ -61,7 +61,7 @@ const SecurityArchitecture = () => {
                             <PremiumIcon icon={Database} />
                         </div>
                         <h3 className="text-2xl font-display font-bold mb-3 text-text-main">3. Obsideo Storage</h3>
-                        <p className="text-text-muted text-base leading-relaxed font-sans">Data is chunked and stored securely on the decentralized Obsideo network.</p>
+                        <p className="text-text-muted text-base leading-relaxed font-sans">Data is chunked, replicated for redundancy, and stored on the distributed Obsideo network.</p>
                     </div>
                 </div>
 

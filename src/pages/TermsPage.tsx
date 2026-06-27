@@ -63,11 +63,11 @@ export const TermsPage = () => {
                         You agree <strong>not to use the Service specifically to host illegal content, malware, or content that infringes on intellectual property rights.</strong>
                     </p>
 
-                    <h3>2. Decentralized Nature</h3>
+                    <h3>2. Distributed Nature</h3>
                     <p>
-                        You acknowledge that our services interact with decentralized networks (such as the Obsideo network).
+                        You acknowledge that our services interact with distributed networks (such as the Obsideo network).
                         <strong>The Obsideo network operates through independent storage providers that LazyBird Inc. does not own or control.</strong>{" "}
-                        While we aim for high availability, we cannot guarantee that files stored on decentralized infrastructure will remain accessible indefinitely.
+                        While we aim for high availability, we cannot guarantee that files stored on distributed infrastructure will remain accessible indefinitely.
                         LazyBird cannot reverse transactions, recover lost private keys, or restore access to encrypted data if you lose your credentials.
                         You are solely responsible for your wallet and account security.
                     </p>
@@ -133,7 +133,7 @@ export const TermsPage = () => {
 
                     <h3>9. Service Availability & Modification</h3>
                     <p>
-                        Our services, including those relying on decentralized networks, may be subject to interruptions, delays, or errors.{" "}
+                        Our services, including those relying on distributed networks, may be subject to interruptions, delays, or errors.{" "}
                         <strong>LazyBird Inc. does not guarantee continuous or error-free operation of the platform.</strong>{" "}
                         We reserve the right to modify, suspend, or discontinue any part of the Service at any time without liability.
                     </p>
@@ -146,8 +146,8 @@ export const TermsPage = () => {
 
                     <h3>11. Access Layer Clarification</h3>
                     <p>
-                        <strong>LazyBird Nest is an access layer and interface to decentralized storage protocols.</strong>{" "}
-                        LazyBird Inc. does not own, operate, or control the underlying storage infrastructure and is not the custodian of user data stored on third-party decentralized networks.
+                        <strong>LazyBird Nest is an access layer and interface to distributed storage protocols.</strong>{" "}
+                        LazyBird Inc. does not own, operate, or control the underlying storage infrastructure and is not the custodian of user data stored on third-party distributed networks.
                         Nest provides file encryption, organization, and gateway services only.
                     </p>
 
