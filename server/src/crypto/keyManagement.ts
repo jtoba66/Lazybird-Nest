@@ -275,34 +275,12 @@ export interface MetadataBlob {
 }
 
 /**
- * Encrypt metadata blob with Master Key
+ * NOTE: The encrypted metadata vault (filenames, mime types, folder names) is decrypted
+ * and re-encrypted EXCLUSIVELY on the client, where the master key lives. The server-side
+ * encrypt/decrypt-metadata-blob helpers were intentionally removed: keeping them invited a
+ * future zero-knowledge violation (any code path that obtained a master key could read the
+ * vault). The server stores the blob as opaque ciphertext and never interprets it.
  */
-export function encryptMetadataBlob(
-    metadata: MetadataBlob,
-    masterKey: Buffer
-): { encrypted: Buffer; nonce: Buffer } {
-    logger.info(`[CRYPTO] Encrypting metadata blob (folders: ${Object.keys(metadata.folders).length}, files: ${Object.keys(metadata.files).length})`);
-
-    const json = JSON.stringify(metadata);
-    return encryptWithMasterKey(json, masterKey);
-}
-
-/**
- * Decrypt metadata blob with Master Key
- */
-export function decryptMetadataBlob(
-    encrypted: Buffer,
-    nonce: Buffer,
-    masterKey: Buffer
-): MetadataBlob {
-    logger.info('[CRYPTO] Decrypting metadata blob');
-
-    const decrypted = decryptWithMasterKey(encrypted, nonce, masterKey);
-    const metadata = JSON.parse(decrypted.toString('utf8'));
-
-    logger.info(`[CRYPTO] ✅ Metadata blob decrypted (folders: ${Object.keys(metadata.folders).length}, files: ${Object.keys(metadata.files).length})`);
-    return metadata;
-}
 
 // ============================================================================
 // Utility Functions

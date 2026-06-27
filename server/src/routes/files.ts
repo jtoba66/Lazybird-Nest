@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { injectMasterKey, getMasterKey } from '../middleware/sessionKey';
 import { db } from '../db';
 import { files, folders, users, userCrypto, fileChunks, graveyard, graveyardChunks, analyticsEvents, shareAuditLog } from '../db/schema';
 import { eq, and, isNull, sql, isNotNull, desc, asc, or, inArray } from 'drizzle-orm';
@@ -16,8 +15,6 @@ import logger from '../utils/logger';
 import { uploadQueue } from '../utils/uploadQueue';
 import { withTimeout } from '../utils/promise';
 import {
-    decryptMetadataBlob,
-    encryptMetadataBlob,
     bufferToBase64,
     base64ToBuffer
 } from '../crypto/keyManagement';
@@ -968,26 +965,11 @@ router.delete('/:id/cancel', authenticateToken, async (req: AuthRequest, res) =>
             .set({ storage_used_bytes: sql`GREATEST(0, ${users.storage_used_bytes} - ${file.file_size})` })
             .where(eq(users.id, userId));
 
-        // 6. Optional: Clean up ghost metadata entry
-        const masterKey = getMasterKey(userId);
-        if (masterKey) {
-            const [cryptoData] = await db.select().from(userCrypto).where(eq(userCrypto.userId, userId)).limit(1);
-            if (cryptoData) {
-                try {
-                    const metadata = decryptMetadataBlob(cryptoData.metadata_blob, cryptoData.metadata_nonce, masterKey);
-                    if (metadata.files[fileId.toString()]) {
-                        delete metadata.files[fileId.toString()];
-                        const { encrypted, nonce } = encryptMetadataBlob(metadata, masterKey);
-                        await db.update(userCrypto)
-                            .set({ metadata_blob: encrypted, metadata_nonce: nonce, updated_at: new Date() })
-                            .where(eq(userCrypto.userId, userId));
-                        logger.info(`[UPLOAD-CANCEL] Cleaned ghost metadata entry for file_id=${fileId}`);
-                    }
-                } catch (e) {
-                    logger.warn(`[UPLOAD-CANCEL] Failed to clean metadata for file_id=${fileId}:`, e);
-                }
-            }
-        }
+        // The encrypted metadata vault (filenames, mime types, folder names) is owned and
+        // maintained CLIENT-SIDE only — the server must never hold the master key or decrypt
+        // the vault. The client prunes its own ghost entry for this file after the cancel
+        // returns. (Removed a dead server-side decrypt that relied on a master-key cache which
+        // was never populated; keeping it would have been a zero-knowledge violation if ever wired.)
 
         logger.info(`[UPLOAD-CANCEL] Cancelled upload file_id=${fileId}, refunded ${file.file_size} bytes`);
 
