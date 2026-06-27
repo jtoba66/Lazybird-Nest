@@ -29,14 +29,10 @@
   <meta property="twitter:description" content="Store with confidence. Nest ensures only you can access your data." />
   <meta property="twitter:image" content="/og-image.png" />
 
-  <!-- VERIFIABLE ZERO-KNOWLEDGE CRYPTO ENGINE -->
-  <!-- SRI pins the exact crypto bundle — the trust anchor for the whole ZK product.
-       A tampered or swapped bundle fails the integrity check and refuses to load.
-       Regenerate this hash whenever public/nest-crypto.umd.js changes:
-         openssl dgst -sha384 -binary public/nest-crypto.umd.js | openssl base64 -A -->
-  <script src="/nest-crypto.umd.js"
-          integrity="sha384-JYbRdPJ8S4ktLdixrAiP7XDZiClrz3+FsrL0nF/Z3+ahfCqJVTIK/aV9iKnoa1FQ"
-          crossorigin="anonymous"></script>
+  <!-- The @lazybird-inc/nest-crypto engine is now bundled from the published npm package
+       (imported by app code, WASM handled by vite-plugin-wasm) rather than loaded as a
+       separate UMD <script>. The old SRI-pinned UMD approach remains in git history as a
+       fallback (public/nest-crypto.umd.js is still in the repo). -->
 </head>
 
 <body>

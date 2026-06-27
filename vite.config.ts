@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
-import path from 'path'
 
 // Mirror of the host (Netlify) security headers in public/_headers, so the header-only
 // policies — frame-ancestors and Content-Security-Policy-Report-Only — can be tested
@@ -38,11 +37,10 @@ const devSecurityHeaders = {
 
 // https://vite.dev/config/
 export default defineConfig({
-  resolve: {
-    alias: {
-      '@lazybird-inc/nest-crypto': path.resolve(__dirname, './src/crypto-loader.ts'),
-    },
-  },
+  // The published @lazybird-inc/nest-crypto package is now bundled directly (vite-plugin-wasm
+  // + top-level-await handle its libsodium/hash-wasm WASM). Previously this aliased to
+  // src/crypto-loader.ts, which proxied the UMD global (window.NestCrypto) loaded via an
+  // SRI-pinned <script> in index.html. That UMD path is kept in git history as a fallback.
   plugins: [
     react(),
     wasm(),
