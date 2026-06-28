@@ -49,7 +49,7 @@ interface SettingsProps {
 }
 export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: SettingsProps) => {
     const { showToast } = useToast();
-    const { masterKey } = useAuth();
+    const { masterKey, metadata } = useAuth();
     const [activeTab, setActiveTab] = useState<'settings' | 'audit'>('settings');
     const [submitting, setSubmitting] = useState(false);
     const [regeneratedUrl, setRegeneratedUrl] = useState<string | null>(null);
@@ -62,6 +62,12 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
     const [expiresAt, setExpiresAt] = useState('');
     const [strictMode, setStrictMode] = useState(false);
     const [expandedQR, setExpandedQR] = useState<{ isOpen: boolean; url: string }>({ isOpen: false, url: '' });
+
+    // For standard file links, the decryption key lives ONLY in the URL fragment
+    // (never stored server-side). Re-derive it client-side so the displayed link and
+    // QR code are complete and actually work — mirroring the row "copy" action.
+    const [standardFullUrl, setStandardFullUrl] = useState<string | null>(null);
+    const [derivingUrl, setDerivingUrl] = useState(false);
 
     // Emails state (Collab only)
     const [emailInput, setEmailInput] = useState('');
@@ -98,14 +104,55 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
         }
     }, [isOpen, share]);
 
-    // Calculate dynamic share URL
-    const shareUrl = regeneratedUrl || (share 
+    // Re-derive the full standard-link URL (with #key fragment) whenever the modal
+    // opens for a standard file share. Same derivation as SharedLinksPage's copy action.
+    useEffect(() => {
+        let cancelled = false;
+        setStandardFullUrl(null);
+        if (!isOpen || !share || share.type !== 'standard_link' || !masterKey) {
+            setDerivingUrl(false);
+            return;
+        }
+        setDerivingUrl(true);
+        (async () => {
+            try {
+                const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
+                await init();
+                const downloadInfo = await api.get(`/files/download/${share.id}`);
+                const folderKey = decryptFolderKey(
+                    fromBase64(downloadInfo.data.folder_key_encrypted),
+                    fromBase64(downloadInfo.data.folder_key_nonce),
+                    masterKey
+                );
+                const fileKey = decryptFileKey(
+                    fromBase64(downloadInfo.data.file_key_encrypted),
+                    fromBase64(downloadInfo.data.file_key_nonce),
+                    folderKey
+                );
+                const filename = metadata?.files[share.id.toString()]?.filename || share.name || 'file';
+                const mimeType = metadata?.files[share.id.toString()]?.mime_type || 'application/octet-stream';
+                const url = `${window.location.origin}/s/${share.custom_slug || share.token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
+                if (!cancelled) setStandardFullUrl(url);
+            } catch (e) {
+                console.error('Failed to reconstruct standard share URL in settings:', e);
+            } finally {
+                if (!cancelled) setDerivingUrl(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [isOpen, share, masterKey, metadata]);
+
+    // Calculate dynamic share URL. Standard links need the re-derived #key fragment;
+    // collab uses the regenerated lk fragment; drop zones need no key.
+    const baseShareUrl = share
         ? share.type === 'drop_zone'
             ? `${window.location.origin}/dz/${share.custom_slug || share.token}`
             : share.type === 'collab_folder'
                 ? `${window.location.origin}/collab/${share.custom_slug || share.token}`
                 : `${window.location.origin}/s/${share.custom_slug || share.token}`
-        : '');
+        : '';
+    const shareUrl = regeneratedUrl
+        || (share?.type === 'standard_link' ? (standardFullUrl || baseShareUrl) : baseShareUrl);
 
     const handleRegenerateLink = async () => {
         if (!share || share.type !== 'collab_folder' || !masterKey) return;
@@ -553,28 +600,41 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                                 </div>
                             )}
 
+                            {share.type === 'standard_link' && !standardFullUrl && derivingUrl && (
+                                <div className="text-[11px] text-text-muted bg-black/5 border border-border/40 rounded-lg p-2 font-medium">
+                                    Generating secure link with decryption key…
+                                </div>
+                            )}
+                            {share.type === 'standard_link' && !standardFullUrl && !derivingUrl && (
+                                <div className="text-[11px] text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 font-medium">
+                                    ⚠️ Couldn't rebuild the secure link (decryption key). The URL below is incomplete — close and reopen this dialog, or copy the link from the share row.
+                                </div>
+                            )}
+
                             <input
                                 type="text"
                                 readOnly
                                 value={shareUrl}
                                 className={clsx(
                                     "w-full bg-black/5 rounded-xl border px-3 py-2 text-xs focus:outline-none",
-                                    share.type === 'collab_folder' && !regeneratedUrl ? "text-text-muted/50 border-amber-500/30" : "text-text-main border-white/20"
+                                    (share.type === 'collab_folder' && !regeneratedUrl) || (share.type === 'standard_link' && !standardFullUrl) ? "text-text-muted/50 border-amber-500/30" : "text-text-main border-white/20"
                                 )}
                                 onClick={(e) => e.currentTarget.select()}
                             />
                         </div>
                         <div className="flex flex-col items-center">
                             <span className="text-[10px] font-bold text-slate-500 uppercase mb-1">QR Code</span>
-                            {share.type === 'collab_folder' && !regeneratedUrl ? (
-                                // The link key is not stored server-side, so the static URL is
+                            {(share.type === 'collab_folder' && !regeneratedUrl) || (share.type === 'standard_link' && !standardFullUrl) ? (
+                                // The decryption key isn't stored server-side, so a static URL is
                                 // incomplete — don't present a scannable QR of a broken link.
                                 <div
                                     className="bg-black/5 rounded-lg border border-amber-500/30 flex items-center justify-center text-center p-1.5"
                                     style={{ width: 76, height: 76 }}
-                                    title="Regenerate the link key to produce a working QR code"
+                                    title="The full link with its decryption key is needed to produce a working QR code"
                                 >
-                                    <span className="text-[9px] text-text-muted/60 font-medium leading-tight px-1">Regenerate link for QR</span>
+                                    <span className="text-[9px] text-text-muted/60 font-medium leading-tight px-1">
+                                        {share.type === 'standard_link' ? (derivingUrl ? 'Generating QR…' : 'Link key unavailable') : 'Regenerate link for QR'}
+                                    </span>
                                 </div>
                             ) : (
                                 <button
