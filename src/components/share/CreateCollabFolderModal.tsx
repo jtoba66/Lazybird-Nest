@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
-import { X, CheckCircle, Copy } from '@phosphor-icons/react';
+import { X, CheckCircle, Copy, PaperPlaneTilt } from '@phosphor-icons/react';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Modal } from '../Modal';
@@ -182,6 +182,22 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
     const handleCopy = () => {
         navigator.clipboard.writeText(resultUrl);
         showToast('Collaboration Link copied!', 'success');
+    };
+
+    // Open the host's own mail client with a pre-filled invite. The link (with its
+    // #lk decryption key) is built client-side and never passes through our server,
+    // so this stays zero-knowledge — same as the host emailing it manually.
+    const handleEmailInvite = () => {
+        const folder = name.trim() || 'a shared folder';
+        const subject = `You have been invited to collaborate on "${folder}" in Nest`;
+        const body =
+            `Hi,\n\n` +
+            `You have been invited to collaborate on the secure folder "${folder}" in Nest.\n\n` +
+            `Open this link to access it. It contains your private decryption key, so keep it safe and do not forward it:\n` +
+            `${resultUrl}\n\n` +
+            `The first time you open it you will be asked to verify your email with a one time code.\n\n` +
+            `Thanks`;
+        window.location.href = `mailto:${emails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     };
 
     return (
@@ -373,9 +389,24 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                         </span>
                     </div>
 
+                    {emails.length > 0 && (
+                        <div className="w-full">
+                            <button
+                                onClick={handleEmailInvite}
+                                className="w-full mt-2 flex items-center justify-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-xl py-2.5 text-sm font-semibold hover:bg-primary/15 transition-colors"
+                            >
+                                <PaperPlaneTilt size={16} weight="bold" />
+                                Email invite to {emails.length > 1 ? `${emails.length} collaborators` : 'collaborator'}
+                            </button>
+                            <p className="text-[11px] text-text-muted mt-1.5 leading-snug">
+                                Opens your email app with a pre-filled invite and the secure link. The key stays in your email, never on our servers.
+                            </p>
+                        </div>
+                    )}
+
                     <button
                         onClick={onSuccess}
-                        className="w-full mt-4 bg-slate-900 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-800 transition-colors"
+                        className="w-full mt-2 bg-slate-900 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-800 transition-colors"
                     >
                         Done
                     </button>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API_BASE_URL from '../config/api';
+import { formatBytes, formatFileType } from '../utils/fileFormat';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder,
@@ -122,6 +123,7 @@ export const CollabPortalPage = () => {
     const [renameValue, setRenameValue] = useState('');
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadCount, setUploadCount] = useState(1);
     const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
 
     const [submittingOtp, setSubmittingOtp] = useState(false);
@@ -940,8 +942,12 @@ export const CollabPortalPage = () => {
             <header className="h-16 border-b border-border/40 bg-white/40 backdrop-blur-md sticky top-0 z-40 px-6 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                     <img src={logoImg} alt="Nest Logo" className="w-8 h-8 object-contain mix-blend-multiply" />
-                    <span className="font-bold text-lg tracking-tight text-text-main hidden sm:inline">Nest Portal</span>
-                    <span className="ml-2 text-xs font-semibold py-1 px-2.5 bg-primary/10 text-primary rounded-lg border border-primary/20">Collab Folder</span>
+                    <span className="font-bold text-lg tracking-tight text-text-main hidden sm:inline">Nest</span>
+                    <span className="hidden sm:inline-block w-px h-4 bg-border" />
+                    <span className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium text-text-muted">
+                        <FolderOpen size={15} />
+                        Collab folder
+                    </span>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="hidden sm:flex flex-col text-right">
@@ -961,7 +967,7 @@ export const CollabPortalPage = () => {
             <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 flex flex-col h-full relative">
                 
                 {/* Folder Header & Actions */}
-                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between glass-panel p-3 rounded-xl gap-4">
+                <div className="relative z-30 mb-4 flex flex-col sm:flex-row sm:items-center justify-between glass-panel p-3 rounded-xl gap-4">
                     <div className="flex-1 min-w-0 mr-4 overflow-x-auto">
                         <nav className="flex items-center text-sm font-medium text-text-muted whitespace-nowrap custom-scrollbar pb-1">
                             <div className="flex items-center">
@@ -995,9 +1001,9 @@ export const CollabPortalPage = () => {
                         <div className="relative">
                             <button
                                 onClick={() => setShowNewMenu(!showNewMenu)}
-                                className={`flex items-center gap-3 bg-white text-text-main shadow-md transition-all px-4 py-2 rounded-xl font-bold group border border-white/40 hover:bg-background/80 hover:shadow-lg ${showNewMenu ? 'bg-background/80 shadow-lg' : ''}`}
+                                className={`flex items-center gap-2.5 bg-primary text-white shadow-md shadow-primary/20 transition-all px-4 py-2 rounded-xl font-bold group border border-white/10 hover:bg-primary/90 hover:shadow-lg ${showNewMenu ? 'bg-primary/90 shadow-lg' : ''}`}
                             >
-                                <Plus size={20} weight="bold" className={`text-primary transition-transform duration-300 ${showNewMenu ? 'rotate-45' : 'group-hover:rotate-90'}`} />
+                                <Plus size={20} weight="bold" className={`text-white transition-transform duration-300 ${showNewMenu ? 'rotate-45' : 'group-hover:rotate-90'}`} />
                                 <span>New</span>
                             </button>
                             
@@ -1035,8 +1041,10 @@ export const CollabPortalPage = () => {
                                 className="hidden"
                                 id="file-upload"
                                 onChange={(e) => {
-                                    if (e.target.files) {
-                                        Array.from(e.target.files).forEach(handleUploadFile);
+                                    if (e.target.files && e.target.files.length) {
+                                        const selected = Array.from(e.target.files);
+                                        setUploadCount(selected.length);
+                                        selected.forEach(handleUploadFile);
                                     }
                                 }}
                             />
@@ -1053,7 +1061,7 @@ export const CollabPortalPage = () => {
                                     <th className="p-4">Name</th>
                                     <th className="p-4 w-32">Type</th>
                                     <th className="p-4 w-28">Size</th>
-                                    <th className="p-4 w-40">Uploaded At</th>
+                                    <th className="p-4 w-40">Uploaded</th>
                                     <th className="p-4 w-20 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -1065,14 +1073,20 @@ export const CollabPortalPage = () => {
                                         className="border-b border-border/20 hover:bg-white/30 transition-colors cursor-pointer group"
                                         onDoubleClick={() => setCurrentFolderId(folder.id)}
                                     >
-                                        <td className="p-4 flex items-center gap-3">
-                                            <FolderOpen size={20} className="text-primary" weight="fill" />
-                                            <span className="font-semibold text-sm group-hover:text-primary transition-colors">{folder.name}</span>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="p-1.5 rounded-md shadow-sm border border-white/20 bg-primary/20 text-primary">
+                                                    <FolderOpen size={18} weight="fill" />
+                                                </div>
+                                                <span className="text-sm font-medium text-text-main group-hover:text-primary transition-colors truncate">{folder.name}</span>
+                                            </div>
                                         </td>
-                                        <td className="p-4 text-xs text-text-muted">Folder</td>
-                                        <td className="p-4 text-xs text-text-muted">-</td>
-                                        <td className="p-4 text-xs text-text-muted">
-                                            {new Date(folder.created_at).toLocaleDateString()}
+                                        <td className="p-4">
+                                            <div className="inline-flex px-1.5 py-0.5 rounded-md bg-white/20 border border-white/20 text-[10px] font-medium text-text-muted">FOLDER</div>
+                                        </td>
+                                        <td className="p-4 text-xs text-text-muted font-medium">—</td>
+                                        <td className="p-4 text-xs text-text-muted font-medium">
+                                            {new Date(folder.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </td>
                                         <td className="p-4 text-center">
                                             {/* Folder Actions */}
@@ -1090,21 +1104,25 @@ export const CollabPortalPage = () => {
                                             className="border-b border-border/20 hover:bg-white/30 transition-colors group"
                                         >
                                             <td className="p-4">
-                                                <div className="flex items-center gap-3">
-                                                    <FileTypeIcon size={20} className="text-text-muted" weight="duotone" />
-                                                    <span className="font-medium text-sm truncate max-w-xs sm:max-w-md" title={file.name}>
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className="p-1.5 rounded-md shadow-sm border border-white/20 bg-white/40 text-text-main">
+                                                        <FileTypeIcon size={18} weight="duotone" />
+                                                    </div>
+                                                    <span className="text-sm font-medium text-text-main group-hover:text-primary truncate max-w-xs sm:max-w-md transition-colors" title={file.name}>
                                                         {file.name}
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="p-4 text-xs text-text-muted truncate max-w-[120px]" title={file.mime}>
-                                                {file.mime?.split('/')[1]?.toUpperCase() || 'FILE'}
+                                            <td className="p-4">
+                                                <div className="inline-flex px-1.5 py-0.5 rounded-md bg-white/20 border border-white/20 text-[10px] font-medium text-text-muted">
+                                                    {formatFileType(file.mime || '', file.name)}
+                                                </div>
                                             </td>
-                                            <td className="p-4 text-xs text-text-muted">
-                                                {(file.size / 1024).toFixed(1)} KB
+                                            <td className="p-4 text-xs text-text-muted font-medium">
+                                                {formatBytes(file.size)}
                                             </td>
-                                            <td className="p-4 text-xs text-text-muted">
-                                                {new Date(file.created_at).toLocaleDateString()}
+                                            <td className="p-4 text-xs text-text-muted font-medium">
+                                                {new Date(file.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                             </td>
                                             <td className="p-4 flex items-center justify-center gap-2">
                                                 <button
@@ -1160,6 +1178,16 @@ export const CollabPortalPage = () => {
                     </div>
                 </div>
             </main>
+
+            <footer className="text-center py-6 text-xs text-text-light px-4">
+                Secured by Nest · Your files. Your keys.{' '}
+                <button
+                    onClick={() => navigate('/signup')}
+                    className="text-text-muted border-b border-border hover:text-primary transition-colors"
+                >
+                    Get a free account
+                </button>
+            </footer>
 
             {/* Custom Modals */}
             <AnimatePresence>
@@ -1251,8 +1279,8 @@ export const CollabPortalPage = () => {
                         <div className="bg-card border border-border rounded-2xl p-6 shadow-xl max-w-sm w-full text-center flex flex-col items-center gap-4">
                             <div className="w-10 h-10 border-2 border-primary border-t-transparent animate-spin rounded-full"></div>
                             <div>
-                                <h4 className="font-bold text-text-main text-base">Encrypting & Depositing File...</h4>
-                                <p className="text-xs text-text-muted mt-1">{uploadProgress}% complete</p>
+                                <h4 className="font-bold text-text-main text-base">Encrypting &amp; uploading {uploadCount > 1 ? 'files' : 'file'}…</h4>
+                                <p className="text-xs text-text-muted mt-1">{Math.round(uploadProgress)}% complete</p>
                             </div>
                         </div>
                     </div>

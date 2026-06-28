@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../contexts/ToastContext';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
+import { formatBytes, formatFileType } from '../utils/fileFormat';
 import {
     Image,
     FilePdf,
@@ -56,55 +57,11 @@ function getFileIcon(mimeType: string) {
     return FileIcon;
 }
 
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
 function formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-
-function formatFileType(mimeType: string, filename: string): string {
-    // 1. Map known long MIME types to concise names
-    const mimeMap: Record<string, string> = {
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-        'application/msword': 'DOC',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-        'application/vnd.ms-excel': 'XLS',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
-        'application/vnd.ms-powerpoint': 'PPT',
-        'application/pdf': 'PDF',
-        'application/zip': 'ZIP',
-        'application/x-zip-compressed': 'ZIP',
-        'application/json': 'JSON',
-        'text/plain': 'TXT',
-        'text/markdown': 'MD',
-    };
-
-    if (mimeType && mimeMap[mimeType]) {
-        return mimeMap[mimeType];
-    }
-
-    // 2. If it's a generic application type or the subtype is very long, try the file extension
-    const subtype = mimeType?.split('/')[1] || '';
-
-    if (subtype.length > 8 || subtype.includes('vnd.') || subtype.includes('x-')) {
-        const ext = filename.split('.').pop();
-        if (ext && ext !== filename) {
-            return ext.toUpperCase();
-        }
-    }
-
-    // 3. Fallback to subtype, but truncate if still absurdly long
-    const cleanSubtype = subtype.toUpperCase();
-    return cleanSubtype.length > 12 ? cleanSubtype.substring(0, 12) + '...' : cleanSubtype;
-}
 
 export const FileTable = ({ items }: { items: UnifiedItem[] }) => {
     // ... hooks ...

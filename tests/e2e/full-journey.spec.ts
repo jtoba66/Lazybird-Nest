@@ -202,8 +202,9 @@ test.describe('Nest Full User Journey Integration Test', () => {
 
     await collabGuestPage.getByRole('button', { name: /Verify/i }).first().click();
 
-    // Verify guest successfully entered collab portal
-    await expect(collabGuestPage.locator('text=Nest Portal')).toBeVisible({ timeout: 20000 });
+    // Verify guest successfully entered collab portal (the toolbar "New" action is
+    // always present in the portal, regardless of the responsive header labels).
+    await expect(collabGuestPage.getByRole('button', { name: 'New' }).first()).toBeVisible({ timeout: 20000 });
     console.log('✅ Guest OTP login verification verified.');
     await collabGuestPage.close();
 
