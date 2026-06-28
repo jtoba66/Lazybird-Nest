@@ -449,7 +449,7 @@ export const SharePage = () => {
                                         <div className="flex items-center gap-3">
                                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                             <span className="text-sm">
-                                                {downloadProgress > 0 ? `Streaming... ${downloadProgress.toFixed(0)}%` : 'Initializing...'}
+                                                {downloadProgress > 0 ? `Downloading... ${downloadProgress.toFixed(0)}%` : 'Initializing...'}
                                             </span>
                                         </div>
                                         {downloadProgress > 0 && (
