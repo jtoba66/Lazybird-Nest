@@ -43,7 +43,7 @@ Lists file metadata for the authenticated user.
 
 ### `GET /files/download/:fileId`
 Retrieves the information needed to fetch and decrypt a file.
--   **Response**: Returns the Jackal link and the encrypted file keys.
+-   **Response**: Returns the Obsideo link and the encrypted file keys.
 
 ---
 

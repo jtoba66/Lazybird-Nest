@@ -27,7 +27,7 @@ Represent the structural skeleton of the user's vault.
 
 ### 4. `file_chunks`
 Supports large-file sharding.
--   Each record links a `fileId` to a specific `chunk_index` and its corresponding Jackal pointer.
+-   Each record links a `fileId` to a specific `chunk_index` and its corresponding Obsideo pointer.
 
 ---
 
