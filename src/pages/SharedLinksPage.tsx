@@ -12,6 +12,7 @@ import { CreateCollabFolderModal } from '../components/share/CreateCollabFolderM
 import { ShareSettingsModal } from '../components/share/ShareSettingsModal';
 
 import api from '../lib/api';
+import { deriveStandardLinkUrl } from '../utils/shareUrl';
 import { foldersAPI } from '../api/folders';
 import clsx from 'clsx';
 import nestLogo from '../assets/nest-logo.png';
@@ -84,6 +85,10 @@ export const SharedLinksPage = () => {
     const [showCreateCollab, setShowCreateCollab] = useState(false);
     const [settingsModal, setSettingsModal] = useState<{ isOpen: boolean; share: ShareItem | null }>({ isOpen: false, share: null });
     const [qrModal, setQrModal] = useState<{ isOpen: boolean; share: ShareItem | null }>({ isOpen: false, share: null });
+    // The QR must encode the SAME complete URL as the copy button — for standard
+    // links that means re-deriving the #key fragment, not the keyless base URL.
+    const [qrUrl, setQrUrl] = useState<string | null>(null);
+    const [qrDeriving, setQrDeriving] = useState(false);
     const [revokeConfirm, setRevokeConfirm] = useState<{ isOpen: boolean; sharesToRevoke: ShareItem[] }>({ isOpen: false, sharesToRevoke: [] });
 
     // Loading indicators inside modals
@@ -185,26 +190,9 @@ export const SharedLinksPage = () => {
     const handleCopy = async (item: ShareItem) => {
         let url = '';
         if (item.type === 'standard_link') {
-            // Need file key from fragment. We obtain it from metadata
+            // The decryption key lives only in the #key fragment; re-derive it client-side.
             try {
-                const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
-                await init();
-                if (!masterKey) return;
-
-                const downloadInfo = await api.get(`/files/download/${item.id}`);
-                const fileKeyEncrypted = fromBase64(downloadInfo.data.file_key_encrypted);
-                const fileKeyNonce = fromBase64(downloadInfo.data.file_key_nonce);
-                const folderKeyEncrypted = fromBase64(downloadInfo.data.folder_key_encrypted);
-                const folderKeyNonce = fromBase64(downloadInfo.data.folder_key_nonce);
-
-                const folderKey = decryptFolderKey(folderKeyEncrypted, folderKeyNonce, masterKey);
-                const fileKey = decryptFileKey(fileKeyEncrypted, fileKeyNonce, folderKey);
-
-                const filename = metadata?.files[item.id.toString()]?.filename || 'file';
-                const mimeType = metadata?.files[item.id.toString()]?.mime_type || 'application/octet-stream';
-
-                const fileKeyBase64 = toBase64(fileKey);
-                url = `${window.location.origin}/s/${item.custom_slug || item.token}#key=${encodeURIComponent(fileKeyBase64)}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
+                url = await deriveStandardLinkUrl(item, masterKey, metadata);
             } catch (e) {
                 console.error('Failed to reconstruct standard share URL:', e);
                 showToast('Failed to decrypt standard share link. Missing keys or corrupted metadata.', 'error', 6000);
@@ -235,6 +223,33 @@ export const SharedLinksPage = () => {
             }
         }
     };
+
+    // Build the QR URL whenever the list QR modal opens. Standard links must carry
+    // the re-derived #key fragment (same as the copy button); drop zones need none.
+    useEffect(() => {
+        let cancelled = false;
+        setQrUrl(null);
+        const share = qrModal.share;
+        if (!qrModal.isOpen || !share) { setQrDeriving(false); return; }
+        if (share.type === 'drop_zone') {
+            setQrUrl(`${window.location.origin}/dz/${share.custom_slug || share.token}`);
+            setQrDeriving(false);
+            return;
+        }
+        // standard_link (collab folders have no list QR button)
+        setQrDeriving(true);
+        (async () => {
+            try {
+                const url = await deriveStandardLinkUrl(share, masterKey, metadata);
+                if (!cancelled) setQrUrl(url);
+            } catch (e) {
+                console.error('Failed to build QR share URL:', e);
+            } finally {
+                if (!cancelled) setQrDeriving(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [qrModal, masterKey, metadata]);
 
     // ============================================================================
     // SELECTION LOGIC
@@ -729,13 +744,23 @@ export const SharedLinksPage = () => {
             >
                 {qrModal.share && (
                     <div className="flex flex-col items-center gap-6 py-4">
-                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-border/20" ref={qrRef}>
-                            <QRCode 
-                                id="list-qr-code" 
-                                value={`${window.location.origin}/${qrModal.share.type === 'drop_zone' ? 'dz' : qrModal.share.type === 'collab_folder' ? 'collab' : 's'}/${qrModal.share.custom_slug || qrModal.share.token}`} 
-                                size={250} 
-                            />
-                        </div>
+                        {qrUrl ? (
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-border/20" ref={qrRef}>
+                                <QRCode id="list-qr-code" value={qrUrl} size={250} />
+                            </div>
+                        ) : (
+                            <div className="py-10 flex flex-col items-center justify-center gap-3 text-center min-h-[250px]">
+                                {qrDeriving ? (
+                                    <>
+                                        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-sm text-text-muted">Generating secure QR with decryption key…</span>
+                                    </>
+                                ) : (
+                                    <span className="text-sm text-amber-600 font-medium px-4">Couldn't build the secure QR (decryption key unavailable). Close and retry, or use the Copy button instead.</span>
+                                )}
+                            </div>
+                        )}
+                        {qrUrl && (
                         <button
                             onClick={() => {
                                 const svg = qrRef.current?.querySelector('svg');
@@ -791,6 +816,7 @@ export const SharedLinksPage = () => {
                             <DownloadSimple size={20} weight="bold" />
                             Download QR Code
                         </button>
+                        )}
                     </div>
                 )}
             </Modal>

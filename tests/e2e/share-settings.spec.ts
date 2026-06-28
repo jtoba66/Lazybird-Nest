@@ -1,4 +1,15 @@
 import { test, expect } from './fixtures';
+import fs from 'fs';
+import { PNG } from 'pngjs';
+import jsQR from 'jsqr';
+
+// Decode a downloaded QR PNG back to its text. This is the check that was missing:
+// it proves the QR actually ENCODES the key, not just that "a QR rendered".
+function decodeQrPng(path: string): string | null {
+  const png = PNG.sync.read(fs.readFileSync(path));
+  const code = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+  return code?.data ?? null;
+}
 
 // Regression coverage for the Share Settings modal across ALL share types: the displayed
 // "Shareable Link" + QR must never present an incomplete/undecryptable link.
@@ -111,5 +122,45 @@ test.describe('Share Settings link integrity (all types)', () => {
     }, { timeout: 20000, message: 'a readonly field should contain the #lk fragment after regenerate' }).toBe(true);
     // And the main QR becomes scannable.
     await expect(page.locator(QR_BUTTON)).toBeVisible({ timeout: 10000 });
+  });
+
+  test('row QR button: downloaded QR decodes to a link carrying #key', async ({ page }) => {
+    // This is the surface the user caught: the list-row QR icon (separate from the
+    // settings modal). Create a standard share, open the row QR, download it, and
+    // DECODE the image to prove the key is actually in the QR.
+    await page.goto('/dashboard');
+    await expect(page.locator('h1:has-text("Nest")')).toBeVisible({ timeout: 10000 });
+    const fileInput = page.locator('input[type="file"]').first();
+    await expect(fileInput).toBeAttached({ timeout: 10000 });
+    const NAME = 'row-qr-e2e.txt';
+    await fileInput.setInputFiles({
+      name: NAME, mimeType: 'text/plain', buffer: Buffer.from('row qr decode test 777'),
+    });
+    await expect(page.getByText(/Encrypting/i)).toBeVisible({ timeout: 10000 }).catch(() => {});
+    await expect(page.getByText(/Encrypting/i)).not.toBeVisible({ timeout: 30000 }).catch(() => {});
+    const fileRow = page.locator('tr').filter({ hasText: NAME });
+    await expect(fileRow).toBeVisible({ timeout: 15000 });
+    await fileRow.hover();
+    await fileRow.locator('button[title="Share"]').click();
+    await expect(page.getByText('Ready to Share!')).toBeVisible({ timeout: 20000 });
+
+    await page.goto('/shared');
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10000 });
+    const shareRow = page.locator('tr').filter({ hasText: NAME }).first();
+    await expect(shareRow).toBeVisible({ timeout: 15000 });
+    await shareRow.hover();
+    await shareRow.locator('button[title="View QR Code"]').click();
+
+    // The Download button only appears once the QR URL has been re-derived.
+    const dl = page.getByRole('button', { name: 'Download QR Code' });
+    await expect(dl).toBeVisible({ timeout: 15000 });
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    await dl.click();
+    const download = await downloadPromise;
+    const savedPath = await download.path();
+    const decoded = decodeQrPng(savedPath!);
+    expect(decoded, 'QR PNG should decode to a URL').toBeTruthy();
+    expect(decoded!).toContain('/s/');
+    expect(decoded!, 'decoded QR must carry the #key fragment').toContain('#key=');
   });
 });

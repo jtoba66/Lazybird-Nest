@@ -6,6 +6,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Modal } from '../Modal';
 import api from '../../lib/api';
+import { deriveStandardLinkUrl } from '../../utils/shareUrl';
 import clsx from 'clsx';
 import QRCode from 'react-qr-code';
 import nestLogo from '../../assets/nest-logo.png';
@@ -116,22 +117,7 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
         setDerivingUrl(true);
         (async () => {
             try {
-                const { decryptFolderKey, decryptFileKey, toBase64, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
-                await init();
-                const downloadInfo = await api.get(`/files/download/${share.id}`);
-                const folderKey = decryptFolderKey(
-                    fromBase64(downloadInfo.data.folder_key_encrypted),
-                    fromBase64(downloadInfo.data.folder_key_nonce),
-                    masterKey
-                );
-                const fileKey = decryptFileKey(
-                    fromBase64(downloadInfo.data.file_key_encrypted),
-                    fromBase64(downloadInfo.data.file_key_nonce),
-                    folderKey
-                );
-                const filename = metadata?.files[share.id.toString()]?.filename || share.name || 'file';
-                const mimeType = metadata?.files[share.id.toString()]?.mime_type || 'application/octet-stream';
-                const url = `${window.location.origin}/s/${share.custom_slug || share.token}#key=${encodeURIComponent(toBase64(fileKey))}&name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mimeType)}`;
+                const url = await deriveStandardLinkUrl(share, masterKey, metadata);
                 if (!cancelled) setStandardFullUrl(url);
             } catch (e) {
                 console.error('Failed to reconstruct standard share URL in settings:', e);
