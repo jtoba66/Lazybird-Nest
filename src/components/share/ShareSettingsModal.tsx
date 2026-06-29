@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-    Copy, Clock, DownloadSimple, X, GearSix, FileCsv
+    Copy, Clock, DownloadSimple, X, GearSix, FileCsv, PaperPlaneTilt
 } from '@phosphor-icons/react';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -170,6 +170,22 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
         } finally {
             setSubmitting(false);
         }
+    };
+
+    // Open the host's own mail client with the regenerated collab link. The #lk key
+    // is reconstructed client-side and never reaches our server — stays zero-knowledge.
+    const handleEmailInvite = () => {
+        if (!regeneratedUrl) return;
+        const folder = share?.name?.trim() || 'a shared folder';
+        const subject = `You have been invited to collaborate on "${folder}" in Nest`;
+        const body =
+            `Hi,\n\n` +
+            `You have been invited to collaborate on the secure folder "${folder}" in Nest.\n\n` +
+            `Open this link to access it. It contains your private decryption key, so keep it safe and do not forward it:\n` +
+            `${regeneratedUrl}\n\n` +
+            `The first time you open it you will be asked to verify your email with a one time code.\n\n` +
+            `Thanks`;
+        window.location.href = `mailto:${emails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     };
 
     const handleDownloadQR = () => {
@@ -527,24 +543,36 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                                     </span>
                                 </div>
                                 {regeneratedUrl ? (
-                                    <div className="flex w-full gap-2 mt-2">
-                                        <input
-                                            type="text"
-                                            readOnly
-                                            value={regeneratedUrl}
-                                            className="flex-1 bg-white border border-border/40 rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(regeneratedUrl);
-                                                showToast('Link copied!', 'success');
-                                            }}
-                                            className="bg-primary hover:bg-primary/80 text-white rounded-lg p-2 text-xs flex items-center justify-center transition-colors"
-                                        >
-                                            <Copy size={16} />
-                                        </button>
-                                    </div>
+                                    <>
+                                        <div className="flex w-full gap-2 mt-2">
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={regeneratedUrl}
+                                                className="flex-1 bg-white border border-border/40 rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(regeneratedUrl);
+                                                    showToast('Link copied!', 'success');
+                                                }}
+                                                className="bg-primary hover:bg-primary/80 text-white rounded-lg p-2 text-xs flex items-center justify-center transition-colors"
+                                            >
+                                                <Copy size={16} />
+                                            </button>
+                                        </div>
+                                        {emails.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={handleEmailInvite}
+                                                className="w-full mt-2 flex items-center justify-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-lg py-2 text-xs font-semibold hover:bg-primary/15 transition-colors"
+                                            >
+                                                <PaperPlaneTilt size={14} weight="bold" />
+                                                Email new link to {emails.length > 1 ? `${emails.length} collaborators` : 'collaborator'}
+                                            </button>
+                                        )}
+                                    </>
                                 ) : (
                                     <button
                                         type="button"

@@ -3,14 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../contexts/ToastContext';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
-import { formatBytes, formatFileType } from '../utils/fileFormat';
+import { formatBytes, formatFileType, getFileIcon } from '../utils/fileFormat';
 import {
-    Image,
-    FilePdf,
-    FileText,
-    FileArchive,
-    File as FileIcon,
-    Video,
     Folder as FolderIcon,
     Trash,
     ArrowsDownUp,
@@ -45,16 +39,6 @@ export interface UnifiedItem {
     onRename?: (newName: string) => Promise<void>;
     onMove?: (folderId: number | null) => Promise<void>;
     onDelete?: () => Promise<void>;
-}
-
-// Restore Helper Functions
-function getFileIcon(mimeType: string) {
-    if (mimeType.startsWith('image/')) return Image;
-    if (mimeType.startsWith('video/')) return Video;
-    if (mimeType === 'application/pdf') return FilePdf;
-    if (mimeType.includes('zip') || mimeType.includes('archive')) return FileArchive;
-    if (mimeType.startsWith('text/')) return FileText;
-    return FileIcon;
 }
 
 function formatDate(dateString: string): string {

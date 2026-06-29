@@ -1,6 +1,9 @@
+import { Image, Video, FilePdf, FileArchive, FileText, File } from '@phosphor-icons/react';
+
 /**
- * Shared file-display formatters used by both the main file manager (FileTable)
- * and the collab portal, so sizes and type labels render identically everywhere.
+ * Shared file-display helpers used by both the main file manager (FileTable)
+ * and the collab portal, so sizes, type labels, and icons render identically
+ * everywhere.
  */
 
 /** Human-readable file size (e.g. "293.04 MB"). Picks B/KB/MB/GB/TB by magnitude. */
@@ -44,4 +47,15 @@ export function formatFileType(mimeType: string, filename: string): string {
 
     const cleanSubtype = subtype.toUpperCase();
     return cleanSubtype.length > 12 ? cleanSubtype.substring(0, 12) + '...' : cleanSubtype;
+}
+
+/** Phosphor icon component for a file's MIME type. */
+export function getFileIcon(mimeType: string) {
+    if (!mimeType) return File;
+    if (mimeType.startsWith('image/')) return Image;
+    if (mimeType.startsWith('video/')) return Video;
+    if (mimeType === 'application/pdf') return FilePdf;
+    if (mimeType.includes('zip') || mimeType.includes('archive')) return FileArchive;
+    if (mimeType.startsWith('text/')) return FileText;
+    return File;
 }

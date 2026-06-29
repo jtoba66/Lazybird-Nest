@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API_BASE_URL from '../config/api';
-import { formatBytes, formatFileType } from '../utils/fileFormat';
+import { formatBytes, formatFileType, getFileIcon } from '../utils/fileFormat';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder,
     FolderOpen,
-    File,
     DownloadSimple,
     Plus,
     Trash,
@@ -16,11 +15,6 @@ import {
     PencilSimple,
     Warning,
     ShieldCheck,
-    Image,
-    Video,
-    FilePdf,
-    FileArchive,
-    FileText,
     FileArrowUp,
     FolderPlus
 } from '@phosphor-icons/react';
@@ -37,17 +31,6 @@ import logoImg from '../assets/nest-logo.png';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { StreamingDownloader } from '../utils/StreamingDownloader';
-
-// Helper to determine file icon
-function getFileIcon(mimeType: string) {
-    if (!mimeType) return File;
-    if (mimeType.startsWith('image/')) return Image;
-    if (mimeType.startsWith('video/')) return Video;
-    if (mimeType === 'application/pdf') return FilePdf;
-    if (mimeType.includes('zip') || mimeType.includes('archive')) return FileArchive;
-    if (mimeType.startsWith('text/')) return FileText;
-    return File;
-}
 
 // Helper to convert base64url to base64
 const fromBase64url = (str: string): Uint8Array => {
