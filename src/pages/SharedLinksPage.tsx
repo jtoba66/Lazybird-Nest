@@ -13,7 +13,7 @@ import { ShareSettingsModal } from '../components/share/ShareSettingsModal';
 
 import api from '../lib/api';
 import { deriveStandardLinkUrl } from '../utils/shareUrl';
-import { foldersAPI } from '../api/folders';
+import { useCreateZKFolder } from '../hooks/useCreateZKFolder';
 import clsx from 'clsx';
 import nestLogo from '../assets/nest-logo.png';
 
@@ -66,7 +66,7 @@ function formatBytes(bytes?: number): string {
 
 export const SharedLinksPage = () => {
     const { showToast } = useToast();
-    const { metadata, saveMetadata, masterKey } = useAuth();
+    const { metadata, masterKey } = useAuth();
     const qrRef = useRef<HTMLDivElement>(null);
     const { refreshQuota } = useStorage();
     const { fileListVersion, triggerFileRefresh } = useRefresh();
@@ -130,31 +130,7 @@ export const SharedLinksPage = () => {
     // ============================================================================
     // CREATE FOLDER HELPER (Standard ZK Folder creation)
     // ============================================================================
-    const createZKFolder = async (folderName: string): Promise<number> => {
-        if (!masterKey || !metadata) throw new Error('Auth components missing');
-        const { generateFolderKey, encryptFolderKey, toBase64, init } = await import('@lazybird-inc/nest-crypto');
-        await init();
-
-        const folderKey = generateFolderKey();
-        const { encrypted, nonce } = encryptFolderKey(folderKey, masterKey);
-
-        const res = await foldersAPI.create(
-            toBase64(encrypted),
-            toBase64(nonce),
-            folderName
-        );
-        const newId = res.folder_id;
-
-        // Update local metadata
-        const newMeta = JSON.parse(JSON.stringify(metadata));
-        newMeta.folders[newId.toString()] = {
-            name: folderName,
-            created_at: new Date().toISOString()
-        };
-        await saveMetadata(newMeta);
-
-        return newId;
-    };
+    const createZKFolder = useCreateZKFolder();
 
     // ============================================================================
     // REVOKE ACTION (Single & Bulk)

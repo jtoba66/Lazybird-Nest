@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderPlus } from '@phosphor-icons/react';
+import { FolderPlus, Plus, UploadSimple, UsersThree, CloudArrowUp } from '@phosphor-icons/react';
 import { FileTable } from '../components/FileTable';
 import { CreateFolderModal } from '../components/CreateFolderModal';
+import { CreateCollabFolderModal } from '../components/share/CreateCollabFolderModal';
+import { CreateDropZoneModal } from '../components/share/CreateDropZoneModal';
+import { useCreateZKFolder } from '../hooks/useCreateZKFolder';
 import { filesAPI } from '../api/files';
 import { foldersAPI } from '../api/folders';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -70,6 +73,11 @@ export const FoldersPage = () => {
     const [displayFolders, setDisplayFolders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+    const createZKFolder = useCreateZKFolder();
+    const [showNewMenu, setShowNewMenu] = useState(false);
+    const [showCreateDz, setShowCreateDz] = useState(false);
+    const [showCreateCollab, setShowCreateCollab] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [primaryRootId, setPrimaryRootId] = useState<number | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     // Tracks folder ids we've already attempted to self-heal into the metadata vault,
@@ -238,6 +246,16 @@ export const FoldersPage = () => {
                 addUpload(file, targetId, collabToken || undefined, collabKey || undefined, sessionId);
             });
         }
+    };
+
+    // Upload from the file picker (New menu / mobile upload button), mirroring onFileDrop.
+    const handleFilesSelected = (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const targetId = selectedFolderId || collabRootId || primaryRootId || null;
+        const sessionId = crypto.randomUUID();
+        Array.from(files).forEach(file => {
+            addUpload(file, targetId, collabToken || undefined, collabKey || undefined, sessionId);
+        });
     };
 
     // Session Recovery: If key is lost, UI will show "Vault Locked" or prompt re-auth locally
@@ -1169,23 +1187,99 @@ export const FoldersPage = () => {
                 onCreate={handleCreateFolder}
             />
 
+            <CreateDropZoneModal
+                isOpen={showCreateDz}
+                onClose={() => setShowCreateDz(false)}
+                createZKFolder={createZKFolder}
+                onSuccess={() => { setShowCreateDz(false); triggerFileRefresh(); }}
+            />
+            <CreateCollabFolderModal
+                isOpen={showCreateCollab}
+                onClose={() => setShowCreateCollab(false)}
+                createZKFolder={createZKFolder}
+                onSuccess={() => { setShowCreateCollab(false); triggerFileRefresh(); }}
+            />
+
+            {/* Mobile upload FAB — the New menu is easy to miss on small screens */}
+            <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Upload files"
+                className="md:hidden fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+            >
+                <UploadSimple size={24} weight="bold" />
+            </button>
+
             <div className="flex-1 flex flex-col min-w-0">
-                <div className="mb-4 flex items-center justify-between glass-panel p-3 rounded-xl">
+                <div className="relative z-30 mb-4 flex items-center justify-between glass-panel p-3 rounded-xl">
                     <div className="flex-1 min-w-0 mr-4">
                         <Breadcrumbs
                             path={getBreadcrumbPath()}
                             onNavigate={handleNavigate}
                         />
                     </div>
-                    <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setShowCreateFolderModal(true)}
-                        className="glass-button px-3 py-1.5 flex items-center gap-2 text-sm flex-shrink-0"
-                    >
-                        <FolderPlus size={16} weight="bold" />
-                        <span>New Folder</span>
-                    </motion.button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { handleFilesSelected(e.target.files); e.target.value = ''; }}
+                    />
+                    <div className="relative flex-shrink-0">
+                        <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setShowNewMenu(v => !v)}
+                            className="glass-button px-3 py-1.5 flex items-center gap-2 text-sm"
+                        >
+                            <Plus size={16} weight="bold" className={`transition-transform ${showNewMenu ? 'rotate-45' : ''}`} />
+                            <span>New</span>
+                        </motion.button>
+                        {showNewMenu && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowNewMenu(false)} />
+                                <div className="absolute top-full right-0 mt-2 w-52 bg-white/95 backdrop-blur-md border border-white/40 rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowNewMenu(false); fileInputRef.current?.click(); }}
+                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-text-main hover:bg-primary/10 transition-colors text-left"
+                                    >
+                                        <UploadSimple size={18} className="text-primary" weight="bold" />
+                                        Upload files
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowNewMenu(false); setShowCreateFolderModal(true); }}
+                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-text-main hover:bg-primary/10 transition-colors text-left"
+                                    >
+                                        <FolderPlus size={18} className="text-primary" weight="bold" />
+                                        New folder
+                                    </button>
+                                    {!collabToken && (
+                                        <>
+                                            <div className="h-px bg-black/5 my-1.5" />
+                                            <button
+                                                type="button"
+                                                onClick={() => { setShowNewMenu(false); setShowCreateCollab(true); }}
+                                                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-text-main hover:bg-primary/10 transition-colors text-left"
+                                            >
+                                                <UsersThree size={18} className="text-primary" weight="bold" />
+                                                Collab folder
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setShowNewMenu(false); setShowCreateDz(true); }}
+                                                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-text-main hover:bg-primary/10 transition-colors text-left"
+                                            >
+                                                <CloudArrowUp size={18} className="text-primary" weight="bold" />
+                                                Drop zone
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <div

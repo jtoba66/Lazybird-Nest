@@ -8,10 +8,12 @@ test.describe('Cloud Drive Features', () => {
   test('Create Folder and Delete Folder', async ({ page }) => {
     await page.goto('/folders');
     // FoldersPage has no <h1> (it uses a breadcrumb nav). Wait for the action we need instead.
-    const newFolderBtn = page.getByRole('button', { name: 'New Folder' });
-    await expect(newFolderBtn).toBeVisible({ timeout: 10000 });
+    // The toolbar now uses a "New" dropdown → "New folder".
+    const newBtn = page.getByRole('main').getByRole('button', { name: 'New', exact: true });
+    await expect(newBtn).toBeVisible({ timeout: 10000 });
 
-    await newFolderBtn.click();
+    await newBtn.click();
+    await page.getByRole('main').getByRole('button', { name: 'New folder' }).click();
 
     const folderInput = page.locator('input[placeholder="Enter folder name"]');
     await expect(folderInput).toBeVisible({ timeout: 5000 });
