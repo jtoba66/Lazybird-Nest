@@ -414,7 +414,7 @@ export const DropZonePage = () => {
                                 <CheckCircle size={40} className="text-emerald-500" weight="fill" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-text-main text-xl">File Deposited Securely</h3>
+                                <h3 className="font-bold text-text-main text-xl">File Uploaded Securely</h3>
                                 <p className="text-xs text-text-muted mt-2 leading-relaxed max-w-sm">
                                     Your file has been encrypted client-side and uploaded. You may close this window or upload another file.
                                 </p>
@@ -442,7 +442,7 @@ export const DropZonePage = () => {
                                 <UploadSimple size={24} className="text-primary animate-pulse" />
                             </div>
                             <div className="w-full text-center">
-                                <span className="text-sm font-semibold text-text-main block mb-1">Encrypting & Depositing File...</span>
+                                <span className="text-sm font-semibold text-text-main block mb-1">Encrypting &amp; uploading file…</span>
                                 <span className="text-xs text-text-muted">{uploadProgress}% uploaded</span>
                                 <div className="w-full bg-black/5 rounded-full h-1.5 mt-3 overflow-hidden">
                                     <div
@@ -483,7 +483,7 @@ export const DropZonePage = () => {
                                 </span>
                             </div>
                             <div className="text-[10px] text-text-muted bg-white/20 border border-white/40 rounded-full px-3 py-1 font-medium mt-2">
-                                Write-Only Secure Deposit &bull; Max 10GB
+                                Write-only secure upload &bull; Max 10GB
                             </div>
                         </div>
                     )}

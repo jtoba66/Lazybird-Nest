@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/react';
 import { fromBase64, init as initCrypto } from '@lazybird-inc/nest-crypto';
 import { StreamingDownloader } from '../utils/StreamingDownloader';
+import { formatBytes } from '../utils/fileFormat';
 import nestLogo from '../assets/nest-logo.png';
 import { useToast } from '../contexts/ToastContext';
 
@@ -431,7 +432,7 @@ export const SharePage = () => {
                                 <div className="relative z-10">
                                     <div className="flex justify-center mb-4 text-primary group-hover/item:scale-105 transition-transform duration-500 ease-[0.16,1,0.3,1]">{getFileIcon()}</div>
                                     <h3 className="text-lg font-semibold text-slate-800 mb-1 truncate px-2 leading-tight" title={filename}>{filename}</h3>
-                                    <p className="text-slate-600 font-medium text-sm">{(fileInfo.file_size / 1024 / 1024).toFixed(2)} MB</p>
+                                    <p className="text-slate-600 font-medium text-sm">{formatBytes(fileInfo.file_size)}</p>
                                 </div>
                             </motion.div>
 

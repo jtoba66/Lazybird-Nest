@@ -242,7 +242,7 @@ export const SettingsPage = () => {
                     <div className="h-2 bg-[#5D7285]/10 rounded-full overflow-hidden mb-6">
                         <div
                             className="h-full bg-gradient-to-r from-[#5D7285] to-[#8DA9C4] rounded-full transition-all duration-500"
-                            style={{ width: `${Math.max(2, Math.min(quota.percentage, 100))}%` }}
+                            style={{ width: `${Math.round(Math.max(2, Math.min(quota.percentage, 100)))}%` }}
                         ></div>
                     </div>
 

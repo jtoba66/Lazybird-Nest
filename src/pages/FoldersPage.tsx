@@ -27,6 +27,7 @@ interface FileItem {
     encrypted_filename?: string;
     encrypted_mime_type?: string;
     folderId?: number;
+    folder_id?: number;
     file_key_encrypted?: string;
     file_key_nonce?: string;
 }
@@ -762,7 +763,7 @@ export const FoldersPage = () => {
                 const { decryptDropZoneFile, fromBase64, init } = await import('@lazybird-inc/nest-crypto');
                 await init();
 
-                const dz = dropZones.find((d: any) => d.folderId === file.folderId);
+                const dz = dropZones.find((d: any) => d.folderId === file.folder_id);
                 if (!dz || !dz.privateKey) {
                     throw new Error('Drop Zone private key not found');
                 }

@@ -372,7 +372,7 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
                     <div className="w-full h-1.5 bg-white/50 rounded-full overflow-hidden mb-3 border border-white/20">
                         <div
                             className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(118,138,150,0.5)]"
-                            style={{ width: `${Math.min(quota.percentage, 100)}%` }}
+                            style={{ width: `${Math.round(Math.min(quota.percentage, 100))}%` }}
                         />
                     </div>
                     <button
