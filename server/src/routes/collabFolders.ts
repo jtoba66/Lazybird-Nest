@@ -212,11 +212,14 @@ hostRouter.post('/', authenticateToken, async (req: AuthRequest, res) => {
     try {
         let pin_hash = null;
         if (require_pin && pin) {
+            if (!/^\d{4}$/.test(String(pin))) {
+                return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+            }
             pin_hash = await bcrypt.hash(pin, 10);
         }
 
         const token = crypto.randomBytes(16).toString('hex');
-        
+
         let checkedSlug = null;
         if (custom_slug) {
             checkedSlug = custom_slug.toLowerCase();
@@ -611,6 +614,9 @@ hostRouter.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
         }
 
         if (pin) {
+            if (!/^\d{4}$/.test(String(pin))) {
+                return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+            }
             updates.pin_hash = await bcrypt.hash(pin, 10);
         }
 

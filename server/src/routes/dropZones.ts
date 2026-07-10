@@ -74,9 +74,12 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     try {
-        // Hash PIN if provided
+        // Hash PIN if provided (must be exactly 4 digits)
         let pin_hash = null;
         if (require_pin && pin) {
+            if (!/^\d{4}$/.test(String(pin))) {
+                return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+            }
             pin_hash = await bcrypt.hash(pin, 10);
         }
 
@@ -193,6 +196,9 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
         }
 
         if (pin) {
+            if (!/^\d{4}$/.test(String(pin))) {
+                return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+            }
             updates.pin_hash = await bcrypt.hash(pin, 10);
         }
 

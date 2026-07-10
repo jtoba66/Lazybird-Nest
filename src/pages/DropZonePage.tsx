@@ -357,8 +357,10 @@ export const DropZonePage = () => {
                                     />
                                     <input
                                         type="password"
+                                        inputMode="numeric"
+                                        maxLength={4}
                                         value={pin}
-                                        onChange={(e) => setPin(e.target.value)}
+                                        onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                                         className="w-full glass-input pl-12 bg-white/50 focus:bg-white text-center tracking-widest text-lg font-bold"
                                         placeholder="••••"
                                         required

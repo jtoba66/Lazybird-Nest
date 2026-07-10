@@ -127,7 +127,7 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
 
         if (!name.trim()) return showToast('Please enter a name', 'warning');
         if (finalEmails.length === 0) return showToast('Please add at least one collaborator email', 'warning');
-        if (requirePin && !pin) return showToast('Please enter a PIN', 'warning');
+        if (requirePin && !/^\d{4}$/.test(pin)) return showToast('PIN must be exactly 4 digits', 'warning');
         if (customSlug && slugAvailable === false) return showToast('Custom link name not available', 'warning');
 
         setSubmitting(true);
@@ -292,9 +292,11 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                             <label className="text-xs font-bold text-text-muted block mb-1">Folder PIN</label>
                             <input
                                 type="password"
-                                placeholder="Enter secure PIN"
+                                inputMode="numeric"
+                                maxLength={4}
+                                placeholder="4-digit PIN"
                                 value={pin}
-                                onChange={(e) => setPin(e.target.value)}
+                                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                                 className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"
                                 required
                             />

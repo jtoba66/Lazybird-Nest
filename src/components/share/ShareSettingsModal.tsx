@@ -324,6 +324,10 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!share) return;
+        // PINs (collab / drop zone) must be exactly 4 digits when set. Blank = keep current.
+        if (requirePin && pin && share.type !== 'standard_link' && !/^\d{4}$/.test(pin)) {
+            return showToast('PIN must be exactly 4 digits', 'warning');
+        }
         setSubmitting(true);
 
         try {
@@ -493,9 +497,11 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                             </label>
                             <input
                                 type="password"
-                                placeholder={`Enter secure ${share.type === 'standard_link' ? 'password' : 'PIN'}`}
+                                inputMode={share.type === 'standard_link' ? 'text' : 'numeric'}
+                                maxLength={share.type === 'standard_link' ? undefined : 4}
+                                placeholder={share.type === 'standard_link' ? 'Enter secure password' : '4-digit PIN'}
                                 value={pin}
-                                onChange={(e) => setPin(e.target.value)}
+                                onChange={(e) => setPin(share.type === 'standard_link' ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 4))}
                                 className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"
                             />
                         </div>
