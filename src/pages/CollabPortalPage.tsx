@@ -31,6 +31,7 @@ import logoImg from '../assets/nest-logo.png';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { StreamingDownloader } from '../utils/StreamingDownloader';
+import { DeleteConfirmationModal } from '../components/DeleteConfirmationModal';
 
 // Helper to convert base64url to base64
 const fromBase64url = (str: string): Uint8Array => {
@@ -107,6 +108,7 @@ export const CollabPortalPage = () => {
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadCount, setUploadCount] = useState(1);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; fileId: number | null; name: string }>({ isOpen: false, fileId: null, name: '' });
     const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
 
     const [submittingOtp, setSubmittingOtp] = useState(false);
@@ -500,9 +502,14 @@ export const CollabPortalPage = () => {
         }
     };
 
-    // Delete a file (soft-delete to host's trash)
-    const handleDeleteFile = async (fileId: number, name: string) => {
-        if (!confirm(`Delete "${name}"? It will be moved to the host's Trash.`)) return;
+    // Delete a file (soft-delete to host's trash) — opens a confirm modal first.
+    const handleDeleteFile = (fileId: number, name: string) => {
+        setDeleteConfirm({ isOpen: true, fileId, name });
+    };
+
+    const performDeleteFile = async () => {
+        const { fileId, name } = deleteConfirm;
+        if (fileId == null) return;
         try {
             const response = await fetch(`${API_BASE_URL}/collab/${token}/files/${fileId}`, {
                 method: 'DELETE',
@@ -514,6 +521,8 @@ export const CollabPortalPage = () => {
             fetchFilesList();
         } catch (err: any) {
             showToast(err.message || 'Delete failed', 'error');
+        } finally {
+            setDeleteConfirm({ isOpen: false, fileId: null, name: '' });
         }
     };
 
@@ -1269,6 +1278,14 @@ export const CollabPortalPage = () => {
                     </div>
                 )}
             </AnimatePresence>
+
+            <DeleteConfirmationModal
+                isOpen={deleteConfirm.isOpen}
+                onClose={() => setDeleteConfirm({ isOpen: false, fileId: null, name: '' })}
+                onConfirm={performDeleteFile}
+                itemName={deleteConfirm.name}
+                itemType="file"
+            />
         </div>
     );
 };
