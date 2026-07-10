@@ -153,6 +153,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Handle locked session - show toast and redirect to login
     const handleSessionLocked = () => {
+        // Guest-facing routes (collab portal, drop zone, shared file) must work for a
+        // logged-in user whose master key isn't in THIS tab's sessionStorage — e.g. they
+        // opened an emailed link in a fresh tab, which shares nest_token (localStorage) but
+        // not the master key (per-tab sessionStorage). Wiping the session and bouncing them
+        // to /login here breaks the invite flow. On these routes, stay put and let the page
+        // render its guest experience instead.
+        const path = window.location.pathname;
+        if (path.startsWith('/collab/') || path.startsWith('/dz/') || path.startsWith('/s/')) {
+            return;
+        }
+
         // Clear all session data
         localStorage.removeItem('nest_token');
         localStorage.removeItem('nest_refresh_token');

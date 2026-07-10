@@ -347,8 +347,10 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                 payload.upload_notifications = uploadNotifications;
                 await api.patch(`/drop-zones/${share.id}`, payload);
             } else if (share.type === 'collab_folder') {
-                payload.require_pin = requirePin;
-                payload.pin = requirePin ? (pin || undefined) : null;
+                // Collab folders no longer use a PIN; clear any legacy one so access is
+                // gated purely by the approved collaborator email list.
+                payload.require_pin = false;
+                payload.pin = null;
                 payload.strict_mode = strictMode;
                 
                 let finalEmails = [...emails];
@@ -474,37 +476,42 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                         </div>
                     </div>
 
-                    {/* PIN / Password Gate */}
-                    <div className="border border-border/40 rounded-xl p-3 bg-black/5 flex items-center justify-between">
-                        <div>
-                            <span className="text-sm font-semibold text-text-main block">
-                                {share.type === 'standard_link' ? 'Password Protection' : 'PIN Protection'}
-                            </span>
-                            <span className="text-xs text-text-muted">Require guest verification before access</span>
-                        </div>
-                        <input
-                            type="checkbox"
-                            checked={requirePin}
-                            onChange={(e) => setRequirePin(e.target.checked)}
-                            className="w-4 h-4 rounded text-primary focus:ring-primary/40 cursor-pointer"
-                        />
-                    </div>
+                    {/* PIN / Password Gate. Collab folders no longer use a PIN — access is
+                        gated by the approved collaborator email list — so this is hidden for them. */}
+                    {share.type !== 'collab_folder' && (
+                        <>
+                            <div className="border border-border/40 rounded-xl p-3 bg-black/5 flex items-center justify-between">
+                                <div>
+                                    <span className="text-sm font-semibold text-text-main block">
+                                        {share.type === 'standard_link' ? 'Password Protection' : 'PIN Protection'}
+                                    </span>
+                                    <span className="text-xs text-text-muted">Require guest verification before access</span>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={requirePin}
+                                    onChange={(e) => setRequirePin(e.target.checked)}
+                                    className="w-4 h-4 rounded text-primary focus:ring-primary/40 cursor-pointer"
+                                />
+                            </div>
 
-                    {requirePin && (
-                        <div className="animate-in slide-in-from-top-2 duration-200">
-                            <label className="text-xs font-bold text-text-muted block mb-1">
-                                New {share.type === 'standard_link' ? 'Password' : 'PIN'} (Leave blank to keep current)
-                            </label>
-                            <input
-                                type="password"
-                                inputMode={share.type === 'standard_link' ? 'text' : 'numeric'}
-                                maxLength={share.type === 'standard_link' ? undefined : 4}
-                                placeholder={share.type === 'standard_link' ? 'Enter secure password' : '4 digit PIN'}
-                                value={pin}
-                                onChange={(e) => setPin(share.type === 'standard_link' ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"
-                            />
-                        </div>
+                            {requirePin && (
+                                <div className="animate-in slide-in-from-top-2 duration-200">
+                                    <label className="text-xs font-bold text-text-muted block mb-1">
+                                        New {share.type === 'standard_link' ? 'Password' : 'PIN'} (Leave blank to keep current)
+                                    </label>
+                                    <input
+                                        type="password"
+                                        inputMode={share.type === 'standard_link' ? 'text' : 'numeric'}
+                                        maxLength={share.type === 'standard_link' ? undefined : 4}
+                                        placeholder={share.type === 'standard_link' ? 'Enter secure password' : '4 digit PIN'}
+                                        value={pin}
+                                        onChange={(e) => setPin(share.type === 'standard_link' ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                        className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"
+                                    />
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {/* Specific Collab Settings */}

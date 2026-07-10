@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LockKey, EnvelopeSimple, Eye, EyeSlash } from '@phosphor-icons/react';
 import logoImg from '../assets/nest-logo.png';
@@ -16,6 +16,7 @@ export const LoginPage = () => {
 
     const { login, setMasterKey } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -52,7 +53,15 @@ export const LoginPage = () => {
             // 4. Decrypt Master Key (Handled internally by AuthContext.login)
             // The context will update the state and localStorage automatically.
 
-            navigate('/dashboard');
+            // Honor a return path (e.g. a collab invite link that sent the user here to unlock
+            // their vault). Only accept in-app relative paths to avoid open-redirects, and
+            // preserve any #lk fragment the collab flow depends on.
+            const redirect = searchParams.get('redirect');
+            if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+                navigate(redirect);
+            } else {
+                navigate('/dashboard');
+            }
 
         } catch (err: any) {
             console.error(err);

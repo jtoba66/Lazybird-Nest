@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
-import { X, CheckCircle, Copy, PaperPlaneTilt } from '@phosphor-icons/react';
+import { X, CheckCircle, Copy } from '@phosphor-icons/react';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Modal } from '../Modal';
@@ -45,8 +45,6 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
     const [emails, setEmails] = useState<string[]>([]);
     
     // Settings state
-    const [requirePin, setRequirePin] = useState(false);
-    const [pin, setPin] = useState('');
     const [strictMode, setStrictMode] = useState(false);
     const [activityNotifications, setActivityNotifications] = useState(true);
     const [customSlug, setCustomSlug] = useState('');
@@ -62,8 +60,6 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
             setName('');
             setEmailInput('');
             setEmails([]);
-            setRequirePin(false);
-            setPin('');
             setStrictMode(false);
             setActivityNotifications(true);
             setCustomSlug('');
@@ -127,7 +123,6 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
 
         if (!name.trim()) return showToast('Please enter a name', 'warning');
         if (finalEmails.length === 0) return showToast('Please add at least one collaborator email', 'warning');
-        if (requirePin && !/^\d{4}$/.test(pin)) return showToast('PIN must be exactly 4 digits', 'warning');
         if (customSlug && slugAvailable === false) return showToast('Custom link name not available', 'warning');
 
         setSubmitting(true);
@@ -155,8 +150,6 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                 host_collab_key_nonce: toBase64(encryptedHost.nonce),
                 link_encrypted_collab_key: toBase64(encryptedLink.encrypted),
                 link_collab_key_nonce: toBase64(encryptedLink.nonce),
-                require_pin: requirePin,
-                pin: requirePin ? pin : undefined,
                 strict_mode: strictMode,
                 activity_notifications: activityNotifications,
                 custom_slug: customSlug ? customSlug.trim() : undefined
@@ -198,22 +191,6 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
     const handleCopy = () => {
         navigator.clipboard.writeText(resultUrl);
         showToast('Collaboration Link copied!', 'success');
-    };
-
-    // Open the host's own mail client with a pre-filled invite. The link (with its
-    // #lk decryption key) is built client-side and never passes through our server,
-    // so this stays zero-knowledge — same as the host emailing it manually.
-    const handleEmailInvite = () => {
-        const folder = name.trim() || 'a shared folder';
-        const subject = `You have been invited to collaborate on "${folder}" in Nest`;
-        const body =
-            `Hi,\n\n` +
-            `You have been invited to collaborate on the secure folder "${folder}" in Nest.\n\n` +
-            `Open this link to access it. It contains your private decryption key, so keep it safe and do not forward it:\n` +
-            `${resultUrl}\n\n` +
-            `The first time you open it you will be asked to verify your email with a one time code.\n\n` +
-            `Thanks`;
-        window.location.href = `mailto:${emails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     };
 
     return (
@@ -273,35 +250,6 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                             </div>
                         )}
                     </div>
-
-                    <div className="border border-border/40 rounded-xl p-3 bg-black/5 flex items-center justify-between">
-                        <div>
-                            <span className="text-sm font-semibold text-text-main block">PIN Protection</span>
-                            <span className="text-xs text-text-muted">Require guest verification before uploads</span>
-                        </div>
-                        <input
-                            type="checkbox"
-                            checked={requirePin}
-                            onChange={(e) => setRequirePin(e.target.checked)}
-                            className="w-4 h-4 rounded text-primary focus:ring-primary/40 cursor-pointer"
-                        />
-                    </div>
-
-                    {requirePin && (
-                        <div className="animate-in slide-in-from-top-2 duration-200">
-                            <label className="text-xs font-bold text-text-muted block mb-1">Folder PIN</label>
-                            <input
-                                type="password"
-                                inputMode="numeric"
-                                maxLength={4}
-                                placeholder="4 digit PIN"
-                                value={pin}
-                                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"
-                                required
-                            />
-                        </div>
-                    )}
 
                     <div className="border border-border/40 rounded-xl p-3 bg-black/5 flex items-center justify-between">
                         <div>
@@ -408,18 +356,9 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                     </div>
 
                     {emails.length > 0 && (
-                        <div className="w-full">
-                            <button
-                                onClick={handleEmailInvite}
-                                className="w-full mt-2 flex items-center justify-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-xl py-2.5 text-sm font-semibold hover:bg-primary/15 transition-colors"
-                            >
-                                <PaperPlaneTilt size={16} weight="bold" />
-                                Email invite to {emails.length > 1 ? `${emails.length} collaborators` : 'collaborator'}
-                            </button>
-                            <p className="text-[11px] text-text-muted mt-1.5 leading-snug">
-                                Opens your email app with a pre-filled invite and the secure link. The key stays in your email, never on our servers.
-                            </p>
-                        </div>
+                        <p className="w-full text-xs text-text-muted leading-snug text-center">
+                            Invite {emails.length > 1 ? `emails sent to ${emails.length} collaborators` : 'email sent'}. They will verify with a one time code the first time they open the link.
+                        </p>
                     )}
 
                     <button

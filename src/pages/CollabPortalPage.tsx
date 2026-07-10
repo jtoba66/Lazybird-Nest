@@ -64,6 +64,14 @@ const decryptSymmetricMetadata = (jsonStr: string | null, key: Uint8Array): stri
     }
 };
 
+// A collab link key is a 32-byte secret encoded as exactly 43 base64url chars. Defends
+// against a malformed fragment (e.g. a link accidentally pasted/copied twice, so the value
+// is the real key followed by another full URL) by extracting just the leading valid key.
+const sanitizeLinkKey = (raw: string): string => {
+    const m = raw.match(/[A-Za-z0-9_-]{43}/);
+    return m ? m[0] : raw;
+};
+
 export const CollabPortalPage = () => {
     const { token } = useParams<{ token: string }>();
     const navigate = useNavigate();
@@ -74,9 +82,10 @@ export const CollabPortalPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [deadState, setDeadState] = useState<'revoked' | 'expired' | null>(null);
-    const [onboardingStep, setOnboardingStep] = useState<'info' | 'otp' | 'verified'>('info');
+    // Set when a signed-in user (token present) whose vault is locked in this tab chooses to
+    // access as a guest instead of unlocking. Lets us bypass the "unlock to add to Nest" panel.
+    const [guestMode, setGuestMode] = useState(false);
     const [email, setEmail] = useState('');
-    const [otpCode, setOtpCode] = useState('');
     const [otpError, setOtpError] = useState('');
     
     // Decryption Keys in memory
@@ -88,8 +97,6 @@ export const CollabPortalPage = () => {
     const [collabName, setCollabName] = useState('');
     const [hostEmail, setHostEmail] = useState('');
     const [strictMode, setStrictMode] = useState(false);
-    const [requiresPin, setRequiresPin] = useState(false);
-    const [accessPin, setAccessPin] = useState('');
 
     // Folder workspace hierarchy states
     const [collabRootId, setCollabRootId] = useState<number | null>(null);
@@ -126,7 +133,7 @@ export const CollabPortalPage = () => {
                 if (lkParam) {
                     try {
                         await initCrypto();
-                        const lk = fromBase64url(lkParam);
+                        const lk = fromBase64url(sanitizeLinkKey(lkParam));
                         setLinkKey(lk);
                     } catch (e: any) {
                         console.error('Failed to parse link key from fragment:', e);
@@ -183,8 +190,7 @@ export const CollabPortalPage = () => {
             setCollabName(data.name);
             setHostEmail(data.host_display);
             setStrictMode(data.strict_mode);
-            setRequiresPin(!!data.require_pin);
-            
+
             // Check if user is logged-in Nest user
             if (authedUser && masterKey) {
                 // Shared With Me flow
@@ -208,7 +214,7 @@ export const CollabPortalPage = () => {
             if (hashParam) {
                 try {
                     await initCrypto();
-                    lk = fromBase64url(hashParam);
+                    lk = fromBase64url(sanitizeLinkKey(hashParam));
                 } catch (e) {
                     console.error('Failed to derive link key from fragment:', e);
                 }
@@ -262,43 +268,13 @@ export const CollabPortalPage = () => {
         }
     };
 
-    // Request OTP code
-    const handleRequestOtp = async (e: React.FormEvent) => {
+    // Enter the workspace. No 6-digit email code: access is gated by the approved
+    // collaborator email list plus the optional 4-digit folder PIN. The #lk link key
+    // (never sent to the server) is still what actually decrypts the folder.
+    const handleAccess = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!email || !token) return;
-        if (requiresPin && !/^\d{4}$/.test(accessPin)) {
-            setOtpError('Enter the 4 digit PIN for this folder');
-            return;
-        }
-        setOtpError('');
-        setSubmittingOtp(true);
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/collab/${token}/otp/request`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, pin: requiresPin ? accessPin : undefined })
-            });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Failed to send verification code');
-            }
-
-            setOnboardingStep('otp');
-            showToast('Verification code sent to your email', 'success');
-        } catch (err: any) {
-            showToast(err.message || 'OTP request failed', 'error');
-        } finally {
-            setSubmittingOtp(false);
-        }
-    };
-
-    // Verify OTP code
-    const handleVerifyOtp = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!otpCode || !token) return;
-        
         if (!linkKey) {
             // Never render window.location.hash — it contains the #lk= link key (the
             // secret that decrypts the collab key). Show a generic message instead.
@@ -310,19 +286,19 @@ export const CollabPortalPage = () => {
         setSubmittingOtp(true);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/collab/${token}/otp/verify`, {
+            const response = await fetch(`${API_BASE_URL}/collab/${token}/access`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, code: otpCode })
+                body: JSON.stringify({ email })
             });
 
             if (!response.ok) {
                 const data = await response.json();
-                throw new Error(data.error || 'Invalid code');
+                throw new Error(data.error || 'Access denied');
             }
 
             const data = await response.json();
-            
+
             // Decrypt collab key
             const encKey = fromBase64(data.link_encrypted_collab_key);
             const nonce = fromBase64(data.link_collab_key_nonce);
@@ -359,7 +335,6 @@ export const CollabPortalPage = () => {
                 }
             }
 
-            setOnboardingStep('verified');
             showToast('Verification successful', 'success');
         } catch (err: any) {
             setOtpError(err.message || 'Verification failed');
@@ -470,7 +445,6 @@ export const CollabPortalPage = () => {
         sessionStorage.removeItem(`collab_key_${token}`);
         setSessionToken(null);
         setCollabKey(null);
-        setOnboardingStep('info');
     };
 
     // Create a subfolder
@@ -838,7 +812,31 @@ export const CollabPortalPage = () => {
                     </div>
 
                     <div className="glass-panel p-6 sm:p-8 border-white/60 shadow-xl">
-                        {strictMode ? (
+                        {authedUser && !masterKey && !guestMode ? (
+                            <div className="space-y-5 text-center">
+                                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+                                    <ShieldCheck size={32} className="text-primary" />
+                                </div>
+                                <p className="text-sm text-text-main font-medium leading-normal">
+                                    You are signed in as <span className="font-semibold">{authedUser.email}</span>.
+                                </p>
+                                <p className="text-xs text-text-muted leading-normal">
+                                    Unlock your vault to add this folder to your Nest, so it shows up in your own File Manager.
+                                </p>
+                                <button
+                                    onClick={() => navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.hash)}`)}
+                                    className="glass-button w-full py-3 text-sm font-bold mt-2"
+                                >
+                                    Unlock and Add to My Nest
+                                </button>
+                                <button
+                                    onClick={() => setGuestMode(true)}
+                                    className="w-full py-2 text-xs font-semibold text-text-muted hover:text-text-main transition-colors"
+                                >
+                                    Continue as guest instead
+                                </button>
+                            </div>
+                        ) : strictMode ? (
                             <div className="space-y-5 text-center">
                                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
                                     <ShieldCheck size={32} className="text-primary" />
@@ -856,10 +854,10 @@ export const CollabPortalPage = () => {
                                     Log In or Sign Up
                                 </button>
                             </div>
-                        ) : onboardingStep === 'info' ? (
-                            <form onSubmit={handleRequestOtp} className="space-y-5">
+                        ) : (
+                            <form onSubmit={handleAccess} className="space-y-5">
                                 <p className="text-xs text-text-muted text-center leading-normal">
-                                    This is a secure collaborative workspace. Enter your email to receive a temporary access key.
+                                    This is a secure collaborative workspace. Enter your email to access it.
                                 </p>
                                 <div>
                                     <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
@@ -874,50 +872,6 @@ export const CollabPortalPage = () => {
                                         required
                                     />
                                 </div>
-                                {requiresPin && (
-                                    <div>
-                                        <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                                            Access PIN
-                                        </label>
-                                        <input
-                                            type="password"
-                                            inputMode="numeric"
-                                            maxLength={4}
-                                            value={accessPin}
-                                            onChange={(e) => setAccessPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                            className="w-full glass-input bg-white/50 focus:bg-white text-center tracking-widest text-lg font-bold"
-                                            placeholder="••••"
-                                            required
-                                        />
-                                    </div>
-                                )}
-                                <button
-                                    type="submit"
-                                    disabled={submittingOtp}
-                                    className="glass-button w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
-                                >
-                                    {submittingOtp ? 'Sending...' : 'Request Access Key'}
-                                </button>
-                            </form>
-                        ) : (
-                            <form onSubmit={handleVerifyOtp} className="space-y-5">
-                                <p className="text-xs text-text-muted text-center leading-normal">
-                                    We sent a 6-digit access key to <span className="text-text-main font-semibold">{email}</span>.
-                                </p>
-                                <div>
-                                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                                        Enter Access Key
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={otpCode}
-                                        onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                                        className="w-full glass-input bg-white/50 focus:bg-white text-center tracking-widest text-lg font-bold"
-                                        placeholder="••••••"
-                                        maxLength={6}
-                                        required
-                                    />
-                                </div>
 
                                 {otpError && (
                                     <div className="bg-error/10 border border-error/20 text-error rounded-xl p-3.5 text-xs text-center font-medium">
@@ -925,22 +879,13 @@ export const CollabPortalPage = () => {
                                     </div>
                                 )}
 
-                                <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setOnboardingStep('info')}
-                                        className="px-4 border border-border text-text-main rounded-xl hover:bg-card text-xs font-semibold"
-                                    >
-                                        Back
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={submittingOtp}
-                                        className="glass-button flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2"
-                                    >
-                                        {submittingOtp ? 'Verifying...' : 'Verify & Enter Workspace'}
-                                    </button>
-                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={submittingOtp}
+                                    className="glass-button w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
+                                >
+                                    {submittingOtp ? 'Entering...' : 'Enter Workspace'}
+                                </button>
                             </form>
                         )}
                     </div>

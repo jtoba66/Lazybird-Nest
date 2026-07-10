@@ -204,7 +204,10 @@ export const FoldersPage = () => {
             }
         };
         loadDropZonesAndShares();
-    }, [masterKey]);
+        // fileListVersion is included so that creating a Drop Zone / Collab Folder (which bumps
+        // the version via triggerFileRefresh) refetches this list — otherwise the new folder
+        // wouldn't surface in the File Manager until a full page reload.
+    }, [masterKey, fileListVersion]);
 
     // Load + decrypt the collab keys for collab folders this host owns. host_encrypted_collab_key
     // is the collab key sealed to the host's master key (encryptCollabKeyForHost), so the host can

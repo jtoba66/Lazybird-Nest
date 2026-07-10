@@ -1,31 +1,8 @@
 import { test, expect } from '@playwright/test';
-import postgres from 'postgres';
 import fs from 'fs';
-
-// DB handle kept for collab assertions; the OTP itself now comes from the real email (MailDev).
-const sql = postgres('postgresql://localhost:5432/nest_test');
 
 // MailDev REST API — lets us assert mail was actually generated, sent over SMTP, and delivered.
 const MAILDEV_API = 'http://localhost:1080';
-
-/** Poll MailDev for the most recent message to `to` and return the 6-digit OTP from its subject. */
-async function fetchOtpFromMail(to: string, timeoutMs = 15000): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const res = await fetch(`${MAILDEV_API}/email`);
-    const messages: Array<{ subject: string; to: Array<{ address: string }> }> = await res.json();
-    const match = messages
-      .filter(m => m.to?.some(t => t.address.toLowerCase() === to.toLowerCase()))
-      .reverse()
-      .find(m => /\b\d{6}\b/.test(m.subject));
-    if (match) {
-      const code = match.subject.match(/\b(\d{6})\b/);
-      if (code) return code[1];
-    }
-    await new Promise(r => setTimeout(r, 500));
-  }
-  throw new Error(`No OTP email for ${to} arrived in MailDev within ${timeoutMs}ms`);
-}
 
 /** Poll MailDev for an auto-sent collab invite email to `to`. */
 async function expectInviteMail(to: string, timeoutMs = 15000): Promise<boolean> {
@@ -196,35 +173,17 @@ test.describe('Nest Full User Journey Integration Test', () => {
     collabGuestPage.on('console', msg => console.log(`[GUEST COLLAB BROWSER] [${msg.type().toUpperCase()}] ${msg.text()}`));
     await collabGuestPage.goto(collabUrl);
 
-    // Verify Guest Entry Portal
+    // Verify Guest Entry Portal. There is no 6-digit email code any more: the guest enters
+    // their email (which must be on the approved collaborator list) and goes straight in.
     const guestEmailInput = collabGuestPage.locator('input[type="email"]');
     await expect(guestEmailInput).toBeVisible({ timeout: 10000 });
     await guestEmailInput.fill(guestEmail);
-    await collabGuestPage.getByRole('button', { name: 'Request Access Key' }).click();
-
-    // Read the OTP from the REAL email delivered to MailDev. This proves the full mail path:
-    // the server generated the code, sent it over SMTP, and it was delivered to the guest's inbox.
-    const foundCode = await fetchOtpFromMail(guestEmail);
-    console.log(`✅ OTP received via email (MailDev): ${foundCode}`);
-
-    // Fill OTP inputs
-    const otpInputs = collabGuestPage.locator('input[type="text"]');
-    const count = await otpInputs.count();
-    if (count === 6) {
-      for (let i = 0; i < 6; i++) {
-        await otpInputs.nth(i).fill(foundCode[i]);
-      }
-    } else {
-      const singleOtpInput = collabGuestPage.locator('input[placeholder*="code" i], input[type="text"]').first();
-      await singleOtpInput.fill(foundCode);
-    }
-
-    await collabGuestPage.getByRole('button', { name: /Verify/i }).first().click();
+    await collabGuestPage.getByRole('button', { name: 'Enter Workspace' }).click();
 
     // Verify guest successfully entered collab portal (the toolbar "New" action is
     // always present in the portal, regardless of the responsive header labels).
     await expect(collabGuestPage.getByRole('button', { name: 'New' }).first()).toBeVisible({ timeout: 20000 });
-    console.log('✅ Guest OTP login verification verified.');
+    console.log('✅ Guest collab access (no OTP code) verified.');
     await collabGuestPage.close();
 
     // ----------------------------------------------------
@@ -275,7 +234,6 @@ test.describe('Nest Full User Journey Integration Test', () => {
 
     // Clean up connections
     await guestContext.close();
-    await sql.end();
     console.log('🎉 E2E Journey Test Completed Successfully.');
   });
 });

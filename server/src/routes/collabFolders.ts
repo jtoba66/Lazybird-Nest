@@ -994,6 +994,85 @@ guestRouter.post('/:tokenOrSlug/otp/verify', shareLimiter, async (req, res) => {
     }
 });
 
+// 9b. POST /api/collab/:tokenOrSlug/access - Issue a guest session with NO 6-digit email code.
+// Access is gated by (a) the approved collaborator email list and (b) the optional 4-digit
+// folder PIN. The link's #lk fragment (never sent to the server) is still what decrypts the
+// folder, so possession of the invite link remains required to read anything.
+guestRouter.post('/:tokenOrSlug/access', shareLimiter, pinLimiter, async (req, res) => {
+    const { tokenOrSlug } = req.params;
+    const { email } = req.body;
+
+    if (!email) return res.status(400).json({ error: 'Email address is required' });
+    const cleanEmail = email.trim().toLowerCase();
+
+    try {
+        const [collab] = await db.select().from(collabFolders)
+            .where(
+                and(
+                    or(eq(collabFolders.token, tokenOrSlug), eq(collabFolders.custom_slug, tokenOrSlug)),
+                    isNull(collabFolders.revoked_at)
+                )
+            )
+            .limit(1);
+
+        if (!collab) return res.status(404).json({ error: 'Collab Folder not found' });
+
+        if (collab.strict_mode) {
+            return res.status(403).json({ error: 'This folder is in Strict Mode and requires a registered Nest account to access. Please log in.' });
+        }
+
+        // Email must be on the approved collaborator list.
+        const [access] = await db.select()
+            .from(collabAccessList)
+            .where(and(eq(collabAccessList.collabId, collab.id), eq(collabAccessList.email, cleanEmail)))
+            .limit(1);
+
+        if (!access) {
+            logger.warn(`[COLLAB-ACCESS] Denied ${cleanEmail} for folder ${collab.id}`);
+            return res.status(403).json({ error: "Access denied: your email is not on this folder's collaborator list." });
+        }
+
+        // Collab folders no longer use a 4-digit PIN — the approved collaborator list is the
+        // access gate, so any legacy `require_pin` is intentionally ignored here (not enforced)
+        // to avoid locking out folders created before the PIN was removed.
+
+        // Issue Guest Session Token (8 hours duration)
+        const sessionToken = jwt.sign(
+            { email: cleanEmail, collabId: collab.id, role: 'collab_guest' },
+            env.JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
+        await db.insert(collabGuestSessions).values({
+            collabId: collab.id,
+            email: cleanEmail,
+            session_token: sessionToken,
+            expires_at: new Date(Date.now() + 8 * 60 * 60 * 1000)
+        });
+
+        await db.insert(shareAuditLog).values({
+            share_type: 'collab_folder',
+            share_id: collab.id,
+            action: 'guest_access',
+            actor: cleanEmail,
+            timestamp: new Date()
+        });
+
+        res.json({
+            success: true,
+            id: collab.id,
+            folder_id: collab.folderId,
+            session_token: sessionToken,
+            link_encrypted_collab_key: bufferToBase64(collab.link_encrypted_collab_key),
+            link_collab_key_nonce: bufferToBase64(collab.link_collab_key_nonce)
+        });
+
+    } catch (error) {
+        logger.error('[COLLAB-ACCESS] Failed:', error);
+        res.status(500).json({ error: 'Internal access error' });
+    }
+});
+
 // ============================================================================
 // PUBLIC AUTHENTICATED GUEST ROUTES (Guest Token Required)
 // ============================================================================
