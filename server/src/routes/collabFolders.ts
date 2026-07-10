@@ -160,7 +160,8 @@ hostRouter.get('/shared-with-me', authenticateToken, async (req: AuthRequest, re
             folder_id: collabFolders.folderId,
             encrypted_collab_key: sharedWithMe.encrypted_collab_key,
             collab_key_nonce: sharedWithMe.collab_key_nonce,
-            owner_email: users.email
+            owner_email: users.email,
+            created_at: collabFolders.created_at
         })
         .from(sharedWithMe)
         .innerJoin(collabFolders, eq(sharedWithMe.collabId, collabFolders.id))
@@ -176,7 +177,8 @@ hostRouter.get('/shared-with-me', authenticateToken, async (req: AuthRequest, re
                 folder_id: f.folder_id,
                 encrypted_collab_key: bufferToBase64(f.encrypted_collab_key),
                 collab_key_nonce: bufferToBase64(f.collab_key_nonce),
-                owner_email: f.owner_email
+                owner_email: f.owner_email,
+                created_at: f.created_at
             }))
         });
 
