@@ -369,3 +369,21 @@ export function collabOtpEmail(otp: string, folderName: string, hostEmail: strin
     `;
     return wrapTemplate(content, title);
 }
+
+/**
+ * Collab Folder Invitation Email — contains the secure link (with its access key).
+ */
+export function collabInviteEmail(folderName: string, hostEmail: string, collabUrl: string) {
+    const title = 'You have been invited to collaborate';
+    const content = `
+        <h1 class="h1">You're invited to collaborate</h1>
+        <p class="p">Hello,</p>
+        <p class="p"><strong>${hostEmail}</strong> has invited you to the secure folder <strong>${folderName}</strong> on Nest.</p>
+        <p class="p">Open it with the button below. This link contains your private access key, so keep it to yourself and do not forward it.</p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="${collabUrl}" style="display:inline-block; background-color:#5D7285; color:#ffffff; text-decoration:none; font-weight:600; padding:14px 28px; border-radius:12px;">Open the folder</a>
+        </div>
+        <p class="p" style="font-size: 14px; color: #4B5563;">The first time you open it, you'll be asked to verify your email with a one time code. If you weren't expecting this invitation, you can safely ignore this email.</p>
+    `;
+    return wrapTemplate(content, title);
+}

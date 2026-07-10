@@ -354,6 +354,16 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                 }
                 payload.emails = finalEmails;
                 await api.patch(`/collab-folders/${share.id}`, payload);
+
+                // Auto-invite anyone newly added, using the working link (freshly
+                // regenerated or rebuilt from the vault). Non-blocking.
+                const originalEmails = share.collaborators || [];
+                const newlyAdded = finalEmails.filter(e => !originalEmails.includes(e));
+                const inviteLink = regeneratedUrl || collabVaultUrl;
+                if (newlyAdded.length > 0 && inviteLink) {
+                    api.post(`/collab-folders/${share.id}/invite`, { emails: newlyAdded, link: inviteLink })
+                        .catch(err => console.error('Collab invite email failed:', err));
+                }
             }
 
             showToast('Share link settings updated successfully.', 'success');

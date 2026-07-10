@@ -27,6 +27,21 @@ async function fetchOtpFromMail(to: string, timeoutMs = 15000): Promise<string> 
   throw new Error(`No OTP email for ${to} arrived in MailDev within ${timeoutMs}ms`);
 }
 
+/** Poll MailDev for an auto-sent collab invite email to `to`. */
+async function expectInviteMail(to: string, timeoutMs = 15000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await fetch(`${MAILDEV_API}/email`);
+    const messages: Array<{ subject: string; to: Array<{ address: string }> }> = await res.json();
+    const match = messages
+      .filter(m => m.to?.some(t => t.address.toLowerCase() === to.toLowerCase()))
+      .find(m => /invited you to collaborate/i.test(m.subject));
+    if (match) return true;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return false;
+}
+
 // Force this test file to start with a clean state (no pre-saved auth)
 // This guarantees that signup runs in-browser and populates sessionStorage keys!
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -168,7 +183,11 @@ test.describe('Nest Full User Journey Integration Test', () => {
     await expect(collabLinkInput).toBeVisible({ timeout: 15000 });
     const collabUrl = await collabLinkInput.inputValue();
     console.log(`✅ Collab Folder URL generated: ${collabUrl}`);
-    
+
+    // The branded invite email is auto-sent to the collaborator on creation.
+    expect(await expectInviteMail(guestEmail), 'a collab invite email should be delivered').toBe(true);
+    console.log('✅ Collab invite email delivered (MailDev).');
+
     // Close Modal
     await page.keyboard.press('Escape');
 

@@ -17,7 +17,7 @@ import { withTimeout } from '../utils/promise';
 import { uploadQueue } from '../utils/uploadQueue';
 import { bufferToBase64, base64ToBuffer } from '../crypto/keyManagement';
 import { sendEmail } from '../services/email';
-import { collabOtpEmail } from '../services/email-templates';
+import { collabOtpEmail, collabInviteEmail } from '../services/email-templates';
 
 const hostRouter = express.Router();
 const guestRouter = express.Router();
@@ -479,6 +479,47 @@ hostRouter.patch('/:id/link-key', authenticateToken, async (req: AuthRequest, re
     } catch (error) {
         logger.error('[COLLAB-LINK-REGENERATE] ❌ Failed:', error);
         res.status(500).json({ error: 'Failed to regenerate link key' });
+    }
+});
+
+// 4.5b POST /api/collab-folders/:id/invite - Email the collab link to collaborators.
+// The client supplies the working link (with its #lk key). We relay it by email and
+// DO NOT store it, so the folder stays zero-knowledge at rest.
+hostRouter.post('/:id/invite', authenticateToken, async (req: AuthRequest, res) => {
+    const userId = req.user!.userId;
+    const id = parseInt(req.params.id);
+    const { emails, link } = req.body;
+
+    if (!Array.isArray(emails) || emails.length === 0 || typeof link !== 'string' || !link) {
+        return res.status(400).json({ error: 'emails and link are required' });
+    }
+
+    try {
+        const [collab] = await db.select().from(collabFolders).where(eq(collabFolders.id, id)).limit(1);
+        if (!collab) return res.status(404).json({ error: 'Collab folder not found' });
+        if (collab.userId !== userId) return res.status(403).json({ error: 'Not authorized' });
+
+        const [host] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+        const hostEmail = host?.email || 'A Nest user';
+        const folderName = collab.name || 'a shared folder';
+
+        let sent = 0;
+        for (const raw of emails) {
+            const email = String(raw).trim().toLowerCase();
+            if (!email || !email.includes('@')) continue;
+            const ok = await sendEmail({
+                to: email,
+                subject: `${hostEmail} invited you to collaborate on "${folderName}" in Nest`,
+                html: collabInviteEmail(folderName, hostEmail, link),
+            });
+            if (ok) sent++;
+        }
+
+        logger.info(`[COLLAB-INVITE] Sent ${sent}/${emails.length} invite(s) for collab ${id}`);
+        return res.json({ success: true, sent });
+    } catch (error) {
+        logger.error('[COLLAB-INVITE] ❌ Failed to send invites:', error);
+        return res.status(500).json({ error: 'Failed to send invites' });
     }
 });
 

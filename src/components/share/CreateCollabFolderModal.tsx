@@ -177,6 +177,12 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                     await saveMetadata(saveCollabLinkKey(latestMeta, response.data.token, linkKeyBase64url));
                 }
 
+                // Auto-send the branded invite email with the working link. The server
+                // relays the link and does not store it (stays zero-knowledge at rest).
+                // Non-blocking: creation succeeds even if delivery fails.
+                api.post(`/collab-folders/${response.data.id}/invite`, { emails: finalEmails, link: shareUrl })
+                    .catch(err => console.error('Collab invite email failed:', err));
+
                 setResultUrl(shareUrl);
                 setStep(2);
                 showToast('Collab Folder created successfully!', 'success');
