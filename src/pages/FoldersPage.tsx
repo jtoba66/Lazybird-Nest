@@ -90,6 +90,8 @@ export const FoldersPage = () => {
     const [collabRootId, setCollabRootId] = useState<number | null>(null);
     const [rawCollabFolders, setRawCollabFolders] = useState<any[]>([]);
     const [hostCollabFolders, setHostCollabFolders] = useState<any[]>([]);
+    // Collab folders shared WITH this user (they don't own them — reached via the collab portal).
+    const [sharedWithMeFolders, setSharedWithMeFolders] = useState<any[]>([]);
     // Decrypted collab keys for collab folders THIS host owns, keyed by folder_id. Lets the
     // normal File Manager decrypt collab-origin file names (which are symmetrically encrypted
     // with the collab key) instead of showing "Encrypted File" / "File <id>".
@@ -176,6 +178,15 @@ export const FoldersPage = () => {
                 }
             } catch (err) {
                 console.error('Failed to fetch drop zones:', err);
+            }
+
+            try {
+                const swm = await api.get('/collab-folders/shared-with-me');
+                if (swm.data && swm.data.success) {
+                    setSharedWithMeFolders(swm.data.shared_folders || []);
+                }
+            } catch (err) {
+                console.error('Failed to fetch shared-with-me folders:', err);
             }
 
             try {
@@ -424,6 +435,24 @@ export const FoldersPage = () => {
                     });
                 }
 
+                // Surface collab folders shared WITH this user. They live in the host's
+                // account (not this user's tree), so they get a unique string id and route to
+                // the collab portal on click rather than opening a local folder.
+                if (!collabToken && targetId === primaryRootId && sharedWithMeFolders && sharedWithMeFolders.length > 0) {
+                    sharedWithMeFolders.forEach((sf: any) => {
+                        if (!sf.folder_id || !sf.token) return;
+                        allVisibleFolders.push({
+                            id: `shared_${sf.token}`,
+                            name: sf.name,
+                            parent_id: targetId,
+                            created_at: sf.created_at,
+                            isSharedCollab: true,
+                            collabToken: sf.token,
+                            collabFolderId: sf.folder_id,
+                        } as any);
+                    });
+                }
+
                 // Filter out self-referencing folders
                 const visibleFolders = allVisibleFolders
                     .filter((f: any) => f.id !== targetId)
@@ -496,7 +525,7 @@ export const FoldersPage = () => {
         };
 
         loadContent();
-    }, [selectedFolderId, fileListVersion, collabToken, collabKey, dropZones, hostCollabFolders, hostCollabKeys]);
+    }, [selectedFolderId, fileListVersion, collabToken, collabKey, dropZones, hostCollabFolders, hostCollabKeys, sharedWithMeFolders]);
 
     // Fire exactly once when metadata first becomes available (login / session restore)
     const metadataReady = metadata !== null;
@@ -1346,8 +1375,10 @@ export const FoldersPage = () => {
                                         subfolder_count: folder.subfolder_count,
                                         folder_size: folder.folder_size,
                                         isDropZone: dropZones.some((dz: any) => dz.folderId === folder.id),
-                                        isCollab: rawCollabFolders.some((cf: any) => cf.folderId === folder.id) || hostCollabFolders.some((cf: any) => cf.folder_id === folder.id),
-                                        onNavigate: () => handleNavigate(folder.id),
+                                        isCollab: folder.isSharedCollab || rawCollabFolders.some((cf: any) => cf.folderId === folder.id) || hostCollabFolders.some((cf: any) => cf.folder_id === folder.id),
+                                        onNavigate: folder.isSharedCollab
+                                            ? () => navigate(`/folders?folderId=${folder.collabFolderId}&collabToken=${folder.collabToken}`)
+                                            : () => handleNavigate(folder.id),
                                         onRename: collabToken ? async (newName: string) => {
                                             if (!collabKey) return;
                                             try {
@@ -1371,7 +1402,7 @@ export const FoldersPage = () => {
                                                 showToast('Failed to rename folder', 'error');
                                             }
                                         } : undefined,
-                                        onDelete: () => handleDeleteFolder(folder.id),
+                                        onDelete: folder.isSharedCollab ? undefined : () => handleDeleteFolder(folder.id),
                                     })),
                                     ...displayFiles.map(file => ({
                                         id: file.id,
