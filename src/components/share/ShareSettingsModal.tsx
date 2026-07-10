@@ -499,7 +499,7 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                                 type="password"
                                 inputMode={share.type === 'standard_link' ? 'text' : 'numeric'}
                                 maxLength={share.type === 'standard_link' ? undefined : 4}
-                                placeholder={share.type === 'standard_link' ? 'Enter secure password' : '4-digit PIN'}
+                                placeholder={share.type === 'standard_link' ? 'Enter secure password' : '4 digit PIN'}
                                 value={pin}
                                 onChange={(e) => setPin(share.type === 'standard_link' ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 4))}
                                 className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"

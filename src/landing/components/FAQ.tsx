@@ -50,6 +50,10 @@ const FAQ = () => {
             answer: "Your file names, folder names, and file contents are encrypted on your device before upload, so we can't read them. To store and verify your data, our servers do handle some technical metadata: encrypted file sizes, timestamps, and integrity hashes. We never see what your files are called or what's inside them."
         },
         {
+            question: "What about files I share or collaborate on?",
+            answer: "Sharing means handing someone the key. A share link and a collab folder invite each carry the key that opens that item, so anyone you give it to can read it, which is the point of sharing. Your private, unshared files stay fully zero knowledge, only you can open them. When you invite someone to a collab folder you are deliberately sharing that folder's key with them."
+        },
+        {
             question: "Who is Nest for?",
             answer: "Anyone who wants private storage for personal videos, documents, and projects."
         },

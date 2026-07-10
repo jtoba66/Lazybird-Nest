@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { shareLimiter } from '../middleware/rateLimiter';
+import { shareLimiter, pinLimiter } from '../middleware/rateLimiter';
 import { db } from '../db';
 import { collabFolders, collabAccessList, collabOtpSessions, collabGuestSessions, sharedWithMe, folders, files, users, shareAuditLog, analyticsEvents, fileChunks, dropZones } from '../db/schema';
 import { eq, and, isNull, sql, or, desc, inArray } from 'drizzle-orm';
@@ -783,7 +783,7 @@ guestRouter.get('/:tokenOrSlug', shareLimiter, async (req, res) => {
 });
 
 // 8. POST /api/collab/:tokenOrSlug/otp/request - Send OTP to guest email
-guestRouter.post('/:tokenOrSlug/otp/request', shareLimiter, async (req, res) => {
+guestRouter.post('/:tokenOrSlug/otp/request', shareLimiter, pinLimiter, async (req, res) => {
     const { tokenOrSlug } = req.params;
     const { email } = req.body;
 
@@ -815,6 +815,15 @@ guestRouter.post('/:tokenOrSlug/otp/request', shareLimiter, async (req, res) => 
         if (!access) {
             logger.warn(`[COLLAB-OTP] Access denied to email ${cleanEmail} for folder ${collab.id}`);
             return res.status(403).json({ error: 'Access denied: Email is not in the approved guest list.' });
+        }
+
+        // A2. Verify the folder PIN if the host set one (failures are counted by pinLimiter).
+        if (collab.require_pin) {
+            const providedPin = (req.body.pin || '').toString();
+            if (!collab.pin_hash || !(await bcrypt.compare(providedPin, collab.pin_hash))) {
+                logger.warn(`[COLLAB-OTP] Invalid PIN for folder ${collab.id} from ${cleanEmail}`);
+                return res.status(403).json({ error: 'Invalid PIN' });
+            }
         }
 
         // B. Rate limiting: max 3 OTP requests per email per hour

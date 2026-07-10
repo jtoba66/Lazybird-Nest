@@ -182,7 +182,7 @@ export const CreateDropZoneModal = ({ isOpen, onClose, createZKFolder, onSuccess
                                 type="password"
                                 inputMode="numeric"
                                 maxLength={4}
-                                placeholder="4-digit PIN"
+                                placeholder="4 digit PIN"
                                 value={pin}
                                 onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                                 className="w-full bg-black/5 rounded-xl border border-white/20 px-3 py-2 text-sm text-text-main focus:outline-none focus:border-primary/50"

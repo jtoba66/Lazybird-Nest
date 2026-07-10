@@ -88,6 +88,8 @@ export const CollabPortalPage = () => {
     const [collabName, setCollabName] = useState('');
     const [hostEmail, setHostEmail] = useState('');
     const [strictMode, setStrictMode] = useState(false);
+    const [requiresPin, setRequiresPin] = useState(false);
+    const [accessPin, setAccessPin] = useState('');
 
     // Folder workspace hierarchy states
     const [collabRootId, setCollabRootId] = useState<number | null>(null);
@@ -181,6 +183,7 @@ export const CollabPortalPage = () => {
             setCollabName(data.name);
             setHostEmail(data.host_display);
             setStrictMode(data.strict_mode);
+            setRequiresPin(!!data.require_pin);
             
             // Check if user is logged-in Nest user
             if (authedUser && masterKey) {
@@ -263,6 +266,10 @@ export const CollabPortalPage = () => {
     const handleRequestOtp = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!email || !token) return;
+        if (requiresPin && !/^\d{4}$/.test(accessPin)) {
+            setOtpError('Enter the 4 digit PIN for this folder');
+            return;
+        }
         setOtpError('');
         setSubmittingOtp(true);
 
@@ -270,7 +277,7 @@ export const CollabPortalPage = () => {
             const response = await fetch(`${API_BASE_URL}/collab/${token}/otp/request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ email, pin: requiresPin ? accessPin : undefined })
             });
 
             if (!response.ok) {
@@ -867,6 +874,23 @@ export const CollabPortalPage = () => {
                                         required
                                     />
                                 </div>
+                                {requiresPin && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                                            Access PIN
+                                        </label>
+                                        <input
+                                            type="password"
+                                            inputMode="numeric"
+                                            maxLength={4}
+                                            value={accessPin}
+                                            onChange={(e) => setAccessPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                            className="w-full glass-input bg-white/50 focus:bg-white text-center tracking-widest text-lg font-bold"
+                                            placeholder="••••"
+                                            required
+                                        />
+                                    </div>
+                                )}
                                 <button
                                     type="submit"
                                     disabled={submittingOtp}
