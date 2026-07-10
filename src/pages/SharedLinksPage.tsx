@@ -13,6 +13,7 @@ import { ShareSettingsModal } from '../components/share/ShareSettingsModal';
 
 import api from '../lib/api';
 import { deriveStandardLinkUrl } from '../utils/shareUrl';
+import { getCollabLinkUrl } from '../utils/collabLink';
 import { useCreateZKFolder } from '../hooks/useCreateZKFolder';
 import clsx from 'clsx';
 import nestLogo from '../assets/nest-logo.png';
@@ -177,17 +178,14 @@ export const SharedLinksPage = () => {
         } else if (item.type === 'drop_zone') {
             url = `${window.location.origin}/dz/${item.custom_slug || item.token}`;
         } else if (item.type === 'collab_folder') {
-            // Collab folders require the lk (linkKey) fragment which is not stored in DB.
-            // We alert the user that they must copy the URL generated during creation, or they can re-generate the link key from settings.
-            // However, in this UI, if the user didn't save the link key, they will need to generate a new link key or settings updates.
-            // Let's check if the collab token can be copied without lk for standard otp authentication if host allows it.
-            // Actually, collab link key is required in fragment to decrypt the collab key.
-            // So if they copy from here, we will look up the token. If they lost the linkKey, we prompt them.
-            // In our implementation, since the server doesn't have the link key, they need it.
-            // To make it friendly, we will retrieve/store it or prompt.
-            // Let's check: if we cannot copy, we show a toast warning or allow copying the base URL.
-            url = `${window.location.origin}/collab/${item.custom_slug || item.token}`;
-            showToast('Collab folders require the collaboration key to decrypt. Re-generate a link key in settings if lost.', 'warning', 6000);
+            // The link key lives in the encrypted vault (metadata.collab), so rebuild the
+            // full working link. Folders created before this feature won't have it stored.
+            const collabUrl = getCollabLinkUrl(metadata, item);
+            if (!collabUrl) {
+                showToast('This collab link predates link saving. Open its settings and Regenerate Link to get a fresh one.', 'warning', 6000);
+                return;
+            }
+            url = collabUrl;
         }
 
         if (url) {
@@ -212,7 +210,13 @@ export const SharedLinksPage = () => {
             setQrDeriving(false);
             return;
         }
-        // standard_link (collab folders have no list QR button)
+        if (share.type === 'collab_folder') {
+            // Link key comes from the encrypted vault (null if it predates link saving).
+            setQrUrl(getCollabLinkUrl(metadata, share));
+            setQrDeriving(false);
+            return;
+        }
+        // standard_link
         setQrDeriving(true);
         (async () => {
             try {
@@ -589,24 +593,20 @@ export const SharedLinksPage = () => {
 
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-1.5">
-                                                    {item.type !== 'collab_folder' && (
-                                                        <button
-                                                            onClick={() => setQrModal({ isOpen: true, share: item })}
-                                                            className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
-                                                            title="View QR Code"
-                                                        >
-                                                            <QrCode size={16} />
-                                                        </button>
-                                                    )}
-                                                    {item.type !== 'collab_folder' && (
-                                                        <button
-                                                            onClick={() => handleCopy(item)}
-                                                            className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
-                                                            title="Copy Share URL"
-                                                        >
-                                                            <Copy size={16} />
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        onClick={() => setQrModal({ isOpen: true, share: item })}
+                                                        className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
+                                                        title="View QR Code"
+                                                    >
+                                                        <QrCode size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCopy(item)}
+                                                        className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"
+                                                        title="Copy Share URL"
+                                                    >
+                                                        <Copy size={16} />
+                                                    </button>
                                                     <button
                                                         onClick={() => setSettingsModal({ isOpen: true, share: item })}
                                                         className="p-1.5 hover:bg-card rounded-lg transition-colors text-text-muted hover:text-text-main"

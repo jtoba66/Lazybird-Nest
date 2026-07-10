@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Modal } from '../Modal';
 import api from '../../lib/api';
+import { saveCollabLinkKey } from '../../utils/collabLink';
 
 export interface ShareItem {
     id: number;
@@ -37,7 +38,7 @@ interface CreateCollabProps {
 }
 export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuccess }: CreateCollabProps) => {
     const { showToast } = useToast();
-    const { masterKey } = useAuth();
+    const { masterKey, getLatestMetadata, saveMetadata } = useAuth();
     const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [emailInput, setEmailInput] = useState('');
@@ -167,6 +168,15 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                 const linkKeyBase64url = toBase64(linkKey).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
                 const finalSlug = customSlug ? customSlug.trim() : response.data.token;
                 const shareUrl = `${window.location.origin}/collab/${finalSlug}#lk=${linkKeyBase64url}`;
+
+                // Persist the link key in the encrypted vault (keyed by token) so the host
+                // can rebuild this link — copy / QR — anytime. The server never sees it.
+                // getLatestMetadata() is used because createZKFolder just re-saved metadata.
+                const latestMeta = getLatestMetadata();
+                if (latestMeta) {
+                    await saveMetadata(saveCollabLinkKey(latestMeta, response.data.token, linkKeyBase64url));
+                }
+
                 setResultUrl(shareUrl);
                 setStep(2);
                 showToast('Collab Folder created successfully!', 'success');
@@ -385,7 +395,7 @@ export const CreateCollabFolderModal = ({ isOpen, onClose, createZKFolder, onSuc
                             </button>
                         </div>
                         <span className="block text-xs leading-snug text-amber-700 bg-amber-500/10 border border-amber-500/20 font-medium mt-2 px-3 py-2 rounded-lg">
-                            ⚠️ This link contains the ephemeral decryption key. Save it immediately! It will not be shown again and the 'Copy' button in the dashboard is disabled for security.
+                            This link contains the folder's decryption key — share it only with people you want to collaborate with. You can copy it again anytime from Access &amp; Sharing.
                         </span>
                     </div>
 

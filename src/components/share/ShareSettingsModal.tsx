@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Modal } from '../Modal';
 import api from '../../lib/api';
 import { deriveStandardLinkUrl } from '../../utils/shareUrl';
+import { getCollabLinkUrl, saveCollabLinkKey } from '../../utils/collabLink';
 import clsx from 'clsx';
 import QRCode from 'react-qr-code';
 import nestLogo from '../../assets/nest-logo.png';
@@ -50,7 +51,7 @@ interface SettingsProps {
 }
 export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: SettingsProps) => {
     const { showToast } = useToast();
-    const { masterKey, metadata } = useAuth();
+    const { masterKey, metadata, getLatestMetadata, saveMetadata } = useAuth();
     const [activeTab, setActiveTab] = useState<'settings' | 'audit'>('settings');
     const [submitting, setSubmitting] = useState(false);
     const [regeneratedUrl, setRegeneratedUrl] = useState<string | null>(null);
@@ -137,8 +138,14 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                 ? `${window.location.origin}/collab/${share.custom_slug || share.token}`
                 : `${window.location.origin}/s/${share.custom_slug || share.token}`
         : '';
+    // Collab links are rebuilt from the encrypted vault (null if created before link saving).
+    const collabVaultUrl = share?.type === 'collab_folder' ? getCollabLinkUrl(metadata, share) : null;
     const shareUrl = regeneratedUrl
-        || (share?.type === 'standard_link' ? (standardFullUrl || baseShareUrl) : baseShareUrl);
+        || (share?.type === 'standard_link'
+            ? (standardFullUrl || baseShareUrl)
+            : share?.type === 'collab_folder'
+                ? (collabVaultUrl || baseShareUrl)
+                : baseShareUrl);
 
     const handleRegenerateLink = async () => {
         if (!share || share.type !== 'collab_folder' || !masterKey) return;
@@ -162,6 +169,13 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
 
             const linkKeyBase64url = toBase64(newLinkKey).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
             const url = `${window.location.origin}/collab/${share.custom_slug || share.token}#lk=${linkKeyBase64url}`;
+
+            // Persist the new link key to the vault so copy / QR keep working everywhere.
+            const latestMeta = getLatestMetadata();
+            if (latestMeta) {
+                await saveMetadata(saveCollabLinkKey(latestMeta, share.token, linkKeyBase64url));
+            }
+
             setRegeneratedUrl(url);
             showToast('Link regenerated successfully', 'success');
         } catch (err) {
@@ -608,9 +622,9 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                         <div className="flex-1 flex flex-col gap-2">
                             <label className="text-xs font-bold text-text-muted block mb-1">Shareable Link</label>
                             
-                            {share.type === 'collab_folder' && !regeneratedUrl && (
+                            {share.type === 'collab_folder' && !regeneratedUrl && !collabVaultUrl && (
                                 <div className="text-[11px] text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 font-medium">
-                                    ⚠️ The full link (with decryption key) is not stored on our servers. This URL is incomplete. If you lost the original link, please <strong>Regenerate Link Key</strong> above to get a new one.
+                                    ⚠️ This collab link was created before link saving was added, so its key isn't in your vault. Use <strong>Regenerate Link Key</strong> above to get a fresh, copyable link.
                                 </div>
                             )}
 
@@ -631,14 +645,14 @@ export const ShareSettingsModal = ({ isOpen, onClose, share, onSuccess }: Settin
                                 value={shareUrl}
                                 className={clsx(
                                     "w-full bg-black/5 rounded-xl border px-3 py-2 text-xs focus:outline-none",
-                                    (share.type === 'collab_folder' && !regeneratedUrl) || (share.type === 'standard_link' && !standardFullUrl) ? "text-text-muted/50 border-amber-500/30" : "text-text-main border-white/20"
+                                    (share.type === 'collab_folder' && !regeneratedUrl && !collabVaultUrl) || (share.type === 'standard_link' && !standardFullUrl) ? "text-text-muted/50 border-amber-500/30" : "text-text-main border-white/20"
                                 )}
                                 onClick={(e) => e.currentTarget.select()}
                             />
                         </div>
                         <div className="flex flex-col items-center">
                             <span className="text-[10px] font-bold text-slate-500 uppercase mb-1">QR Code</span>
-                            {(share.type === 'collab_folder' && !regeneratedUrl) || (share.type === 'standard_link' && !standardFullUrl) ? (
+                            {(share.type === 'collab_folder' && !regeneratedUrl && !collabVaultUrl) || (share.type === 'standard_link' && !standardFullUrl) ? (
                                 // The decryption key isn't stored server-side, so a static URL is
                                 // incomplete — don't present a scannable QR of a broken link.
                                 <div

@@ -88,7 +88,7 @@ test.describe('Share Settings link integrity (all types)', () => {
     await expect(page.getByText(/Generating QR|Link key unavailable|Regenerate link for QR/)).toHaveCount(0);
   });
 
-  test('collab folder: warns + suppresses QR until link regenerated, then #lk + real QR', async ({ page }) => {
+  test('collab folder: settings shows the working #lk link + QR from the vault', async ({ page }) => {
     await page.goto('/shared');
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'New Collab Folder' }).click();
@@ -104,24 +104,23 @@ test.describe('Share Settings link integrity (all types)', () => {
 
     await openSettingsFor(page, NAME);
 
-    // Before regeneration: incomplete link is flagged and NO scannable QR is shown.
-    await expect(page.getByText(/full link \(with decryption key\) is not stored/i)).toBeVisible({ timeout: 10000 });
-    await expect(page.locator(QR_BUTTON)).toHaveCount(0);
-    await expect(page.getByText('Regenerate link for QR')).toBeVisible();
-
-    // Regenerate -> a new linkKey is sealed and the #lk URL is produced.
-    await page.getByRole('button', { name: 'Regenerate Link' }).click();
+    // The link key is saved to the encrypted vault at creation, so the settings modal
+    // rebuilds the working #lk link + a real QR immediately — no "not stored" warning,
+    // no regenerate required.
+    await expect(page.getByText(/not stored|created before link saving/i)).toHaveCount(0);
     await expect.poll(async () => {
       const inputs = page.locator('input[readonly]');
       const n = await inputs.count();
       for (let i = 0; i < n; i++) {
-        const v = await inputs.nth(i).inputValue();
-        if (v.includes('#lk=')) return true;
+        if ((await inputs.nth(i).inputValue()).includes('#lk=')) return true;
       }
       return false;
-    }, { timeout: 20000, message: 'a readonly field should contain the #lk fragment after regenerate' }).toBe(true);
-    // And the main QR becomes scannable.
+    }, { timeout: 15000, message: 'settings should show the #lk link rebuilt from the vault' }).toBe(true);
     await expect(page.locator(QR_BUTTON)).toBeVisible({ timeout: 10000 });
+
+    // Regenerate still works (issues a fresh key and re-saves it to the vault).
+    await page.getByRole('button', { name: 'Regenerate Link' }).click();
+    await expect(page.locator(QR_BUTTON)).toBeVisible({ timeout: 15000 });
   });
 
   test('row QR button: downloaded QR decodes to a link carrying #key', async ({ page }) => {
