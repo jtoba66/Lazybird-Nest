@@ -92,7 +92,7 @@ function wrapTemplate(content: string, title: string): string {
     </head>
     <body>
         <div class="container">
-            <a href="https://lazybird.io" class="logo">Nest</a>
+            <a href="https://nest.lazybird.io" class="logo">Nest</a>
             ${content}
             <div class="footer">
                 <p>© ${new Date().getFullYear()} Nest • Secure, Zero-Knowledge Storage</p>

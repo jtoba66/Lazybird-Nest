@@ -62,7 +62,7 @@ const Footer = () => {
                 </div>
 
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-text-light text-sm pt-8 border-t border-slate-100 font-sans">
-                    <div>&copy; {new Date().getFullYear()} LazyBird Inc.</div>
+                    <div>A <a href="https://lazybird.io" className="underline hover:text-primary transition-colors">LazyBird Inc.</a> product. &copy; {new Date().getFullYear()}</div>
                 </div>
             </div>
         </motion.footer>
